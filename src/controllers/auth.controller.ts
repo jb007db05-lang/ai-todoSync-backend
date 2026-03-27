@@ -180,8 +180,6 @@ class AuthController {
   }
 }
 
-type GoogleOAuthMode = 'web' | 'gpt';
-
 const signState = (payload: object): string => {
   const json = JSON.stringify(payload);
   const sig = crypto.createHmac('sha256', env.JWT_SECRET).update(json).digest('hex');

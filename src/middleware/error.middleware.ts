@@ -1,4 +1,4 @@
-import { NextFunction, Request, Response } from 'express';
+import { Request, Response } from 'express';
 
 import logger from '../lib/logger.js';
 
@@ -12,7 +12,6 @@ const errorMiddleware = (
   error: unknown,
   _req: Request,
   res: Response<ErrorResponse>,
-  _next: NextFunction
 ): Response<ErrorResponse> => {
   const message = error instanceof Error ? error.message : 'Internal server error';
   const statusError = error as StatusError;

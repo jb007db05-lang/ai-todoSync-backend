@@ -1,13 +1,6 @@
 import { SyncTaskInsertPayload, bulkInsertTasks } from '../repositories/sync.repository.js';
 import type { ITaskDocument, TaskStatus } from '../models/task.model.js';
 
-interface RawSyncTaskInput {
-  title?: unknown;
-  description?: unknown;
-  status?: unknown;
-  source?: unknown;
-}
-
 interface SyncTaskInput {
   title: string;
   description?: string;

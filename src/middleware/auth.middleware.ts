@@ -3,6 +3,7 @@ import jwt, { JwtPayload } from 'jsonwebtoken';
 
 import env from '../config/env.js';
 import UserModel, { IUserDocument } from '../models/user.model.js';
+import logger from '@/lib/logger.js';
 
 interface JwtPayloadWithUserId extends JwtPayload {
   userId?: string;
@@ -45,6 +46,7 @@ const authMiddleware = async (req: Request, res: Response, next: NextFunction): 
     (req as Request & { user: IUserDocument }).user = user;
     next();
   } catch (error) {
+    logger.error(error as unknown as string);
     respondUnauthorized(res);
   }
 };
