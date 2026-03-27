@@ -1,4 +1,4 @@
-import { NextFunction, Request, Response } from 'express';
+import { Request, Response } from 'express';
 import crypto from 'crypto';
 
 import authService, { AuthResult, LoginCredentials } from '../services/auth.service.js';
@@ -9,7 +9,7 @@ import type { IUserDocument } from '../models/user.model.js';
 type AuthenticatedRequest = Request & { user?: IUserDocument };
 
 class AuthController {
-  public register = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  public register = async (req: Request, res: Response): Promise<void> => {
     try {
       const { email, password } = req.body as { email?: string; password?: string };
       const payload: CreateUserPayload = {
@@ -23,11 +23,12 @@ class AuthController {
         data: this.buildAuthResponse(authResult)
       });
     } catch (error) {
-      next(error);
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
     }
   };
 
-  public login = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  public login = async (req: Request, res: Response): Promise<void> => {
     try {
       const { email, password } = req.body as { email?: string; password?: string };
       const credentials: LoginCredentials = {
@@ -41,11 +42,12 @@ class AuthController {
         data: this.buildAuthResponse(authResult)
       });
     } catch (error) {
-      next(error);
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
     }
   };
 
-  public googleRedirect = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  public googleRedirect = async (req: Request, res: Response): Promise<void> => {
     try {
       const requestedRedirect = req.query.redirect as string | undefined;
       const safeRedirect = ensureInternalPath(requestedRedirect);
@@ -64,11 +66,12 @@ class AuthController {
 
       return res.redirect(authorizationUrl);
     } catch (error) {
-      next(error);
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
     }
   };
 
-  public token = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  public token = async (req: Request, res: Response): Promise<void> => {
     try {
       const { code } = req.body;
 
@@ -81,11 +84,12 @@ class AuthController {
       });
 
     } catch (error) {
-      next(error);
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
     }
   };
 
-  public googleCallback = async (req: Request, res: Response, next: NextFunction) => {
+  public googleCallback = async (req: Request, res: Response) => {
     try {
       const { code, state } = req.query;
 
@@ -123,11 +127,12 @@ class AuthController {
       return res.redirect(callbackUrl.toString());
 
     } catch (error) {
-      next(error);
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
     }
   };
 
-  public me = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  public me = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const user = req.user;
 
@@ -143,15 +148,12 @@ class AuthController {
         data: { user: profile }
       });
     } catch (error) {
-      next(error);
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
     }
   };
 
-  public regenerateSyncKey = async (
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction
-  ): Promise<void> => {
+  public regenerateSyncKey = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const user = req.user;
 
@@ -167,7 +169,8 @@ class AuthController {
         data: { syncApiKey }
       });
     } catch (error) {
-      next(error);
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
     }
   };
 

@@ -4,7 +4,6 @@ import helmet from 'helmet';
 import hpp from 'hpp';
 
 import { Routes } from './interfaces/routes.interface.js';
-import errorMiddleware from './middleware/error.middleware.js';
 import logger from './lib/logger.js';
 import env from './config/env.js';
 import { connectDatabase } from './config/db.config.js';
@@ -18,11 +17,10 @@ class App {
 
   constructor(routes: Routes[]) {
     this.app = express();
-    this.port = env.PORT;
+    this.port = env.PORT || 5000;
 
     this.initializeMiddlewares();
     this.initializeRoutes(routes);
-    this.initializeErrorHandling();
     this.initializeCronJobs();
   }
 
@@ -49,10 +47,6 @@ class App {
 
       this.app.use(route.router);
     });
-  }
-
-  private initializeErrorHandling(): void {
-    this.app.use(errorMiddleware);
   }
 
   private initializeCronJobs(): void {

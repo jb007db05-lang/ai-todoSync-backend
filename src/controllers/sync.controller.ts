@@ -1,4 +1,4 @@
-import { NextFunction, Request, Response } from 'express';
+import { Request, Response } from 'express';
 
 import syncService from '../services/sync.service.js';
 import type { IUserDocument } from '../models/user.model.js';
@@ -8,7 +8,7 @@ type SyncRequest = Request & { user?: IUserDocument };
 class SyncController {
   private static readonly DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
-  public syncTasks = async (req: SyncRequest, res: Response, next: NextFunction): Promise<void> => {
+  public syncTasks = async (req: SyncRequest, res: Response): Promise<void> => {
     try {
       const user = req.user;
 
@@ -27,11 +27,12 @@ class SyncController {
         tasks
       });
     } catch (error) {
-      next(error);
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
     }
   };
 
-  public syncSingleTask = async (req: SyncRequest, res: Response, next: NextFunction): Promise<void> => {
+  public syncSingleTask = async (req: SyncRequest, res: Response): Promise<void> => {
     try {
       const user = req.user;
 
@@ -49,7 +50,8 @@ class SyncController {
         task
       });
     } catch (error) {
-      next(error);
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
     }
   };
 

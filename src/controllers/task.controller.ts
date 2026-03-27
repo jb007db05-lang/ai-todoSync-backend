@@ -1,4 +1,4 @@
-import { NextFunction, Request, Response } from 'express';
+import { Request, Response } from 'express';
 
 import type { IUserDocument } from '../models/user.model.js';
 import type { CreateTaskPayload, UpdateTaskPayload } from '../repositories/task.repository.js';
@@ -41,7 +41,7 @@ const getRouteParam = (value: string | string[] | undefined): string => {
 };
 
 class TaskController {
-  public getTasks = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  public getTasks = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const user = req.user;
 
@@ -57,11 +57,12 @@ class TaskController {
         data: { tasks }
       });
     } catch (error) {
-      next(error);
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
     }
   };
 
-  public createTask = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  public createTask = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const user = req.user;
 
@@ -86,11 +87,12 @@ class TaskController {
         data: { task }
       });
     } catch (error) {
-      next(error);
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
     }
   };
 
-  public updateTask = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  public updateTask = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const user = req.user;
 
@@ -108,11 +110,12 @@ class TaskController {
         data: { task: updated }
       });
     } catch (error) {
-      next(error);
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
     }
   };
 
-  public deleteTask = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  public deleteTask = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const user = req.user;
 
@@ -129,11 +132,12 @@ class TaskController {
         data: { taskId }
       });
     } catch (error) {
-      next(error);
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
     }
   };
 
-  public taskSummary = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  public taskSummary = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const user = req.user;
 
@@ -149,7 +153,8 @@ class TaskController {
         data: { summary }
       });
     } catch (error) {
-      next(error);
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
     }
   };
 }
