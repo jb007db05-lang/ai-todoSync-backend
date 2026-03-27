@@ -25,6 +25,7 @@ class App {
   }
 
   private initializeMiddlewares(): void {
+    console.log("Allowed Origins : ");
     this.app.set('trust proxy', 1);
     this.app.use(helmet());
     this.app.use(
