@@ -25,12 +25,12 @@ class App {
   }
 
   private initializeMiddlewares(): void {
-    console.log("Allowed Origins : ");
+    console.log("Allowed Origins : ",env.ALLOWED_ORIGINS);
     this.app.set('trust proxy', 1);
     this.app.use(helmet());
     this.app.use(
       cors({
-        origin: env.ALLOWED_ORIGINS
+        origin: env.ALLOWED_ORIGINS,
         credentials: true
       })
     );
