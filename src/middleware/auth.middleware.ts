@@ -3,7 +3,7 @@ import jwt, { JwtPayload } from 'jsonwebtoken';
 
 import env from '../config/env.js';
 import UserModel, { IUserDocument } from '../models/user.model.js';
-import logger from '@/lib/logger.js';
+import logger from '../lib/logger.js';
 
 interface JwtPayloadWithUserId extends JwtPayload {
   userId?: string;
