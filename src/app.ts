@@ -29,7 +29,7 @@ class App {
     this.app.use(helmet());
     this.app.use(
       cors({
-        origin: env.ALLOWED_ORIGINS.length ? env.ALLOWED_ORIGINS : true,
+        origin: env.ALLOWED_ORIGINS
         credentials: true
       })
     );
