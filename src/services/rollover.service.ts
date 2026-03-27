@@ -1,0 +1,61 @@
+import logger from '../lib/logger.js';
+import {
+  getPendingTasksByDate,
+  markTasksRolledOver
+} from '../repositories/task.repository.js';
+import { SyncTaskInsertPayload, bulkInsertTasks } from '../repositories/sync.repository.js';
+
+interface RolloverResult {
+  processed: number;
+  duplicated: number;
+  date: string;
+}
+
+class RolloverService {
+  public async runRollover(targetDate?: Date): Promise<RolloverResult> {
+    const today = this.formatDate(targetDate ?? new Date());
+    const tomorrow = this.computeTomorrow(today);
+    const pendingTasks = await getPendingTasksByDate(today);
+
+    if (pendingTasks.length === 0) {
+      logger.info('No pending tasks to roll over', { date: today });
+      return { processed: 0, duplicated: 0, date: today };
+    }
+
+    const inserts: SyncTaskInsertPayload[] = pendingTasks.map((task) => ({
+      userId: task.userId.toString(),
+      title: task.title,
+      description: task.description,
+      date: tomorrow,
+      status: 'pending',
+      source: task.source ?? 'manual',
+      rolledOver: false,
+      rolloverCount: task.rolloverCount + 1
+    }));
+
+    const created = await bulkInsertTasks(inserts);
+    await markTasksRolledOver(pendingTasks.map((task) => task._id.toString()));
+
+    logger.info('Rollover job completed', {
+      date: today,
+      processed: pendingTasks.length,
+      duplicated: created.length
+    });
+
+    return { processed: pendingTasks.length, duplicated: created.length, date: today };
+  }
+
+  private formatDate(date: Date): string {
+    return date.toISOString().slice(0, 10);
+  }
+
+  private computeTomorrow(dateString: string): string {
+    const base = new Date(dateString);
+    const tomorrow = new Date(base.getTime() + 24 * 60 * 60 * 1000);
+    return this.formatDate(tomorrow);
+  }
+}
+
+const rolloverService = new RolloverService();
+export type { RolloverResult };
+export default rolloverService;
