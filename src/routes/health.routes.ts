@@ -11,7 +11,7 @@ class HealthRoutes implements Routes {
   }
 
   private initializeRoutes() {
-    this.router.get('/', this.healthCheck);
+    this.router.get(`${this.path}`, this.healthCheck);
   }
 
   private healthCheck = (_req: Request, res: Response): Response =>
