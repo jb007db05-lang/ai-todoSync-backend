@@ -5,7 +5,6 @@ import authService, { AuthResult, LoginCredentials } from '../services/auth.serv
 import env from '../config/env.js';
 import type { CreateUserPayload } from '../repositories/auth.repository.js';
 import type { IUserDocument } from '../models/user.model.js';
-import logger from '../lib/logger.js';
 
 type AuthenticatedRequest = Request & { user?: IUserDocument };
 
@@ -64,7 +63,7 @@ class AuthController {
       });
 
       const authorizationUrl = authService.getGoogleAuthorizationUrl(state);
-      logger.info("Redirecting to google");
+
       return res.redirect(authorizationUrl);
     } catch (error) {
       const status = (error as any).status || 500;
@@ -93,7 +92,7 @@ class AuthController {
   public googleCallback = async (req: Request, res: Response) => {
     try {
       const { code, state } = req.query;
-      logger.info("Inside the google callback");
+
       if (!code) {
         throw new Error("Missing Google OAuth code");
       }
@@ -105,7 +104,6 @@ class AuthController {
       // ✅ CHATGPT FLOW (REAL)
       // ============================
       if (redirectUri) {
-        console.log("Inside the chat gpt flow")
         const separator = redirectUri.includes('?') ? '&' : '?';
         let finalUrl = `${redirectUri}${separator}code=${code}`;
 
@@ -125,10 +123,7 @@ class AuthController {
       callbackUrl.pathname = '/oauth/google/success';
       callbackUrl.searchParams.set('token', authResult.token);
       callbackUrl.searchParams.set('redirect', decodedState.redirectTo);
-
-      console.log("Redirecting");
-
-      return res.redirect(env.FRONTEND_BASE_URL);
+      return res.redirect(callbackUrl.toString());
 
     } catch (error) {
       const status = (error as any).status || 500;
