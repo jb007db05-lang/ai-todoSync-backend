@@ -1,4 +1,4 @@
-import TaskModel, { ITaskDocument, TaskStatus } from '../models/task.model.js';
+import TaskModel, { ISubtask, ITaskDocument, TaskStatus } from '../models/task.model.js';
 
 export interface SyncTaskInsertPayload {
   userId: string;
@@ -7,6 +7,8 @@ export interface SyncTaskInsertPayload {
   date: string;
   status?: TaskStatus;
   source?: string;
+  projectId?: string | null;
+  subtasks?: ISubtask[];
   rolledOver?: boolean;
   rolloverCount?: number;
 }

@@ -1,11 +1,27 @@
 import { SyncTaskInsertPayload, bulkInsertTasks } from '../repositories/sync.repository.js';
-import type { ITaskDocument, TaskStatus } from '../models/task.model.js';
+import type {
+  ISubtask,
+  ITaskDocument,
+  TaskStatus,
+  TaskWorkflowStatus
+} from '../models/task.model.js';
+import projectService from './project.service.js';
+
+interface SyncSubtaskResult {
+  id: string;
+  title: string;
+  status: TaskWorkflowStatus;
+  completed: boolean;
+  completedAt: Date | null;
+}
 
 interface SyncTaskInput {
   title: string;
   description?: string;
   status?: TaskStatus;
   source?: string;
+  project?: unknown;
+  subtasks?: ISubtask[];
 }
 
 interface SyncRequestBody {
@@ -20,6 +36,7 @@ interface SyncSingleRequestBody {
   status?: TaskStatus;
   source?: unknown;
   date?: unknown;
+  project?: unknown;
 }
 
 interface SyncTaskResult {
@@ -29,6 +46,8 @@ interface SyncTaskResult {
   date: string;
   status: TaskStatus;
   source?: string;
+  projectId: string | null;
+  subtasks: SyncSubtaskResult[];
 }
 
 class HttpError extends Error {
@@ -56,8 +75,8 @@ class SyncService {
       throw new HttpError(413, `Cannot sync more than ${SyncService.MAX_TASKS_PER_SYNC} tasks at once`);
     }
 
-    const inserts = tasks.map((task) =>
-      this.buildInsertPayload(userId, date, source, task)
+    const inserts = await Promise.all(
+      tasks.map((task) => this.buildInsertPayload(userId, date, source, task))
     );
 
     const created = await bulkInsertTasks(inserts);
@@ -68,7 +87,7 @@ class SyncService {
     const { date, source } = this.normalizeContext(payload.date, payload.source);
     const task = this.parseTaskInput(payload);
 
-    const insert = this.buildInsertPayload(userId, date, source, task);
+    const insert = await this.buildInsertPayload(userId, date, source, task);
     const [created] = await bulkInsertTasks([insert]);
 
     return this.toResult(created);
@@ -112,8 +131,10 @@ class SyncService {
     const description = typeof task.description === 'string' ? task.description : undefined;
     const status = this.parseStatus(task.status);
     const source = typeof task.source === 'string' ? task.source : undefined;
+    const project = task.project;
+    const subtasks = this.parseSubtasks(task.subtasks);
 
-    return { title, description, status, source };
+    return { title, description, status, source, project, subtasks };
   }
 
   private parseStatus(value: unknown): TaskStatus | undefined {
@@ -121,26 +142,40 @@ class SyncService {
       return undefined;
     }
 
-    if (value === 'pending' || value === 'done') {
+    if (
+      value === 'pending' ||
+      value === 'in_progress' ||
+      value === 'in_review' ||
+      value === 'completed' ||
+      value === 'done'
+    ) {
+      return value === 'done' ? 'completed' : value;
+    }
+
+    if (value === 'rolled_over') {
       return value;
     }
 
     throw new HttpError(400, 'Invalid status value');
   }
 
-  private buildInsertPayload(
+  private async buildInsertPayload(
     userId: string,
     date: string,
     source: string | undefined,
     task: SyncTaskInput
-  ): SyncTaskInsertPayload {
+  ): Promise<SyncTaskInsertPayload> {
+    const projectId = await projectService.resolveProjectForSync(userId, task.project);
+
     return {
       userId,
       title: task.title,
       description: task.description,
       date,
       status: task.status,
-      source: task.source ?? source
+      source: task.source ?? source,
+      projectId,
+      subtasks: task.subtasks
     };
   }
 
@@ -150,9 +185,102 @@ class SyncService {
       title: task.title,
       description: task.description,
       date: task.date,
-      status: task.status,
-      source: task.source
+      status: this.normalizeStoredTaskStatus(task.status),
+      source: task.source,
+      projectId: task.projectId?.toString() ?? null,
+      subtasks: this.toSubtaskResults(task.subtasks)
     };
+  }
+
+  private parseSubtasks(value: unknown): ISubtask[] | undefined {
+    if (value === undefined) {
+      return undefined;
+    }
+
+    if (!Array.isArray(value)) {
+      throw new HttpError(400, 'Subtasks must be an array');
+    }
+
+    return value.map((subtask, index) => this.parseSubtask(subtask, index));
+  }
+
+  private parseSubtask(value: unknown, index: number): ISubtask {
+    if (value == null || typeof value !== 'object') {
+      throw new HttpError(400, `Subtask at index ${index} must be an object`);
+    }
+
+    const subtask = value as Record<string, unknown>;
+    const title = typeof subtask.title === 'string' ? subtask.title.trim() : '';
+
+    if (!title) {
+      throw new HttpError(400, `Subtask at index ${index} requires a title`);
+    }
+
+    const status = this.parseWorkflowStatus(subtask.status, subtask.completed);
+    const completed = status === 'completed';
+    const completedAt = completed ? this.parseCompletedAt(subtask.completedAt) : null;
+
+    return {
+      title,
+      status,
+      completed,
+      completedAt
+    };
+  }
+
+  private parseWorkflowStatus(statusValue: unknown, completedValue: unknown): TaskWorkflowStatus {
+    if (statusValue === 'done') {
+      return 'completed';
+    }
+
+    if (
+      statusValue === 'pending' ||
+      statusValue === 'in_progress' ||
+      statusValue === 'in_review' ||
+      statusValue === 'completed'
+    ) {
+      return statusValue;
+    }
+
+    if (typeof completedValue === 'boolean') {
+      return completedValue ? 'completed' : 'pending';
+    }
+
+    return 'pending';
+  }
+
+  private parseCompletedAt(value: unknown): Date {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const date = new Date(value);
+      if (!Number.isNaN(date.getTime())) {
+        return date;
+      }
+    }
+
+    return new Date();
+  }
+
+  private toSubtaskResults(subtasks?: ISubtask[]): SyncSubtaskResult[] {
+    return (subtasks ?? []).map((subtask) => ({
+      id: this.getSubtaskId(subtask),
+      title: subtask.title,
+      status: subtask.status,
+      completed: subtask.completed,
+      completedAt: subtask.completedAt ?? null
+    }));
+  }
+
+  private getSubtaskId(subtask: ISubtask): string {
+    const subtaskWithId = subtask as ISubtask & { _id?: unknown };
+    return subtaskWithId._id != null ? String(subtaskWithId._id) : '';
+  }
+
+  private normalizeStoredTaskStatus(status: string): TaskStatus {
+    return status === 'done' ? 'completed' : (status as TaskStatus);
   }
 
   private isValidDate(value: string): boolean {

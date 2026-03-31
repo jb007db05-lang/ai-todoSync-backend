@@ -29,6 +29,13 @@ class RolloverService {
       date: tomorrow,
       status: 'pending',
       source: task.source ?? 'manual',
+      projectId: task.projectId?.toString() ?? null,
+      subtasks: task.subtasks?.map((subtask) => ({
+        title: subtask.title,
+        status: subtask.status,
+        completed: subtask.completed,
+        completedAt: subtask.completedAt ?? null
+      })),
       rolledOver: false,
       rolloverCount: task.rolloverCount + 1
     }));

@@ -1,7 +1,15 @@
 import type { Document, Types } from 'mongoose';
 import { Schema, model } from 'mongoose';
 
-export type TaskStatus = 'pending' | 'done' | 'rolled_over';
+export type TaskWorkflowStatus = 'pending' | 'in_progress' | 'in_review' | 'completed';
+export type TaskStatus = TaskWorkflowStatus | 'rolled_over';
+
+export interface ISubtask {
+  title: string;
+  status: TaskWorkflowStatus;
+  completed: boolean;
+  completedAt?: Date | null;
+}
 
 export interface ITask {
   userId: Types.ObjectId | string;
@@ -12,11 +20,37 @@ export interface ITask {
   rolledOver: boolean;
   rolloverCount: number;
   source?: string;
+  projectId?: Types.ObjectId | string | null;
+  subtasks?: ISubtask[];
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 export interface ITaskDocument extends ITask, Document {}
+
+const subtaskSchema = new Schema<ISubtask>(
+  {
+    title: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'in_progress', 'in_review', 'completed'],
+      default: 'pending'
+    },
+    completed: {
+      type: Boolean,
+      default: false
+    },
+    completedAt: {
+      type: Date,
+      default: null
+    }
+  },
+  { _id: true }
+);
 
 const taskSchema = new Schema<ITaskDocument>(
   {
@@ -41,7 +75,7 @@ const taskSchema = new Schema<ITaskDocument>(
     },
     status: {
       type: String,
-      enum: ['pending', 'done', 'rolled_over'],
+      enum: ['pending', 'in_progress', 'in_review', 'completed', 'rolled_over'],
       default: 'pending'
     },
     rolledOver: {
@@ -55,6 +89,15 @@ const taskSchema = new Schema<ITaskDocument>(
     source: {
       type: String,
       default: 'manual'
+    },
+    projectId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Project',
+      default: null
+    },
+    subtasks: {
+      type: [subtaskSchema],
+      default: []
     }
   },
   { timestamps: true }

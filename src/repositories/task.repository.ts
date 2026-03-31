@@ -1,4 +1,4 @@
-import TaskModel, { ITaskDocument } from '../models/task.model.js';
+import TaskModel, { ISubtask, ITaskDocument } from '../models/task.model.js';
 import type { TaskStatus } from '../models/task.model.js';
 
 export interface CreateTaskPayload {
@@ -8,6 +8,8 @@ export interface CreateTaskPayload {
   date: string;
   status?: TaskStatus;
   source?: string;
+  projectId?: string | null;
+  subtasks?: ISubtask[];
 }
 
 export interface UpdateTaskPayload {
@@ -15,6 +17,8 @@ export interface UpdateTaskPayload {
   description?: string;
   date?: string;
   status?: TaskStatus;
+  projectId?: string | null;
+  subtasks?: ISubtask[];
 }
 
 export const createTask = async (payload: CreateTaskPayload): Promise<ITaskDocument> => TaskModel.create(payload);
@@ -28,6 +32,9 @@ export const updateTask = async (
   updates: UpdateTaskPayload
 ): Promise<ITaskDocument | null> =>
   TaskModel.findOneAndUpdate({ _id: taskId, userId }, updates, { new: true }).exec();
+
+export const getTaskByIdAndUser = async (taskId: string, userId: string): Promise<ITaskDocument | null> =>
+  TaskModel.findOne({ _id: taskId, userId }).exec();
 
 export const deleteTask = async (taskId: string, userId: string): Promise<boolean> => {
   const result = await TaskModel.deleteOne({ _id: taskId, userId }).exec();

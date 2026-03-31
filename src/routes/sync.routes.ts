@@ -13,6 +13,9 @@ class SyncRoutes implements Routes {
   }
 
   private initializeRoutes(): void {
+    this.router.get('/tasks', syncKeyMiddleware, syncController.fetchTasks);
+    this.router.get('/projects', syncKeyMiddleware, syncController.fetchProjects);
+    this.router.get('/summary', syncKeyMiddleware, syncController.fetchSummary);
     this.router.post('/', syncKeyMiddleware, syncController.syncTasks);
     this.router.post('/single', syncKeyMiddleware, syncController.syncSingleTask);
   }

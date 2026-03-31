@@ -4,6 +4,30 @@ import env from './env.js';
 import logger from '../lib/logger.js';
 
 let isConnected = false;
+const DATABASE_TIMEOUT_MS = 10000;
+
+mongoose.set('bufferCommands', false);
+
+const updateConnectionState = (): void => {
+  isConnected = mongoose.connection.readyState === 1;
+};
+
+mongoose.connection.on('connected', () => {
+  updateConnectionState();
+  logger.info('MongoDB connection established');
+});
+
+mongoose.connection.on('disconnected', () => {
+  updateConnectionState();
+  logger.warn('MongoDB connection disconnected');
+});
+
+mongoose.connection.on('error', (error) => {
+  updateConnectionState();
+  if (isConnected) {
+    logger.error('MongoDB connection error', error as Error);
+  }
+});
 
 export const connectDatabase = async (): Promise<void> => {
   if (isConnected) {
@@ -13,15 +37,26 @@ export const connectDatabase = async (): Promise<void> => {
   try {
     await mongoose.connect(env.MONGODB_URI, {
       dbName: 'ai-todosync',
-      serverSelectionTimeoutMS: 3000,
-      connectTimeoutMS: 3000
+      serverSelectionTimeoutMS: DATABASE_TIMEOUT_MS,
+      connectTimeoutMS: DATABASE_TIMEOUT_MS,
+      bufferCommands: false
     });
 
-    isConnected = true;
+    updateConnectionState();
     logger.info('Connected to MongoDB');
   } catch (error) {
-    logger.error('Failed to connect to MongoDB', error as Error);
-    return;
+    updateConnectionState();
+    logger.error('Failed to connect to MongoDB during startup', {
+      timeoutMs: DATABASE_TIMEOUT_MS,
+      error: error instanceof Error
+        ? {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+          }
+        : error
+    });
+    throw error;
   }
 };
 
@@ -33,3 +68,5 @@ export const disconnectDatabase = async (): Promise<void> => {
   await mongoose.disconnect();
   isConnected = false;
 };
+
+export const isDatabaseConnected = (): boolean => mongoose.connection.readyState === 1;

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 
 import type { IUserDocument } from '../models/user.model.js';
+import type { ISubtask } from '../models/task.model.js';
 import type { CreateTaskPayload, UpdateTaskPayload } from '../repositories/task.repository.js';
 import taskService from '../services/task.service.js';
 
@@ -12,6 +13,8 @@ interface CreateTaskRequestBody {
   date?: string;
   status?: CreateTaskPayload['status'];
   source?: string;
+  projectId?: string | null;
+  subtasks?: ISubtask[];
 }
 
 const getDateQuery = (req: Request): string | undefined => {
@@ -71,14 +74,16 @@ class TaskController {
         return;
       }
 
-      const { title, description, date, status, source } = req.body as CreateTaskRequestBody;
+      const { title, description, date, status, source, projectId, subtasks } = req.body as CreateTaskRequestBody;
       const payload: CreateTaskPayload = {
         userId: user._id.toString(),
         title: title ?? '',
         description,
         date: date ?? '',
         status,
-        source
+        source,
+        projectId,
+        subtasks
       };
       const task = await taskService.createTask(payload);
 

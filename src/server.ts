@@ -3,12 +3,18 @@ import HealthRoutes from './routes/health.routes.js';
 import AuthRoutes from './routes/auth.routes.js';
 import TaskRoutes from './routes/tasks.routes.js';
 import SyncRoutes from './routes/sync.routes.js';
+import ProjectRoutes from './routes/project.routes.js';
+import logger from './lib/logger.js';
 
 const server = new App([
   new HealthRoutes(),
   new AuthRoutes(),
   new TaskRoutes(),
+  new ProjectRoutes(),
   new SyncRoutes()
 ]);
 
-server.listen();
+void server.listen().catch((error) => {
+  logger.error('Backend process exiting because startup failed', error instanceof Error ? error : new Error('Unknown error'));
+  process.exit(1);
+});
