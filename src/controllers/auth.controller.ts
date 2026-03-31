@@ -3,6 +3,7 @@ import crypto from 'crypto';
 
 import authService, { AuthResult, LoginCredentials } from '../services/auth.service.js';
 import env from '../config/env.js';
+import logger from '../lib/logger.js';
 import type { CreateUserPayload } from '../repositories/auth.repository.js';
 import type { IUserDocument } from '../models/user.model.js';
 
@@ -119,11 +120,13 @@ class AuthController {
       // ============================
       const authResult = await authService.exchangeGoogleCode(code as string);
 
-      const callbackUrl = new URL(env.FRONTEND_BASE_URL);
-      callbackUrl.pathname = '/oauth/google/success';
-      callbackUrl.searchParams.set('token', authResult.token);
-      callbackUrl.searchParams.set('redirect', decodedState.redirectTo);
-      return res.redirect(callbackUrl.toString());
+      const finalRedirectUrl = new URL(env.FRONTEND_BASE_URL);
+      finalRedirectUrl.pathname = decodedState.redirectTo || '/';
+      finalRedirectUrl.searchParams.set('token', authResult.token);
+
+      logger.info(`Final redirect URL: ${finalRedirectUrl.toString()}`);
+
+      return res.redirect(finalRedirectUrl.toString());
 
     } catch (error) {
       const status = (error as any).status || 500;
