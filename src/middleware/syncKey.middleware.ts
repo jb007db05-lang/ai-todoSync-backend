@@ -8,13 +8,41 @@ type SyncRequest = Request & { user?: IUserDocument };
 const respondUnauthorized = (res: Response): Response =>
   res.status(401).json({ error: 'Invalid or missing sync API key' });
 
+const getHeaderValue = (value: string | string[] | undefined): string | undefined => {
+  if (typeof value === 'string') {
+    const normalized = value.trim();
+    return normalized ? normalized : undefined;
+  }
+
+  if (Array.isArray(value)) {
+    const firstValue = value.find((entry): entry is string => typeof entry === 'string' && entry.trim() !== '');
+    return firstValue?.trim();
+  }
+
+  return undefined;
+};
+
+const getAuthorizationToken = (authorizationHeader: string | undefined): string | undefined => {
+  if (!authorizationHeader) {
+    return undefined;
+  }
+
+  const bearerMatch = authorizationHeader.match(/^Bearer\s+(.+)$/i);
+
+  if (bearerMatch) {
+    const token = bearerMatch[1]?.trim();
+    return token ? token : undefined;
+  }
+
+  return authorizationHeader.trim() || undefined;
+};
+
 const syncKeyMiddleware = async (req: SyncRequest, res: Response, next: NextFunction): Promise<void> => {
   const apiKey =
-    typeof req.headers['x-sync-api-key'] === 'string'
-      ? req.headers['x-sync-api-key']
-      : typeof req.query.apiKey === 'string'
-        ? req.query.apiKey
-        : undefined;
+    getHeaderValue(req.headers['x-sync-api-key']) ??
+    getHeaderValue(req.headers['x-api-key']) ??
+    getAuthorizationToken(getHeaderValue(req.headers.authorization)) ??
+    (typeof req.query.apiKey === 'string' ? req.query.apiKey : undefined);
 
   if (!apiKey) {
     respondUnauthorized(res);
