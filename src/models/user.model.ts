@@ -47,8 +47,6 @@ const userSchema = new Schema<IUserDocument>(
     },
     googleId: {
       type: String,
-      unique: true,
-      sparse: true,
       default: null
     },
     name: {
