@@ -4,6 +4,7 @@ import AuthRoutes from './routes/auth.routes.js';
 import TaskRoutes from './routes/tasks.routes.js';
 import SyncRoutes from './routes/sync.routes.js';
 import ProjectRoutes from './routes/project.routes.js';
+import NoteRoutes from './routes/note.routes.js';
 import logger from './lib/logger.js';
 
 const server = new App([
@@ -11,6 +12,7 @@ const server = new App([
   new AuthRoutes(),
   new TaskRoutes(),
   new ProjectRoutes(),
+  new NoteRoutes(),
   new SyncRoutes()
 ]);
 

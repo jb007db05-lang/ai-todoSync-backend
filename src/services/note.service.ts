@@ -1,0 +1,159 @@
+import type { INoteDocument } from '../models/note.model.js';
+import {
+  createNote,
+  deleteNote,
+  getNoteById,
+  getNotesByProject,
+  updateNote
+} from '../repositories/note.repository.js';
+import type {
+  CreateNotePayload as CreateNoteRepositoryPayload,
+  UpdateNotePayload as UpdateNoteRepositoryPayload
+} from '../repositories/note.repository.js';
+import projectService from './project.service.js';
+
+interface NoteDto {
+  id: string;
+  projectId: string;
+  title: string;
+  content: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+interface NotePayload {
+  appendContent?: boolean;
+  title?: string;
+  content?: string;
+}
+
+class HttpError extends Error {
+  public status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+    Object.setPrototypeOf(this, HttpError.prototype);
+  }
+}
+
+class NoteService {
+  public async createNote(userId: string, projectId: string, payload: NotePayload): Promise<NoteDto> {
+    await projectService.assertProjectOwnership(userId, projectId);
+
+    const createPayload: CreateNoteRepositoryPayload = {
+      projectId,
+      title: this.normalizeTitle(payload.title),
+      content: this.normalizeContent(payload.content)
+    };
+
+    const note = await createNote(createPayload);
+    return this.toDto(note);
+  }
+
+  public async fetchProjectNotes(userId: string, projectId: string): Promise<NoteDto[]> {
+    await projectService.assertProjectOwnership(userId, projectId);
+    const notes = await getNotesByProject(projectId);
+    return notes.map((note) => this.toDto(note));
+  }
+
+  public async fetchNote(userId: string, noteId: string): Promise<NoteDto> {
+    const note = await this.getAccessibleNote(userId, noteId);
+    return this.toDto(note);
+  }
+
+  public async updateNote(userId: string, noteId: string, payload: NotePayload): Promise<NoteDto> {
+    const existingNote = await this.getAccessibleNote(userId, noteId);
+    const updates: UpdateNoteRepositoryPayload = {};
+    const appendContent = payload.appendContent === true;
+
+    if (Object.prototype.hasOwnProperty.call(payload, 'title')) {
+      updates.title = this.normalizeTitle(payload.title);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload, 'content')) {
+      const normalizedContent = this.normalizeContent(payload.content);
+      updates.content = appendContent ? this.appendContent(existingNote.content, normalizedContent) : normalizedContent;
+    }
+
+    const updatedNote = await updateNote(existingNote._id.toString(), updates);
+
+    if (updatedNote == null) {
+      throw new HttpError(404, 'Note not found');
+    }
+
+    return this.toDto(updatedNote);
+  }
+
+  public async deleteNote(userId: string, noteId: string): Promise<string> {
+    const note = await this.getAccessibleNote(userId, noteId);
+    const deleted = await deleteNote(note._id.toString());
+
+    if (deleted == null) {
+      throw new HttpError(404, 'Note not found');
+    }
+
+    return deleted._id.toString();
+  }
+
+  private async getAccessibleNote(userId: string, noteId: string): Promise<INoteDocument> {
+    const note = await getNoteById(noteId);
+
+    if (note == null) {
+      throw new HttpError(404, 'Note not found');
+    }
+
+    await projectService.assertProjectOwnership(userId, note.projectId.toString());
+    return note;
+  }
+
+  private toDto(note: INoteDocument): NoteDto {
+    return {
+      id: note._id.toString(),
+      projectId: note.projectId.toString(),
+      title: note.title,
+      content: note.content,
+      createdAt: note.createdAt,
+      updatedAt: note.updatedAt
+    };
+  }
+
+  private normalizeTitle(value: unknown): string {
+    const title = typeof value === 'string' ? value.trim() : '';
+
+    if (!title) {
+      throw new HttpError(400, 'Note title is required');
+    }
+
+    return title;
+  }
+
+  private normalizeContent(value: unknown): string {
+    if (value === undefined) {
+      return '';
+    }
+
+    if (typeof value !== 'string') {
+      throw new HttpError(400, 'Note content must be a string');
+    }
+
+    return value;
+  }
+
+  private appendContent(existingContent: string, incomingContent: string): string {
+    if (!incomingContent.trim()) {
+      return existingContent;
+    }
+
+    if (!existingContent.trim()) {
+      return incomingContent;
+    }
+
+    return `${existingContent}<p><br></p>${incomingContent}`;
+  }
+}
+
+const noteService = new NoteService();
+
+export type { NoteDto, NotePayload };
+export default noteService;

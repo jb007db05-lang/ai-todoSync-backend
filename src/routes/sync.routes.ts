@@ -15,9 +15,13 @@ class SyncRoutes implements Routes {
   private initializeRoutes(): void {
     this.router.get('/tasks', syncKeyMiddleware, syncController.fetchTasks);
     this.router.get('/projects', syncKeyMiddleware, syncController.fetchProjects);
+    this.router.get('/projects/:projectId/notes', syncKeyMiddleware, syncController.fetchProjectNotes);
     this.router.get('/summary', syncKeyMiddleware, syncController.fetchSummary);
+    this.router.get('/notes/:id', syncKeyMiddleware, syncController.fetchNote);
     this.router.post('/', syncKeyMiddleware, syncController.syncTasks);
     this.router.post('/single', syncKeyMiddleware, syncController.syncSingleTask);
+    this.router.post('/projects/:projectId/notes', syncKeyMiddleware, syncController.createProjectNote);
+    this.router.put('/notes/:id', syncKeyMiddleware, syncController.updateNote);
   }
 }
 

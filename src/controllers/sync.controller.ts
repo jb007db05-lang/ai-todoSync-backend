@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import syncService from '../services/sync.service.js';
 import taskService from '../services/task.service.js';
 import projectService from '../services/project.service.js';
+import noteService from '../services/note.service.js';
 import type { IUserDocument } from '../models/user.model.js';
 
 type SyncRequest = Request & { user?: IUserDocument };
@@ -77,6 +78,94 @@ class SyncController {
     }
   };
 
+  public fetchProjectNotes = async (req: SyncRequest, res: Response): Promise<void> => {
+    try {
+      const user = req.user;
+
+      if (user == null) {
+        res.status(401).json({ error: 'Authentication required' });
+        return;
+      }
+
+      const projectId = this.getRouteParam(req.params.projectId);
+      const notes = await noteService.fetchProjectNotes(user._id.toString(), projectId);
+
+      res.status(200).json({
+        message: 'Project notes fetched',
+        notes
+      });
+    } catch (error) {
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
+    }
+  };
+
+  public createProjectNote = async (req: SyncRequest, res: Response): Promise<void> => {
+    try {
+      const user = req.user;
+
+      if (user == null) {
+        res.status(401).json({ error: 'Authentication required' });
+        return;
+      }
+
+      const projectId = this.getRouteParam(req.params.projectId);
+      const note = await noteService.createNote(user._id.toString(), projectId, req.body);
+
+      res.status(201).json({
+        message: 'Note created',
+        note
+      });
+    } catch (error) {
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
+    }
+  };
+
+  public fetchNote = async (req: SyncRequest, res: Response): Promise<void> => {
+    try {
+      const user = req.user;
+
+      if (user == null) {
+        res.status(401).json({ error: 'Authentication required' });
+        return;
+      }
+
+      const noteId = this.getRouteParam(req.params.id);
+      const note = await noteService.fetchNote(user._id.toString(), noteId);
+
+      res.status(200).json({
+        message: 'Note fetched',
+        note
+      });
+    } catch (error) {
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
+    }
+  };
+
+  public updateNote = async (req: SyncRequest, res: Response): Promise<void> => {
+    try {
+      const user = req.user;
+
+      if (user == null) {
+        res.status(401).json({ error: 'Authentication required' });
+        return;
+      }
+
+      const noteId = this.getRouteParam(req.params.id);
+      const note = await noteService.updateNote(user._id.toString(), noteId, req.body);
+
+      res.status(200).json({
+        message: 'Note updated',
+        note
+      });
+    } catch (error) {
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
+    }
+  };
+
   public syncTasks = async (req: SyncRequest, res: Response): Promise<void> => {
     try {
       const user = req.user;
@@ -140,6 +229,18 @@ class SyncController {
     }
 
     return new Date().toISOString().slice(0, 10);
+  }
+
+  private getRouteParam(value: string | string[] | undefined): string {
+    if (typeof value === 'string') {
+      return value;
+    }
+
+    if (Array.isArray(value)) {
+      return value[0] ?? '';
+    }
+
+    return '';
   }
 }
 

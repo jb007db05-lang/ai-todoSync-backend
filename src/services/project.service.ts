@@ -8,6 +8,7 @@ import {
   updateProject
 } from '../repositories/project.repository.js';
 import { clearProjectFromTasks } from '../repositories/project.repository.js';
+import { deleteNotesByProject } from '../repositories/note.repository.js';
 
 interface ProjectDto {
   id: string;
@@ -90,6 +91,7 @@ class ProjectService {
     }
 
     await clearProjectFromTasks(userId, projectId);
+    await deleteNotesByProject(projectId);
   }
 
   public async assertProjectOwnership(userId: string, projectId: string): Promise<void> {
