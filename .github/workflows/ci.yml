@@ -1,0 +1,44 @@
+name : Backend CI
+
+on:
+  push: 
+    branches: [development]
+  pull_request:
+    branches: [development]
+
+jobs:
+  validate: 
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: TypeScript Check
+        run: npm run type-check
+
+      - name: Lint Check
+        run: npm run lint
+
+      - name: Build Project
+        run: npm run build
+
+      - name: Run Console Log Check
+        run: npm run check:console
+      
+      - name: Run Branch Check
+        run: npm run check:branch
+
+      - name: CommitLint
+        if: github.event_name == 'pull_request'
+        run: npx commitlint --last
