@@ -1,4 +1,5 @@
 import { execSync } from "child_process";
+import readline from "readline";
 
 if (process.env.CI === "true") {
   console.log("⚠️ Skipping branch check in CI");
@@ -21,5 +22,21 @@ if (!validPattern.test(branch)) {
   );
   process.exit(1);
 }
+
+const rl = readline.createInterface({
+  input: process.stdin,
+  terminal: false,
+});
+
+rl.on("line", (line) => {
+  const [, , remoteRef] = line.split(" ");
+
+  const remoteBranch = remoteRef.replace("refs/heads/", "");
+
+  if (remoteBranch === "main" || remoteBranch === "development") {
+    console.error("❌ Direct push to main/development is not allowed");
+    process.exit(1);
+  }
+});
 
 console.log("✅ Branch name validation passed");
