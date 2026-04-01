@@ -11,9 +11,9 @@
     "lint": "eslint \"src/**/*.ts\"",
     "lint:fix": "eslint \"src/**/*.ts\" --fix",
     "prepare": "husky install",
-    "check:console": "ts-node src/scripts/checks/noConsoleCheck.ts",
-    "check:env": "ts-node src/scripts/checks/envCheck.ts",
-    "check:branch": "ts-node src/scripts/checks/branchCheck.ts",
+    "check:console": "tsx src/scripts/checks/noConsoleCheck.ts",
+    "check:env": "tsx src/scripts/checks/envCheck.ts",
+    "check:branch": "tsx src/scripts/checks/branchCheck.ts",
     "check:all": "node dist/scripts/checks/allCustomChecks.js",
     "type-check": "tsc --noEmit",
     "depcheck": "depcheck",
@@ -62,6 +62,7 @@
     "nodemon": "^3.1.14",
     "prettier": "^3.8.1",
     "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
 }

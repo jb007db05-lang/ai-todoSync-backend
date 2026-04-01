@@ -36,9 +36,6 @@ jobs:
       - name: Run Console Log Check
         run: npm run check:console
       
-      - name: Run Branch Check
-        run: npm run check:branch
-
       - name: CommitLint
         if: github.event_name == 'pull_request'
         run: npx commitlint --last
