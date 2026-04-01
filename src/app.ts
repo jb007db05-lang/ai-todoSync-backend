@@ -1,13 +1,13 @@
-import express, { Application } from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import hpp from 'hpp';
+import express, { Application } from "express";
+import cors from "cors";
+import helmet from "helmet";
+import hpp from "hpp";
 
-import { Routes } from './interfaces/routes.interface.js';
-import logger from './lib/logger.js';
-import env from './config/env.js';
-import { connectDatabase } from './config/db.config.js';
-import { scheduleRolloverJob } from './utils/rollover.js';
+import { Routes } from "./interfaces/routes.interface.js";
+import logger from "./lib/logger.js";
+import env from "./config/env.js";
+import { connectDatabase } from "./config/db.config.js";
+import { scheduleRolloverJob } from "./utils/rollover.js";
 
 class App {
   public app: Application;
@@ -25,14 +25,14 @@ class App {
   }
 
   private initializeMiddlewares(): void {
-    console.log("Allowed Origins : ",env.ALLOWED_ORIGINS);
-    this.app.set('trust proxy', 1);
+    logger.info(`Allowed Origins : ${env.ALLOWED_ORIGINS}`);
+    this.app.set("trust proxy", 1);
     this.app.use(helmet());
     this.app.use(
       cors({
         origin: env.ALLOWED_ORIGINS,
-        credentials: true
-      })
+        credentials: true,
+      }),
     );
     this.app.use(hpp());
     this.app.use(express.json());
@@ -69,7 +69,10 @@ class App {
         logger.info(`Server listening on port ${this.port}`);
       });
     } catch (error) {
-      logger.error('Server startup failed', error instanceof Error ? error : new Error('Unknown error'));
+      logger.error(
+        "Server startup failed",
+        error instanceof Error ? error : new Error("Unknown error"),
+      );
       throw error;
     }
   }

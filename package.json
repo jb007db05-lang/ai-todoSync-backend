@@ -9,7 +9,26 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "lint": "eslint \"src/**/*.ts\"",
-    "lint:fix": "eslint \"src/**/*.ts\" --fix"
+    "lint:fix": "eslint \"src/**/*.ts\" --fix",
+    "prepare": "husky install",
+    "check:console": "tsx src/scripts/checks/noConsoleCheck.ts",
+    "check:env": "tsx src/scripts/checks/envCheck.ts",
+    "check:branch": "tsx src/scripts/checks/branchCheck.ts",
+    "check:all": "node dist/scripts/checks/allCustomChecks.js",
+    "type-check": "tsc --noEmit",
+    "depcheck": "depcheck",
+    "jscpd": "jscpd",
+    "precommit": "npm run check:console && npm run check:env && lint-staged",
+    "prepush": "npm run type-check && npm run build && npm run check:all"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ]
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -25,17 +44,25 @@
     "node-cron": "^4.2.1"
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/hpp": "^0.2.7",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.5.0",
-    "@typescript-eslint/eslint-plugin": "^8.57.2",
-    "@typescript-eslint/parser": "^8.57.2",
-    "eslint": "^8.57.0",
+    "@typescript-eslint/eslint-plugin": "^8.58.0",
+    "@typescript-eslint/parser": "^8.58.0",
+    "depcheck": "^1.4.7",
+    "eslint": "^8.57.1",
+    "husky": "^9.1.7",
+    "jscpd": "^4.0.8",
+    "lint-staged": "^16.4.0",
     "nodemon": "^3.1.14",
+    "prettier": "^3.8.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.4.5"
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   }
 }
