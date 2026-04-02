@@ -1,9 +1,13 @@
-import logger from '../lib/logger.js';
+import logger from "../lib/logger.js";
 import {
   getPendingTasksByDate,
-  markTasksRolledOver
-} from '../repositories/task.repository.js';
-import { SyncTaskInsertPayload, bulkInsertTasks } from '../repositories/sync.repository.js';
+  markTasksRolledOver,
+} from "../repositories/task.repository.js";
+import {
+  SyncTaskInsertPayload,
+  bulkInsertTasks,
+} from "../repositories/sync.repository.js";
+import { formatLocalDate } from "../utils/date.js";
 
 interface RolloverResult {
   processed: number;
@@ -18,7 +22,7 @@ class RolloverService {
     const pendingTasks = await getPendingTasksByDate(today);
 
     if (pendingTasks.length === 0) {
-      logger.info('No pending tasks to roll over', { date: today });
+      logger.info("No pending tasks to roll over", { date: today });
       return { processed: 0, duplicated: 0, date: today };
     }
 
@@ -26,34 +30,40 @@ class RolloverService {
       userId: task.userId.toString(),
       title: task.title,
       description: task.description,
+      note: task.note,
       date: tomorrow,
-      status: 'pending',
-      source: task.source ?? 'manual',
+      status: "pending",
+      source: task.source ?? "manual",
       projectId: task.projectId?.toString() ?? null,
       subtasks: task.subtasks?.map((subtask) => ({
         title: subtask.title,
+        note: subtask.note,
         status: subtask.status,
         completed: subtask.completed,
-        completedAt: subtask.completedAt ?? null
+        completedAt: subtask.completedAt ?? null,
       })),
       rolledOver: false,
-      rolloverCount: task.rolloverCount + 1
+      rolloverCount: task.rolloverCount + 1,
     }));
 
     const created = await bulkInsertTasks(inserts);
     await markTasksRolledOver(pendingTasks.map((task) => task._id.toString()));
 
-    logger.info('Rollover job completed', {
+    logger.info("Rollover job completed", {
       date: today,
       processed: pendingTasks.length,
-      duplicated: created.length
+      duplicated: created.length,
     });
 
-    return { processed: pendingTasks.length, duplicated: created.length, date: today };
+    return {
+      processed: pendingTasks.length,
+      duplicated: created.length,
+      date: today,
+    };
   }
 
   private formatDate(date: Date): string {
-    return date.toISOString().slice(0, 10);
+    return formatLocalDate(date);
   }
 
   private computeTomorrow(dateString: string): string {

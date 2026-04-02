@@ -5,6 +5,7 @@ import taskService from "../services/task.service.js";
 import projectService from "../services/project.service.js";
 import noteService from "../services/note.service.js";
 import type { IUserDocument } from "../models/user.model.js";
+import { formatLocalDate } from "../utils/date.js";
 
 type SyncRequest = Request & { user?: IUserDocument };
 
@@ -269,7 +270,7 @@ class SyncController {
       }
     }
 
-    return new Date().toISOString().slice(0, 10);
+    return formatLocalDate();
   }
 
   private getRouteParam(value: string | string[] | undefined): string {
