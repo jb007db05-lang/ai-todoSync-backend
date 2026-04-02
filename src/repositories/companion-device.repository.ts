@@ -26,8 +26,8 @@ export const findCompanionDeviceByIdForUser = async (
 export const listCompanionDevicesByUser = async (
   userId: string,
 ): Promise<ICompanionDeviceDocument[]> =>
-  CompanionDeviceModel.find({ userId })
-    .sort({ status: 1, updatedAt: -1, createdAt: -1 })
+  CompanionDeviceModel.find({ userId, status: "active" })
+    .sort({ updatedAt: -1, createdAt: -1 })
     .exec();
 
 export const revokeCompanionDevice = async (
