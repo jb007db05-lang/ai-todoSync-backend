@@ -67,8 +67,11 @@ class RolloverService {
   }
 
   private computeTomorrow(dateString: string): string {
-    const base = new Date(dateString);
-    const tomorrow = new Date(base.getTime() + 24 * 60 * 60 * 1000);
+    const [year, month, day] = dateString
+      .split("-")
+      .map((value) => Number(value));
+    const tomorrow = new Date(year, (month ?? 1) - 1, day ?? 1);
+    tomorrow.setDate(tomorrow.getDate() + 1);
     return this.formatDate(tomorrow);
   }
 }

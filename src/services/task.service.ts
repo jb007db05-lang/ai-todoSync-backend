@@ -91,6 +91,10 @@ class TaskService {
       payload.status,
       payload.subtasks,
     );
+    payload.status = this.reconcileTaskStatusWithSubtasks(
+      payload.status,
+      payload.subtasks,
+    );
 
     const task = await createTask(payload);
     return this.toDto(task);
@@ -109,6 +113,12 @@ class TaskService {
     userId: string,
     updates: UpdateTaskPayload,
   ): Promise<TaskDto> {
+    const currentTask = await getTaskByIdAndUser(taskId, userId);
+
+    if (currentTask == null) {
+      throw new HttpError(404, "Task not found");
+    }
+
     if (
       Object.prototype.hasOwnProperty.call(updates, "projectId") &&
       updates.projectId
@@ -132,15 +142,16 @@ class TaskService {
     }
 
     if (updates.status === "completed") {
-      const currentTask = await getTaskByIdAndUser(taskId, userId);
-
-      if (currentTask == null) {
-        throw new HttpError(404, "Task not found");
-      }
-
       updates.subtasks = this.applyCompletedStatusToSubtasks(
         updates.status,
         updates.subtasks ?? currentTask.subtasks ?? [],
+      );
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, "subtasks")) {
+      updates.status = this.reconcileTaskStatusWithSubtasks(
+        updates.status ?? this.normalizeStoredTaskStatus(currentTask.status),
+        updates.subtasks ?? [],
       );
     }
 
@@ -294,6 +305,38 @@ class TaskService {
       completed: true,
       completedAt: subtask.completedAt ?? new Date(),
     }));
+  }
+
+  private reconcileTaskStatusWithSubtasks(
+    taskStatus: TaskStatus | undefined,
+    subtasks: ISubtask[],
+  ): TaskStatus | undefined {
+    if (subtasks.length === 0) {
+      return taskStatus;
+    }
+
+    const normalizedTaskStatus =
+      taskStatus == null
+        ? undefined
+        : this.normalizeStoredTaskStatus(taskStatus);
+
+    if (subtasks.every((subtask) => subtask.status === "completed")) {
+      return "completed";
+    }
+
+    if (normalizedTaskStatus !== "completed") {
+      return normalizedTaskStatus;
+    }
+
+    if (subtasks.some((subtask) => subtask.status === "in_review")) {
+      return "in_review";
+    }
+
+    if (subtasks.some((subtask) => subtask.status === "in_progress")) {
+      return "in_progress";
+    }
+
+    return "pending";
   }
 
   private normalizeWorkflowStatus(value: unknown): TaskWorkflowStatus {
