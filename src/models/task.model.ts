@@ -1,11 +1,16 @@
-import type { Document, Types } from 'mongoose';
-import { Schema, model } from 'mongoose';
+import type { Document, Types } from "mongoose";
+import { Schema, model } from "mongoose";
 
-export type TaskWorkflowStatus = 'pending' | 'in_progress' | 'in_review' | 'completed';
-export type TaskStatus = TaskWorkflowStatus | 'rolled_over';
+export type TaskWorkflowStatus =
+  | "pending"
+  | "in_progress"
+  | "in_review"
+  | "completed";
+export type TaskStatus = TaskWorkflowStatus | "rolled_over";
 
 export interface ISubtask {
   title: string;
+  note?: string;
   status: TaskWorkflowStatus;
   completed: boolean;
   completedAt?: Date | null;
@@ -15,6 +20,7 @@ export interface ITask {
   userId: Types.ObjectId | string;
   title: string;
   description?: string;
+  note?: string;
   date: string;
   status: TaskStatus;
   rolledOver: boolean;
@@ -33,23 +39,27 @@ const subtaskSchema = new Schema<ISubtask>(
     title: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
+    },
+    note: {
+      type: String,
+      default: "",
     },
     status: {
       type: String,
-      enum: ['pending', 'in_progress', 'in_review', 'completed'],
-      default: 'pending'
+      enum: ["pending", "in_progress", "in_review", "completed"],
+      default: "pending",
     },
     completed: {
       type: Boolean,
-      default: false
+      default: false,
     },
     completedAt: {
       type: Date,
-      default: null
-    }
+      default: null,
+    },
   },
-  { _id: true }
+  { _id: true },
 );
 
 const taskSchema = new Schema<ITaskDocument>(
@@ -57,52 +67,56 @@ const taskSchema = new Schema<ITaskDocument>(
     userId: {
       type: Schema.Types.ObjectId,
       required: true,
-      ref: 'User'
+      ref: "User",
     },
     title: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
     },
     description: {
       type: String,
-      default: ''
+      default: "",
+    },
+    note: {
+      type: String,
+      default: "",
     },
     date: {
       type: String,
       required: true,
-      match: /^\d{4}-\d{2}-\d{2}$/
+      match: /^\d{4}-\d{2}-\d{2}$/,
     },
     status: {
       type: String,
-      enum: ['pending', 'in_progress', 'in_review', 'completed', 'rolled_over'],
-      default: 'pending'
+      enum: ["pending", "in_progress", "in_review", "completed", "rolled_over"],
+      default: "pending",
     },
     rolledOver: {
       type: Boolean,
-      default: false
+      default: false,
     },
     rolloverCount: {
       type: Number,
-      default: 0
+      default: 0,
     },
     source: {
       type: String,
-      default: 'manual'
+      default: "manual",
     },
     projectId: {
       type: Schema.Types.ObjectId,
-      ref: 'Project',
-      default: null
+      ref: "Project",
+      default: null,
     },
     subtasks: {
       type: [subtaskSchema],
-      default: []
-    }
+      default: [],
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-const TaskModel = model<ITaskDocument>('Task', taskSchema);
+const TaskModel = model<ITaskDocument>("Task", taskSchema);
 
 export default TaskModel;

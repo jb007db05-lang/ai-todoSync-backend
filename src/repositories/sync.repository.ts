@@ -1,9 +1,14 @@
-import TaskModel, { ISubtask, ITaskDocument, TaskStatus } from '../models/task.model.js';
+import TaskModel, {
+  ISubtask,
+  ITaskDocument,
+  TaskStatus,
+} from "../models/task.model.js";
 
 export interface SyncTaskInsertPayload {
   userId: string;
   title: string;
   description?: string;
+  note?: string;
   date: string;
   status?: TaskStatus;
   source?: string;
@@ -14,5 +19,6 @@ export interface SyncTaskInsertPayload {
 }
 
 export const bulkInsertTasks = async (
-  payloads: SyncTaskInsertPayload[]
-): Promise<ITaskDocument[]> => TaskModel.insertMany(payloads, { ordered: false });
+  payloads: SyncTaskInsertPayload[],
+): Promise<ITaskDocument[]> =>
+  TaskModel.insertMany(payloads, { ordered: false });

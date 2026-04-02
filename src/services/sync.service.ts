@@ -9,10 +9,12 @@ import type {
   TaskWorkflowStatus,
 } from "../models/task.model.js";
 import projectService from "./project.service.js";
+import { formatLocalDate } from "../utils/date.js";
 
 interface SyncSubtaskResult {
   id: string;
   title: string;
+  note?: string;
   status: TaskWorkflowStatus;
   completed: boolean;
   completedAt: Date | null;
@@ -21,6 +23,7 @@ interface SyncSubtaskResult {
 interface SyncTaskInput {
   title: string;
   description?: string;
+  note?: string;
   status?: TaskStatus;
   source?: string;
   project?: unknown;
@@ -46,6 +49,7 @@ interface SyncTaskResult {
   id: string;
   title: string;
   description?: string;
+  note?: string;
   date: string;
   status: TaskStatus;
   source?: string;
@@ -129,7 +133,7 @@ class SyncService {
       return value;
     }
 
-    return new Date().toISOString().slice(0, 10);
+    return formatLocalDate();
   }
 
   private parseTasks(value: unknown): SyncTaskInput[] {
@@ -152,12 +156,13 @@ class SyncService {
 
     const description =
       typeof task.description === "string" ? task.description : undefined;
+    const note = typeof task.note === "string" ? task.note.trim() : undefined;
     const status = this.parseStatus(task.status);
     const source = typeof task.source === "string" ? task.source : undefined;
     const project = task.project;
     const subtasks = this.parseSubtasks(task.subtasks);
 
-    return { title, description, status, source, project, subtasks };
+    return { title, description, note, status, source, project, subtasks };
   }
 
   private parseStatus(value: unknown): TaskStatus | undefined {
@@ -197,6 +202,7 @@ class SyncService {
       userId,
       title: task.title,
       description: task.description,
+      note: task.note,
       date,
       status: task.status,
       source: task.source ?? source,
@@ -210,6 +216,7 @@ class SyncService {
       id: task._id.toString(),
       title: task.title,
       description: task.description,
+      note: task.note,
       date: task.date,
       status: this.normalizeStoredTaskStatus(task.status),
       source: task.source,
@@ -237,6 +244,7 @@ class SyncService {
 
     const subtask = value as Record<string, unknown>;
     const title = typeof subtask.title === "string" ? subtask.title.trim() : "";
+    const note = typeof subtask.note === "string" ? subtask.note.trim() : "";
 
     if (!title) {
       throw new HttpError(400, `Subtask at index ${index} requires a title`);
@@ -250,6 +258,7 @@ class SyncService {
 
     return {
       title,
+      note,
       status,
       completed,
       completedAt,
@@ -299,6 +308,7 @@ class SyncService {
     return (subtasks ?? []).map((subtask) => ({
       id: this.getSubtaskId(subtask),
       title: subtask.title,
+      note: subtask.note,
       status: subtask.status,
       completed: subtask.completed,
       completedAt: subtask.completedAt ?? null,
