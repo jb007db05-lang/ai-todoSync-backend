@@ -1,14 +1,12 @@
 import type { IProjectDocument } from "../models/project.model.js";
 import {
   createProject,
-  deleteProject,
-  deleteTasksByProject,
+  deleteProjectWithRelations,
   getProjectByIdAndUser,
   getProjectByName,
   getProjectsByUser,
   updateProject,
 } from "../repositories/project.repository.js";
-import { deleteNotesByProject } from "../repositories/note.repository.js";
 
 interface ProjectDto {
   id: string;
@@ -87,14 +85,11 @@ class ProjectService {
   }
 
   public async deleteProject(projectId: string, userId: string): Promise<void> {
-    const project = await deleteProject(projectId, userId);
+    const project = await deleteProjectWithRelations(userId, projectId);
 
     if (project == null) {
       throw new HttpError(404, "Project not found");
     }
-
-    await deleteTasksByProject(userId, projectId);
-    await deleteNotesByProject(projectId);
   }
 
   public async assertProjectOwnership(

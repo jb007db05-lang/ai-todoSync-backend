@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import syncService from "../services/sync.service.js";
 import taskService from "../services/task.service.js";
 import projectService from "../services/project.service.js";
+import epicService from "../services/epic.service.js";
 import noteService from "../services/note.service.js";
 import type { IUserDocument } from "../models/user.model.js";
 import { formatLocalDate } from "../utils/date.js";
@@ -87,6 +88,34 @@ class SyncController {
         message: "Task summary generated",
         date,
         summary,
+      });
+    } catch (error) {
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
+    }
+  };
+
+  public fetchProjectEpics = async (
+    req: SyncRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const user = req.user;
+
+      if (user == null) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+
+      const projectId = this.getRouteParam(req.params.projectId);
+      const epics = await epicService.fetchProjectEpics(
+        user._id.toString(),
+        projectId,
+      );
+
+      res.status(200).json({
+        message: "Epic list fetched",
+        epics,
       });
     } catch (error) {
       const status = (error as any).status || 500;

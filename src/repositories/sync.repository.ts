@@ -13,6 +13,7 @@ export interface SyncTaskInsertPayload {
   status?: TaskStatus;
   source?: string;
   projectId?: string | null;
+  epicId?: string | null;
   subtasks?: ISubtask[];
   rolledOver?: boolean;
   rolloverCount?: number;

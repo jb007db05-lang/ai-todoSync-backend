@@ -17,6 +17,7 @@ import type {
   TaskWorkflowStatus,
 } from "../models/task.model.js";
 import projectService from "./project.service.js";
+import epicService from "./epic.service.js";
 
 interface SubtaskDto {
   id: string;
@@ -39,6 +40,7 @@ interface TaskDto {
   rolloverCount: number;
   source?: string;
   projectId: string | null;
+  epicId: string | null;
   subtasks: SubtaskDto[];
 }
 
@@ -73,12 +75,21 @@ class TaskService {
       throw new HttpError(400, "Title and date are required");
     }
 
+    payload.projectId = this.normalizeNullableId(payload.projectId);
+    payload.epicId = this.normalizeNullableId(payload.epicId);
+
     if (payload.projectId) {
       await projectService.assertProjectOwnership(
         payload.userId,
         payload.projectId,
       );
     }
+
+    payload.epicId = await this.resolveEpicId(
+      payload.projectId,
+      payload.epicId,
+      payload.userId,
+    );
 
     payload.note = this.normalizeOptionalText(payload.note);
 
@@ -119,12 +130,38 @@ class TaskService {
       throw new HttpError(404, "Task not found");
     }
 
+    if (Object.prototype.hasOwnProperty.call(updates, "projectId")) {
+      updates.projectId = this.normalizeNullableId(updates.projectId);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, "epicId")) {
+      updates.epicId = this.normalizeNullableId(updates.epicId);
+    }
+
     if (
       Object.prototype.hasOwnProperty.call(updates, "projectId") &&
       updates.projectId
     ) {
       await projectService.assertProjectOwnership(userId, updates.projectId);
     }
+
+    const nextProjectId = Object.prototype.hasOwnProperty.call(
+      updates,
+      "projectId",
+    )
+      ? (updates.projectId ?? null)
+      : (currentTask.projectId?.toString() ?? null);
+
+    updates.projectId = nextProjectId;
+    updates.epicId = await this.resolveUpdatedEpicId(
+      userId,
+      currentTask.projectId?.toString() ?? null,
+      currentTask.epicId?.toString() ?? null,
+      nextProjectId,
+      Object.prototype.hasOwnProperty.call(updates, "epicId")
+        ? updates.epicId
+        : undefined,
+    );
 
     if (
       Object.prototype.hasOwnProperty.call(updates, "status") &&
@@ -217,8 +254,60 @@ class TaskService {
       rolloverCount: task.rolloverCount,
       source: task.source,
       projectId: task.projectId?.toString() ?? null,
+      epicId: task.epicId?.toString() ?? null,
       subtasks: this.toSubtaskDtos(task.subtasks),
     };
+  }
+
+  private async resolveEpicId(
+    projectId: string | null,
+    epicId: string | null | undefined,
+    userId: string,
+  ): Promise<string | null> {
+    if (epicId == null) {
+      return null;
+    }
+
+    if (projectId == null) {
+      throw new HttpError(400, "Epic assignment requires a project");
+    }
+
+    await projectService.assertProjectOwnership(userId, projectId);
+    const epic = await epicService.assertEpicInProject(projectId, epicId);
+    return epic.id;
+  }
+
+  private async resolveUpdatedEpicId(
+    userId: string,
+    currentProjectId: string | null,
+    currentEpicId: string | null,
+    nextProjectId: string | null,
+    requestedEpicId: string | null | undefined,
+  ): Promise<string | null> {
+    if (requestedEpicId !== undefined) {
+      return this.resolveEpicId(nextProjectId, requestedEpicId, userId);
+    }
+
+    if (currentProjectId !== nextProjectId) {
+      if (currentEpicId == null || nextProjectId == null) {
+        return null;
+      }
+
+      if (currentProjectId == null) {
+        return null;
+      }
+
+      const currentEpic = await epicService.assertEpicInProject(
+        currentProjectId,
+        currentEpicId,
+      );
+
+      if (currentEpic.projectId !== nextProjectId) {
+        return null;
+      }
+    }
+
+    return currentEpicId;
   }
 
   private toSubtaskDtos(subtasks?: ISubtask[]): SubtaskDto[] {
@@ -377,6 +466,19 @@ class TaskService {
     }
 
     return value.trim();
+  }
+
+  private normalizeNullableId(value: unknown): string | null {
+    if (value == null) {
+      return null;
+    }
+
+    if (typeof value !== "string") {
+      throw new HttpError(400, "Invalid identifier value");
+    }
+
+    const normalizedValue = value.trim();
+    return normalizedValue === "" ? null : normalizedValue;
   }
 
   private normalizeDate(input?: unknown): string | undefined {
