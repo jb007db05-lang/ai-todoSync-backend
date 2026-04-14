@@ -9,6 +9,7 @@ import type {
   TaskWorkflowStatus,
 } from "../models/task.model.js";
 import projectService from "./project.service.js";
+import epicService from "./epic.service.js";
 import { formatLocalDate } from "../utils/date.js";
 
 interface SyncSubtaskResult {
@@ -27,6 +28,7 @@ interface SyncTaskInput {
   status?: TaskStatus;
   source?: string;
   project?: unknown;
+  epic?: unknown;
   subtasks?: ISubtask[];
 }
 
@@ -43,6 +45,7 @@ interface SyncSingleRequestBody {
   source?: unknown;
   date?: unknown;
   project?: unknown;
+  epic?: unknown;
 }
 
 interface SyncTaskResult {
@@ -54,6 +57,7 @@ interface SyncTaskResult {
   status: TaskStatus;
   source?: string;
   projectId: string | null;
+  epicId: string | null;
   subtasks: SyncSubtaskResult[];
 }
 
@@ -160,9 +164,19 @@ class SyncService {
     const status = this.parseStatus(task.status);
     const source = typeof task.source === "string" ? task.source : undefined;
     const project = task.project;
+    const epic = task.epic;
     const subtasks = this.parseSubtasks(task.subtasks);
 
-    return { title, description, note, status, source, project, subtasks };
+    return {
+      title,
+      description,
+      note,
+      status,
+      source,
+      project,
+      epic,
+      subtasks,
+    };
   }
 
   private parseStatus(value: unknown): TaskStatus | undefined {
@@ -197,6 +211,7 @@ class SyncService {
       userId,
       task.project,
     );
+    const epicId = await this.resolveEpicForSync(projectId, task.epic);
 
     return {
       userId,
@@ -207,6 +222,7 @@ class SyncService {
       status: task.status,
       source: task.source ?? source,
       projectId,
+      epicId,
       subtasks: task.subtasks,
     };
   }
@@ -221,8 +237,33 @@ class SyncService {
       status: this.normalizeStoredTaskStatus(task.status),
       source: task.source,
       projectId: task.projectId?.toString() ?? null,
+      epicId: task.epicId?.toString() ?? null,
       subtasks: this.toSubtaskResults(task.subtasks),
     };
+  }
+
+  private async resolveEpicForSync(
+    projectId: string | null | undefined,
+    epicValue: unknown,
+  ): Promise<string | null | undefined> {
+    if (epicValue === undefined) {
+      return undefined;
+    }
+
+    if (epicValue === null || epicValue === "") {
+      return null;
+    }
+
+    if (typeof epicValue !== "string") {
+      throw new HttpError(400, "Invalid epic value");
+    }
+
+    if (projectId == null) {
+      throw new HttpError(400, "Epic sync requires a project");
+    }
+
+    const epic = await epicService.assertEpicInProject(projectId, epicValue);
+    return epic.id;
   }
 
   private parseSubtasks(value: unknown): ISubtask[] | undefined {

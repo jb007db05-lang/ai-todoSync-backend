@@ -1,5 +1,9 @@
+import mongoose from "mongoose";
+
 import ProjectModel, { IProjectDocument } from "../models/project.model.js";
 import TaskModel from "../models/task.model.js";
+import EpicModel from "../models/epic.model.js";
+import NoteModel from "../models/note.model.js";
 
 export interface CreateProjectPayload {
   userId: string;
@@ -55,4 +59,34 @@ export const deleteTasksByProject = async (
   projectId: string,
 ): Promise<void> => {
   await TaskModel.deleteMany({ userId, projectId }).exec();
+};
+
+export const deleteProjectWithRelations = async (
+  userId: string,
+  projectId: string,
+): Promise<IProjectDocument | null> => {
+  const session = await mongoose.startSession();
+
+  try {
+    let deletedProject: IProjectDocument | null = null;
+
+    await session.withTransaction(async () => {
+      deletedProject = await ProjectModel.findOneAndDelete(
+        { _id: projectId, userId },
+        { session },
+      ).exec();
+
+      if (deletedProject == null) {
+        return;
+      }
+
+      await TaskModel.deleteMany({ userId, projectId }, { session }).exec();
+      await EpicModel.deleteMany({ projectId }, { session }).exec();
+      await NoteModel.deleteMany({ projectId }, { session }).exec();
+    });
+
+    return deletedProject;
+  } finally {
+    await session.endSession();
+  }
 };

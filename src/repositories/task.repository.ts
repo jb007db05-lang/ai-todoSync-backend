@@ -10,6 +10,7 @@ export interface CreateTaskPayload {
   status?: TaskStatus;
   source?: string;
   projectId?: string | null;
+  epicId?: string | null;
   subtasks?: ISubtask[];
 }
 
@@ -20,6 +21,7 @@ export interface UpdateTaskPayload {
   date?: string;
   status?: TaskStatus;
   projectId?: string | null;
+  epicId?: string | null;
   subtasks?: ISubtask[];
 }
 
