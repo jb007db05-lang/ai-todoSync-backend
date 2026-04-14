@@ -10,6 +10,7 @@ export type TaskStatus = TaskWorkflowStatus | "rolled_over";
 
 export interface ISubtask {
   title: string;
+  description?: string;
   note?: string;
   status: TaskWorkflowStatus;
   completed: boolean;
@@ -41,6 +42,10 @@ const subtaskSchema = new Schema<ISubtask>(
       type: String,
       required: true,
       trim: true,
+    },
+    description: {
+      type: String,
+      default: "",
     },
     note: {
       type: String,

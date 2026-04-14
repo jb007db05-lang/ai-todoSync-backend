@@ -1,20 +1,24 @@
-import type { INoteDocument } from '../models/note.model.js';
+import type { INoteDocument } from "../models/note.model.js";
 import {
   createNote,
   deleteNote,
   getNoteById,
+  getNotesByEpic,
   getNotesByProject,
-  updateNote
-} from '../repositories/note.repository.js';
+  updateNote,
+} from "../repositories/note.repository.js";
 import type {
   CreateNotePayload as CreateNoteRepositoryPayload,
-  UpdateNotePayload as UpdateNoteRepositoryPayload
-} from '../repositories/note.repository.js';
-import projectService from './project.service.js';
+  UpdateNotePayload as UpdateNoteRepositoryPayload,
+} from "../repositories/note.repository.js";
+import projectService from "./project.service.js";
+import epicService from "./epic.service.js";
 
 interface NoteDto {
   id: string;
+  entityType: "project" | "epic";
   projectId: string;
+  epicId: string | null;
   title: string;
   content: string;
   createdAt?: Date;
@@ -38,22 +42,63 @@ class HttpError extends Error {
 }
 
 class NoteService {
-  public async createNote(userId: string, projectId: string, payload: NotePayload): Promise<NoteDto> {
+  public async createNote(
+    userId: string,
+    projectId: string,
+    payload: NotePayload,
+  ): Promise<NoteDto> {
     await projectService.assertProjectOwnership(userId, projectId);
 
     const createPayload: CreateNoteRepositoryPayload = {
+      entityType: "project",
       projectId,
+      epicId: null,
       title: this.normalizeTitle(payload.title),
-      content: this.normalizeContent(payload.content)
+      content: this.normalizeContent(payload.content),
     };
 
     const note = await createNote(createPayload);
     return this.toDto(note);
   }
 
-  public async fetchProjectNotes(userId: string, projectId: string): Promise<NoteDto[]> {
+  public async fetchProjectNotes(
+    userId: string,
+    projectId: string,
+  ): Promise<NoteDto[]> {
     await projectService.assertProjectOwnership(userId, projectId);
     const notes = await getNotesByProject(projectId);
+    return notes.map((note) => this.toDto(note));
+  }
+
+  public async createEpicNote(
+    userId: string,
+    projectId: string,
+    epicId: string,
+    payload: NotePayload,
+  ): Promise<NoteDto> {
+    await projectService.assertProjectOwnership(userId, projectId);
+    await epicService.assertEpicInProject(projectId, epicId);
+
+    const createPayload: CreateNoteRepositoryPayload = {
+      entityType: "epic",
+      projectId,
+      epicId,
+      title: this.normalizeTitle(payload.title),
+      content: this.normalizeContent(payload.content),
+    };
+
+    const note = await createNote(createPayload);
+    return this.toDto(note);
+  }
+
+  public async fetchEpicNotes(
+    userId: string,
+    projectId: string,
+    epicId: string,
+  ): Promise<NoteDto[]> {
+    await projectService.assertProjectOwnership(userId, projectId);
+    await epicService.assertEpicInProject(projectId, epicId);
+    const notes = await getNotesByEpic(projectId, epicId);
     return notes.map((note) => this.toDto(note));
   }
 
@@ -62,24 +107,30 @@ class NoteService {
     return this.toDto(note);
   }
 
-  public async updateNote(userId: string, noteId: string, payload: NotePayload): Promise<NoteDto> {
+  public async updateNote(
+    userId: string,
+    noteId: string,
+    payload: NotePayload,
+  ): Promise<NoteDto> {
     const existingNote = await this.getAccessibleNote(userId, noteId);
     const updates: UpdateNoteRepositoryPayload = {};
     const appendContent = payload.appendContent === true;
 
-    if (Object.prototype.hasOwnProperty.call(payload, 'title')) {
+    if (Object.prototype.hasOwnProperty.call(payload, "title")) {
       updates.title = this.normalizeTitle(payload.title);
     }
 
-    if (Object.prototype.hasOwnProperty.call(payload, 'content')) {
+    if (Object.prototype.hasOwnProperty.call(payload, "content")) {
       const normalizedContent = this.normalizeContent(payload.content);
-      updates.content = appendContent ? this.appendContent(existingNote.content, normalizedContent) : normalizedContent;
+      updates.content = appendContent
+        ? this.appendContent(existingNote.content, normalizedContent)
+        : normalizedContent;
     }
 
     const updatedNote = await updateNote(existingNote._id.toString(), updates);
 
     if (updatedNote == null) {
-      throw new HttpError(404, 'Note not found');
+      throw new HttpError(404, "Note not found");
     }
 
     return this.toDto(updatedNote);
@@ -90,39 +141,47 @@ class NoteService {
     const deleted = await deleteNote(note._id.toString());
 
     if (deleted == null) {
-      throw new HttpError(404, 'Note not found');
+      throw new HttpError(404, "Note not found");
     }
 
     return deleted._id.toString();
   }
 
-  private async getAccessibleNote(userId: string, noteId: string): Promise<INoteDocument> {
+  private async getAccessibleNote(
+    userId: string,
+    noteId: string,
+  ): Promise<INoteDocument> {
     const note = await getNoteById(noteId);
 
     if (note == null) {
-      throw new HttpError(404, 'Note not found');
+      throw new HttpError(404, "Note not found");
     }
 
-    await projectService.assertProjectOwnership(userId, note.projectId.toString());
+    await projectService.assertProjectOwnership(
+      userId,
+      note.projectId.toString(),
+    );
     return note;
   }
 
   private toDto(note: INoteDocument): NoteDto {
     return {
       id: note._id.toString(),
+      entityType: note.entityType,
       projectId: note.projectId.toString(),
+      epicId: note.epicId?.toString() ?? null,
       title: note.title,
       content: note.content,
       createdAt: note.createdAt,
-      updatedAt: note.updatedAt
+      updatedAt: note.updatedAt,
     };
   }
 
   private normalizeTitle(value: unknown): string {
-    const title = typeof value === 'string' ? value.trim() : '';
+    const title = typeof value === "string" ? value.trim() : "";
 
     if (!title) {
-      throw new HttpError(400, 'Note title is required');
+      throw new HttpError(400, "Note title is required");
     }
 
     return title;
@@ -130,17 +189,20 @@ class NoteService {
 
   private normalizeContent(value: unknown): string {
     if (value === undefined) {
-      return '';
+      return "";
     }
 
-    if (typeof value !== 'string') {
-      throw new HttpError(400, 'Note content must be a string');
+    if (typeof value !== "string") {
+      throw new HttpError(400, "Note content must be a string");
     }
 
     return value;
   }
 
-  private appendContent(existingContent: string, incomingContent: string): string {
+  private appendContent(
+    existingContent: string,
+    incomingContent: string,
+  ): string {
     if (!incomingContent.trim()) {
       return existingContent;
     }
