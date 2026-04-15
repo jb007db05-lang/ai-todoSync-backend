@@ -22,6 +22,10 @@ interface CreateTaskRequestBody {
   subtasks?: ISubtask[];
 }
 
+interface AssignTaskRequestBody {
+  userId?: string | null;
+}
+
 const getDateQuery = (req: Request): string | undefined => {
   const { date } = req.query;
 
@@ -171,6 +175,35 @@ class TaskController {
       res.status(200).json({
         message: "Task deleted",
         data: { taskId },
+      });
+    } catch (error) {
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
+    }
+  };
+
+  public assignTask = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const user = req.user;
+
+      if (user == null) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+
+      const taskId = getRouteParam(req.params.id);
+      const task = await taskService.assignTask(
+        taskId,
+        user._id.toString(),
+        req.body as AssignTaskRequestBody,
+      );
+
+      res.status(200).json({
+        message: "Task assignment updated",
+        data: { task },
       });
     } catch (error) {
       const status = (error as any).status || 500;

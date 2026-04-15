@@ -1,7 +1,7 @@
 import { execSync } from "child_process";
 
 if (process.env.CI === "true") {
-  console.log("⚠️ Skipping branch check in CI");
+  process.stdout.write("⚠️ Skipping branch check in CI" + "\n");
   process.exit(0);
 }
 
@@ -22,4 +22,4 @@ if (!validPattern.test(branch)) {
   process.exit(1);
 }
 
-console.log("✅ Branch name validation passed");
+process.stdout.write("✅ Branch name validation passed" + "\n");

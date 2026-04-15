@@ -67,7 +67,7 @@ class EpicService {
     userId: string,
     projectId: string,
   ): Promise<EpicDto[]> {
-    await projectService.assertProjectOwnership(userId, projectId);
+    await projectService.assertProjectMembership(userId, projectId);
     const epics = await getEpicsByProject(projectId);
     return epics.map((epic) => this.toDto(epic));
   }

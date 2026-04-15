@@ -1,9 +1,12 @@
 import mongoose from "mongoose";
+import type { ClientSession } from "mongoose";
 
 import ProjectModel, { IProjectDocument } from "../models/project.model.js";
 import TaskModel from "../models/task.model.js";
 import EpicModel from "../models/epic.model.js";
 import NoteModel from "../models/note.model.js";
+import ProjectMemberModel from "../models/project-member.model.js";
+import { deleteProjectMembershipsByProject } from "./project-member.repository.js";
 
 export interface CreateProjectPayload {
   userId: string;
@@ -18,7 +21,11 @@ export interface UpdateProjectPayload {
 
 export const createProject = async (
   payload: CreateProjectPayload,
-): Promise<IProjectDocument> => ProjectModel.create(payload);
+  session?: ClientSession,
+): Promise<IProjectDocument> =>
+  ProjectModel.create([{ ...payload }], { session }).then(
+    ([project]) => project,
+  );
 
 export interface ProjectQueryParams {
   userId: string;
@@ -30,7 +37,17 @@ export interface ProjectQueryParams {
 export const getProjectsByUser = async (
   params: ProjectQueryParams,
 ): Promise<IProjectDocument[]> => {
-  const query: any = { userId: params.userId };
+  const memberships = await ProjectMemberModel.find({ userId: params.userId })
+    .select({ projectId: 1 })
+    .lean()
+    .exec();
+  const projectIds = memberships.map((membership) => membership.projectId);
+
+  if (projectIds.length === 0) {
+    return [];
+  }
+
+  const query: any = { _id: { $in: projectIds } };
 
   if (params.search) {
     query.name = { $regex: params.search, $options: "i" };
@@ -47,7 +64,17 @@ export const countProjectsByUser = async (
   userId: string,
   search?: string,
 ): Promise<number> => {
-  const query: any = { userId };
+  const memberships = await ProjectMemberModel.find({ userId })
+    .select({ projectId: 1 })
+    .lean()
+    .exec();
+  const projectIds = memberships.map((membership) => membership.projectId);
+
+  if (projectIds.length === 0) {
+    return 0;
+  }
+
+  const query: any = { _id: { $in: projectIds } };
 
   if (search) {
     query.name = { $regex: search, $options: "i" };
@@ -64,7 +91,13 @@ export const getProjectByIdAndUser = async (
   projectId: string,
   userId: string,
 ): Promise<IProjectDocument | null> =>
-  ProjectModel.findOne({ _id: projectId, userId }).exec();
+  ProjectMemberModel.exists({ projectId, userId }).then((membership) => {
+    if (membership == null) {
+      return null;
+    }
+
+    return ProjectModel.findById(projectId).exec();
+  });
 
 export const getProjectByName = async (
   userId: string,
@@ -74,18 +107,16 @@ export const getProjectByName = async (
 
 export const updateProject = async (
   projectId: string,
-  userId: string,
   updates: UpdateProjectPayload,
 ): Promise<IProjectDocument | null> =>
-  ProjectModel.findOneAndUpdate({ _id: projectId, userId }, updates, {
+  ProjectModel.findByIdAndUpdate(projectId, updates, {
     new: true,
   }).exec();
 
 export const deleteProject = async (
   projectId: string,
-  userId: string,
 ): Promise<IProjectDocument | null> =>
-  ProjectModel.findOneAndDelete({ _id: projectId, userId }).exec();
+  ProjectModel.findByIdAndDelete(projectId).exec();
 
 export const deleteTasksByProject = async (
   userId: string,
@@ -95,7 +126,6 @@ export const deleteTasksByProject = async (
 };
 
 export const deleteProjectWithRelations = async (
-  userId: string,
   projectId: string,
 ): Promise<IProjectDocument | null> => {
   const session = await mongoose.startSession();
@@ -104,18 +134,18 @@ export const deleteProjectWithRelations = async (
     let deletedProject: IProjectDocument | null = null;
 
     await session.withTransaction(async () => {
-      deletedProject = await ProjectModel.findOneAndDelete(
-        { _id: projectId, userId },
-        { session },
-      ).exec();
+      deletedProject = await ProjectModel.findByIdAndDelete(projectId, {
+        session,
+      }).exec();
 
       if (deletedProject == null) {
         return;
       }
 
-      await TaskModel.deleteMany({ userId, projectId }, { session }).exec();
+      await TaskModel.deleteMany({ projectId }, { session }).exec();
       await EpicModel.deleteMany({ projectId }, { session }).exec();
       await NoteModel.deleteMany({ projectId }, { session }).exec();
+      await deleteProjectMembershipsByProject(projectId, session);
     });
 
     return deletedProject;
@@ -125,7 +155,6 @@ export const deleteProjectWithRelations = async (
 };
 
 export const deleteProjectsWithRelations = async (
-  userId: string,
   projectIds: string[],
 ): Promise<number> => {
   const session = await mongoose.startSession();
@@ -134,7 +163,7 @@ export const deleteProjectsWithRelations = async (
   try {
     await session.withTransaction(async () => {
       const result = await ProjectModel.deleteMany(
-        { _id: { $in: projectIds }, userId },
+        { _id: { $in: projectIds } },
         { session },
       ).exec();
 
@@ -145,7 +174,7 @@ export const deleteProjectsWithRelations = async (
       }
 
       await TaskModel.deleteMany(
-        { userId, projectId: { $in: projectIds } },
+        { projectId: { $in: projectIds } },
         { session },
       ).exec();
       await EpicModel.deleteMany(
@@ -153,6 +182,10 @@ export const deleteProjectsWithRelations = async (
         { session },
       ).exec();
       await NoteModel.deleteMany(
+        { projectId: { $in: projectIds } },
+        { session },
+      ).exec();
+      await ProjectMemberModel.deleteMany(
         { projectId: { $in: projectIds } },
         { session },
       ).exec();

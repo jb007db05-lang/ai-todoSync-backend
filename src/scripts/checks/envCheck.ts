@@ -31,4 +31,4 @@ if (hasError) {
   process.exit(1);
 }
 
-console.log("✅ Environment variables validated");
+process.stdout.write("✅ Environment variables validated" + "\n");

@@ -166,6 +166,93 @@ class ProjectController {
       res.status(status).json({ error: (error as Error).message });
     }
   };
+
+  public getMembers = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const user = req.user;
+
+      if (user == null) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+
+      const projectId = getRouteParam(req.params.projectId);
+      const members = await projectService.fetchProjectMembers(
+        user._id.toString(),
+        projectId,
+      );
+
+      res.status(200).json({
+        message: "Project members fetched",
+        data: { members },
+      });
+    } catch (error) {
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
+    }
+  };
+
+  public addMember = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const user = req.user;
+
+      if (user == null) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+
+      const projectId = getRouteParam(req.params.projectId);
+      const member = await projectService.addProjectMember(
+        user._id.toString(),
+        projectId,
+        req.body as { userId?: unknown },
+      );
+
+      res.status(201).json({
+        message: "Project member added",
+        data: { member },
+      });
+    } catch (error) {
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
+    }
+  };
+
+  public removeMember = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const user = req.user;
+
+      if (user == null) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+
+      const projectId = getRouteParam(req.params.projectId);
+      const targetUserId = getRouteParam(req.params.userId);
+      await projectService.removeProjectMember(
+        user._id.toString(),
+        projectId,
+        targetUserId,
+      );
+
+      res.status(200).json({
+        message: "Project member removed",
+        data: { userId: targetUserId },
+      });
+    } catch (error) {
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
+    }
+  };
 }
 
 export default new ProjectController();

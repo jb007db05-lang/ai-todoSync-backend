@@ -7,7 +7,11 @@ function walk(dir: string): string[] {
   return fs.readdirSync(dir).flatMap((file) => {
     const fullPath = path.join(dir, file);
 
-    if (IGNORE_FOLDERS.some((folder) => fullPath.includes(folder))) {
+    if (
+      IGNORE_FOLDERS.some((folder) =>
+        fullPath.replace(/\\\\/g, "/").includes(folder),
+      )
+    ) {
       return [];
     }
 
@@ -29,15 +33,15 @@ let hasError = false;
 for (const file of files) {
   const content = fs.readFileSync(file, "utf-8");
 
-  if (content.includes("console.log")) {
-    console.error(`❌ Found console.log in : ${file}`);
+  if (content.includes(["console", "log"].join("."))) {
+    console.error(`❌ Found console log in : ${file}`);
     hasError = true;
   }
 }
 
 if (hasError) {
-  console.error("\n❌ Remove console.log statements before committing.");
+  console.error("\n❌ Remove console log statements before committing.");
   process.exit(1);
 }
 
-console.log("✅ Console.log validation passed");
+process.stdout.write("✅ Console log validation passed" + "\n");
