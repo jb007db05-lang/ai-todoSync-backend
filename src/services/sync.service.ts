@@ -15,6 +15,7 @@ import { formatLocalDate } from "../utils/date.js";
 interface SyncSubtaskResult {
   id: string;
   title: string;
+  description?: string;
   note?: string;
   status: TaskWorkflowStatus;
   completed: boolean;
@@ -285,6 +286,10 @@ class SyncService {
 
     const subtask = value as Record<string, unknown>;
     const title = typeof subtask.title === "string" ? subtask.title.trim() : "";
+    const description =
+      typeof subtask.description === "string"
+        ? subtask.description.trim()
+        : undefined;
     const note = typeof subtask.note === "string" ? subtask.note.trim() : "";
 
     if (!title) {
@@ -299,6 +304,7 @@ class SyncService {
 
     return {
       title,
+      description,
       note,
       status,
       completed,
@@ -349,6 +355,7 @@ class SyncService {
     return (subtasks ?? []).map((subtask) => ({
       id: this.getSubtaskId(subtask),
       title: subtask.title,
+      description: subtask.description,
       note: subtask.note,
       status: subtask.status,
       completed: subtask.completed,

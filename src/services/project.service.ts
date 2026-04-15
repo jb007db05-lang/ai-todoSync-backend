@@ -51,9 +51,13 @@ class ProjectService {
     payload: ProjectPayload,
   ): Promise<ProjectDto> {
     const name = this.normalizeName(payload.name);
+    const description =
+      typeof payload.description === "string"
+        ? payload.description.trim()
+        : undefined;
 
     try {
-      const project = await createProject({ userId, name });
+      const project = await createProject({ userId, name, description });
       return this.toDto(project);
     } catch (error) {
       throw this.mapPersistenceError(error);
