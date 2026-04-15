@@ -1,7 +1,6 @@
 import crypto from "crypto";
 import jwt, { JwtPayload } from "jsonwebtoken";
 import { OAuth2Client, TokenPayload } from "google-auth-library";
-import mongoose from "mongoose";
 
 import env from "../config/env.js";
 import {
