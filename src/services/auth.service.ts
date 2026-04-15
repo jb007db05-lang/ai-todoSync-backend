@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import mongoose from "mongoose";
 import jwt, { JwtPayload } from "jsonwebtoken";
 import { OAuth2Client, TokenPayload } from "google-auth-library";
 
@@ -14,7 +15,10 @@ import {
 import {
   consumeCompanionKey,
   createCompanionKey,
+  deleteCompanionKeyById,
   deleteUsedCompanionKeys,
+  listUnusedCompanionKeysByUser,
+  updateCompanionKeyById,
 } from "../repositories/companion-key.repository.js";
 import {
   CreateUserPayload,
@@ -106,7 +110,7 @@ export interface CompanionDeviceSummary {
   id: string;
   deviceName: string;
   deviceType: string;
-  status: "active" | "revoked";
+  status: "active" | "revoked" | "pending";
   createdAt: Date | undefined;
   updatedAt: Date | undefined;
   revokedAt: Date | null | undefined;
@@ -325,9 +329,12 @@ class AuthService {
   public async listCompanionDevices(
     userId: string,
   ): Promise<CompanionDeviceSummary[]> {
-    const devices = await listCompanionDevicesByUser(userId);
+    const [devices, pendingKeys] = await Promise.all([
+      listCompanionDevicesByUser(userId),
+      listUnusedCompanionKeysByUser(userId),
+    ]);
 
-    return devices.map((device) => ({
+    const activeList: CompanionDeviceSummary[] = devices.map((device) => ({
       id: device._id.toString(),
       deviceName: device.deviceName,
       deviceType: device.deviceType,
@@ -336,6 +343,19 @@ class AuthService {
       updatedAt: device.updatedAt,
       revokedAt: device.revokedAt,
     }));
+
+    const pendingList: CompanionDeviceSummary[] = pendingKeys.map((key) => ({
+      id: key._id.toString(),
+      deviceName: key.deviceName || "Unregistered Device",
+      deviceType: key.deviceType || "companion",
+      status: "pending",
+      createdAt: key.createdAt,
+      updatedAt: key.updatedAt,
+      revokedAt: null,
+    }));
+
+    // Show pending keys first, then active devices
+    return [...pendingList, ...activeList];
   }
 
   public async updateCompanionDevice(
@@ -369,20 +389,42 @@ class AuthService {
       throw new HttpError(400, "At least one device field is required");
     }
 
+    if (!mongoose.Types.ObjectId.isValid(deviceId)) {
+      throw new HttpError(
+        404,
+        "Companion device or key not found (Invalid ID)",
+      );
+    }
+
     const updated = await updateCompanionDevice(userId, deviceId, updates);
 
-    if (updated == null) {
-      throw new HttpError(404, "Companion device not found");
+    if (updated != null) {
+      return {
+        id: updated._id.toString(),
+        deviceName: updated.deviceName,
+        deviceType: updated.deviceType,
+        status: updated.status,
+        createdAt: updated.createdAt,
+        updatedAt: updated.updatedAt,
+        revokedAt: updated.revokedAt,
+      };
+    }
+
+    // Try updating a pending key if device not found
+    const updatedKey = await updateCompanionKeyById(userId, deviceId, updates);
+
+    if (updatedKey == null) {
+      throw new HttpError(404, "Companion device or pending key not found");
     }
 
     return {
-      id: updated._id.toString(),
-      deviceName: updated.deviceName,
-      deviceType: updated.deviceType,
-      status: updated.status,
-      createdAt: updated.createdAt,
-      updatedAt: updated.updatedAt,
-      revokedAt: updated.revokedAt,
+      id: updatedKey._id.toString(),
+      deviceName: updatedKey.deviceName || "Unregistered Device",
+      deviceType: updatedKey.deviceType || "companion",
+      status: "pending",
+      createdAt: updatedKey.createdAt,
+      updatedAt: updatedKey.updatedAt,
+      revokedAt: null,
     };
   }
 
@@ -390,22 +432,33 @@ class AuthService {
     userId: string,
     deviceId: string,
   ): Promise<void> {
+    if (!mongoose.Types.ObjectId.isValid(deviceId)) {
+      // If it's not a valid ObjectId (e.g. leftover dummy ID), just 404
+      throw new HttpError(404, "Device or key not found (Invalid ID)");
+    }
+
     const revokedAt = new Date();
     const device = await revokeCompanionDevice(userId, deviceId, revokedAt);
 
-    if (device == null) {
+    if (device != null) {
+      await revokeDeviceSessionsByDeviceId(deviceId, revokedAt);
+      return;
+    }
+
+    // If no active device, check if it's a pending key to delete
+    const deletedKey = await deleteCompanionKeyById(userId, deviceId);
+
+    if (deletedKey == null) {
       const existing = await findCompanionDeviceByIdForUser(userId, deviceId);
 
       if (existing == null) {
-        throw new HttpError(404, "Companion device not found");
+        throw new HttpError(404, "Companion device or pending key not found");
       }
 
       if (existing.status === "revoked") {
         return;
       }
     }
-
-    await revokeDeviceSessionsByDeviceId(deviceId, revokedAt);
   }
 
   public getGoogleAuthorizationUrl(state?: string): string {
