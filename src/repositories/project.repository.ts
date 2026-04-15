@@ -8,20 +8,53 @@ import NoteModel from "../models/note.model.js";
 export interface CreateProjectPayload {
   userId: string;
   name: string;
+  description?: string;
 }
 
 export interface UpdateProjectPayload {
   name?: string;
+  description?: string;
 }
 
 export const createProject = async (
   payload: CreateProjectPayload,
 ): Promise<IProjectDocument> => ProjectModel.create(payload);
 
+export interface ProjectQueryParams {
+  userId: string;
+  search?: string;
+  skip?: number;
+  limit?: number;
+}
+
 export const getProjectsByUser = async (
+  params: ProjectQueryParams,
+): Promise<IProjectDocument[]> => {
+  const query: any = { userId: params.userId };
+
+  if (params.search) {
+    query.name = { $regex: params.search, $options: "i" };
+  }
+
+  return ProjectModel.find(query)
+    .sort({ name: 1, _id: 1 })
+    .skip(params.skip || 0)
+    .limit(params.limit || 0)
+    .exec();
+};
+
+export const countProjectsByUser = async (
   userId: string,
-): Promise<IProjectDocument[]> =>
-  ProjectModel.find({ userId }).sort({ name: 1, _id: 1 }).exec();
+  search?: string,
+): Promise<number> => {
+  const query: any = { userId };
+
+  if (search) {
+    query.name = { $regex: search, $options: "i" };
+  }
+
+  return ProjectModel.countDocuments(query).exec();
+};
 
 export const getProjectById = async (
   projectId: string,
@@ -86,6 +119,46 @@ export const deleteProjectWithRelations = async (
     });
 
     return deletedProject;
+  } finally {
+    await session.endSession();
+  }
+};
+
+export const deleteProjectsWithRelations = async (
+  userId: string,
+  projectIds: string[],
+): Promise<number> => {
+  const session = await mongoose.startSession();
+  let deletedCount = 0;
+
+  try {
+    await session.withTransaction(async () => {
+      const result = await ProjectModel.deleteMany(
+        { _id: { $in: projectIds }, userId },
+        { session },
+      ).exec();
+
+      deletedCount = result.deletedCount;
+
+      if (deletedCount === 0) {
+        return;
+      }
+
+      await TaskModel.deleteMany(
+        { userId, projectId: { $in: projectIds } },
+        { session },
+      ).exec();
+      await EpicModel.deleteMany(
+        { projectId: { $in: projectIds } },
+        { session },
+      ).exec();
+      await NoteModel.deleteMany(
+        { projectId: { $in: projectIds } },
+        { session },
+      ).exec();
+    });
+
+    return deletedCount;
   } finally {
     await session.endSession();
   }

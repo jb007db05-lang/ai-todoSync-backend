@@ -1,5 +1,6 @@
 import type { IProjectDocument } from "../models/project.model.js";
 import {
+  countProjectsByUser,
   createProject,
   deleteProjectWithRelations,
   getProjectByIdAndUser,
@@ -11,6 +12,7 @@ import {
 interface ProjectDto {
   id: string;
   name: string;
+  description?: string;
   userId: string;
   createdAt?: Date;
   updatedAt?: Date;
@@ -18,10 +20,19 @@ interface ProjectDto {
 
 interface ProjectPayload {
   name?: string;
+  description?: string;
 }
 
 interface SyncProjectObject {
   name?: unknown;
+}
+
+interface PaginatedProjects {
+  projects: ProjectDto[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 class HttpError extends Error {
@@ -40,9 +51,13 @@ class ProjectService {
     payload: ProjectPayload,
   ): Promise<ProjectDto> {
     const name = this.normalizeName(payload.name);
+    const description =
+      typeof payload.description === "string"
+        ? payload.description.trim()
+        : undefined;
 
     try {
-      const project = await createProject({ userId, name });
+      const project = await createProject({ userId, name, description });
       return this.toDto(project);
     } catch (error) {
       throw this.mapPersistenceError(error);
@@ -50,8 +65,30 @@ class ProjectService {
   }
 
   public async fetchProjects(userId: string): Promise<ProjectDto[]> {
-    const projects = await getProjectsByUser(userId);
+    const projects = await getProjectsByUser({ userId });
     return projects.map((project) => this.toDto(project));
+  }
+
+  public async fetchProjectsPaginated(
+    userId: string,
+    page: number,
+    limit: number,
+    search?: string,
+  ): Promise<PaginatedProjects> {
+    const skip = (page - 1) * limit;
+
+    const [projects, total] = await Promise.all([
+      getProjectsByUser({ userId, search, skip, limit }),
+      countProjectsByUser(userId, search),
+    ]);
+
+    return {
+      projects: projects.map((project) => this.toDto(project)),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   public async updateProject(
@@ -69,6 +106,13 @@ class ProjectService {
 
     if (Object.prototype.hasOwnProperty.call(payload, "name")) {
       updates.name = this.normalizeName(payload.name);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload, "description")) {
+      updates.description =
+        typeof payload.description === "string"
+          ? payload.description.trim()
+          : "";
     }
 
     try {
@@ -90,6 +134,15 @@ class ProjectService {
     if (project == null) {
       throw new HttpError(404, "Project not found");
     }
+  }
+
+  public async bulkDeleteProjects(
+    userId: string,
+    projectIds: string[],
+  ): Promise<number> {
+    const { deleteProjectsWithRelations } =
+      await import("../repositories/project.repository.js");
+    return deleteProjectsWithRelations(userId, projectIds);
   }
 
   public async assertProjectOwnership(
@@ -163,6 +216,7 @@ class ProjectService {
     return {
       id: project._id.toString(),
       name: project.name,
+      description: project.description,
       userId: project.userId.toString(),
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,

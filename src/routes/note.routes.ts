@@ -1,11 +1,11 @@
-import { Router } from 'express';
+import { Router } from "express";
 
-import { Routes } from '../interfaces/routes.interface.js';
-import authMiddleware from '../middleware/auth.middleware.js';
-import noteController from '../controllers/note.controller.js';
+import { Routes } from "../interfaces/routes.interface.js";
+import authMiddleware from "../middleware/auth.middleware.js";
+import noteController from "../controllers/note.controller.js";
 
 class NoteRoutes implements Routes {
-  public path = '/api';
+  public path = "/api";
   public router = Router();
 
   constructor() {
@@ -14,11 +14,22 @@ class NoteRoutes implements Routes {
 
   private initializeRoutes(): void {
     this.router.use(authMiddleware);
-    this.router.post('/projects/:projectId/notes', noteController.createNote);
-    this.router.get('/projects/:projectId/notes', noteController.getProjectNotes);
-    this.router.get('/notes/:id', noteController.getNote);
-    this.router.put('/notes/:id', noteController.updateNote);
-    this.router.delete('/notes/:id', noteController.deleteNote);
+    this.router.post("/projects/:projectId/notes", noteController.createNote);
+    this.router.get(
+      "/projects/:projectId/notes",
+      noteController.getProjectNotes,
+    );
+    this.router.post(
+      "/projects/:projectId/epics/:epicId/notes",
+      noteController.createEpicNote,
+    );
+    this.router.get(
+      "/projects/:projectId/epics/:epicId/notes",
+      noteController.getEpicNotes,
+    );
+    this.router.get("/notes/:id", noteController.getNote);
+    this.router.put("/notes/:id", noteController.updateNote);
+    this.router.delete("/notes/:id", noteController.deleteNote);
   }
 }
 

@@ -5,6 +5,7 @@ import EpicModel, {
   IEpicDocument,
   type EpicStatus,
 } from "../models/epic.model.js";
+import NoteModel from "../models/note.model.js";
 import TaskModel from "../models/task.model.js";
 
 export interface CreateEpicPayload {
@@ -92,6 +93,7 @@ export const deleteEpic = async (
       { $set: { epicId: null } },
       { session },
     ).exec();
+    await NoteModel.deleteMany({ epicId }, { session }).exec();
 
     const deletedEpic = await EpicModel.findOneAndDelete(
       { _id: epicId, projectId },
