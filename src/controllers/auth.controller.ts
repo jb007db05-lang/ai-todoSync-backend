@@ -167,9 +167,22 @@ class AuthController {
         user._id.toString(),
       );
 
+      // DUMMY DATA FOR DEBUGGING
+      const debugDevices = [
+        ...devices,
+        {
+          id: "dummy-id-" + Date.now(),
+          deviceName: "Dummy Test Device",
+          deviceType: "mobile",
+          status: "active",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ];
+
       res.status(200).json({
         message: "Companion devices fetched successfully",
-        data: { devices },
+        data: { devices: debugDevices },
       });
     } catch (error) {
       this.respondWithError(res, error);
