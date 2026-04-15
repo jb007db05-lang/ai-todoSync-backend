@@ -47,3 +47,24 @@ export const listUnusedCompanionKeysByUser = async (
   })
     .sort({ createdAt: -1 })
     .exec();
+
+export const deleteCompanionKeyById = async (
+  userId: string,
+  keyId: string,
+): Promise<ICompanionKeyDocument | null> =>
+  CompanionKeyModel.findOneAndDelete({
+    _id: keyId,
+    userId,
+    isUsed: false,
+  }).exec();
+
+export const updateCompanionKeyById = async (
+  userId: string,
+  keyId: string,
+  updates: Partial<Pick<ICompanionKeyDocument, "deviceName" | "deviceType">>,
+): Promise<ICompanionKeyDocument | null> =>
+  CompanionKeyModel.findOneAndUpdate(
+    { _id: keyId, userId, isUsed: false },
+    updates,
+    { new: true, runValidators: true },
+  ).exec();
