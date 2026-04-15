@@ -15,6 +15,7 @@ import {
   consumeCompanionKey,
   createCompanionKey,
   deleteUsedCompanionKeys,
+  listUnusedCompanionKeysByUser,
 } from "../repositories/companion-key.repository.js";
 import {
   CreateUserPayload,
@@ -106,7 +107,7 @@ export interface CompanionDeviceSummary {
   id: string;
   deviceName: string;
   deviceType: string;
-  status: "active" | "revoked";
+  status: "active" | "revoked" | "pending";
   createdAt: Date | undefined;
   updatedAt: Date | undefined;
   revokedAt: Date | null | undefined;
@@ -325,9 +326,12 @@ class AuthService {
   public async listCompanionDevices(
     userId: string,
   ): Promise<CompanionDeviceSummary[]> {
-    const devices = await listCompanionDevicesByUser(userId);
+    const [devices, pendingKeys] = await Promise.all([
+      listCompanionDevicesByUser(userId),
+      listUnusedCompanionKeysByUser(userId),
+    ]);
 
-    return devices.map((device) => ({
+    const activeList: CompanionDeviceSummary[] = devices.map((device) => ({
       id: device._id.toString(),
       deviceName: device.deviceName,
       deviceType: device.deviceType,
@@ -336,6 +340,19 @@ class AuthService {
       updatedAt: device.updatedAt,
       revokedAt: device.revokedAt,
     }));
+
+    const pendingList: CompanionDeviceSummary[] = pendingKeys.map((key) => ({
+      id: key._id.toString(),
+      deviceName: key.deviceName || "Unregistered Device",
+      deviceType: key.deviceType || "companion",
+      status: "pending",
+      createdAt: key.createdAt,
+      updatedAt: key.updatedAt,
+      revokedAt: null,
+    }));
+
+    // Show pending keys first, then active devices
+    return [...pendingList, ...activeList];
   }
 
   public async updateCompanionDevice(

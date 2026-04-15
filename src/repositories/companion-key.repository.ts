@@ -37,3 +37,13 @@ export const deleteUsedCompanionKeys = async (
     isUsed: true,
   }).exec();
 };
+
+export const listUnusedCompanionKeysByUser = async (
+  userId: string,
+): Promise<ICompanionKeyDocument[]> =>
+  CompanionKeyModel.find({
+    userId,
+    isUsed: false,
+  })
+    .sort({ createdAt: -1 })
+    .exec();
