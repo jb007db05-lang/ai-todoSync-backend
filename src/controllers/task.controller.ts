@@ -7,6 +7,7 @@ import type {
   UpdateTaskPayload,
 } from "../repositories/task.repository.js";
 import taskService from "../services/task.service.js";
+import activityLogService from "../services/activity-log.service.js";
 
 type AuthenticatedRequest = Request & { user?: IUserDocument };
 
@@ -121,6 +122,22 @@ class TaskController {
         message: "Task created",
         data: { task },
       });
+
+      if (task.projectId) {
+        void activityLogService.logActivity({
+          projectId: task.projectId,
+          entityType: "task",
+          entityId: task.id,
+          entityName: task.title,
+          action: "created",
+          userId: user._id.toString(),
+          userName:
+            user.name ||
+            [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+            "Unknown",
+          description: `created task "${task.title}"`,
+        });
+      }
     } catch (error) {
       const status = (error as any).status || 500;
       res.status(status).json({ error: (error as Error).message });
@@ -151,6 +168,22 @@ class TaskController {
         message: "Task updated",
         data: { task: updated },
       });
+
+      if (updated.projectId) {
+        void activityLogService.logActivity({
+          projectId: updated.projectId,
+          entityType: "task",
+          entityId: taskId,
+          entityName: updated.title,
+          action: "updated",
+          userId: user._id.toString(),
+          userName:
+            user.name ||
+            [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+            "Unknown",
+          description: `updated task "${updated.title}"`,
+        });
+      }
     } catch (error) {
       const status = (error as any).status || 500;
       res.status(status).json({ error: (error as Error).message });
