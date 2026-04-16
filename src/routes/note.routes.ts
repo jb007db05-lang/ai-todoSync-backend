@@ -2,10 +2,7 @@ import { Router } from "express";
 
 import { Routes } from "../interfaces/routes.interface.js";
 import authMiddleware from "../middleware/auth.middleware.js";
-import {
-  isProjectMember,
-  requireProjectRole,
-} from "../middleware/project-access.middleware.js";
+import { isProjectMember } from "../middleware/project-access.middleware.js";
 import noteController from "../controllers/note.controller.js";
 
 class NoteRoutes implements Routes {
@@ -20,7 +17,7 @@ class NoteRoutes implements Routes {
     this.router.use(authMiddleware);
     this.router.post(
       "/projects/:projectId/notes",
-      requireProjectRole("ADMIN"),
+      isProjectMember,
       noteController.createNote,
     );
     this.router.get(
@@ -30,7 +27,7 @@ class NoteRoutes implements Routes {
     );
     this.router.post(
       "/projects/:projectId/epics/:epicId/notes",
-      requireProjectRole("ADMIN"),
+      isProjectMember,
       noteController.createEpicNote,
     );
     this.router.get(

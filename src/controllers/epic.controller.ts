@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import type { IUserDocument } from "../models/user.model.js";
 import type { EpicPayload } from "../services/epic.service.js";
 import epicService from "../services/epic.service.js";
+import activityLogService from "../services/activity-log.service.js";
 
 type AuthenticatedRequest = Request & { user?: IUserDocument };
 
@@ -41,6 +42,20 @@ class EpicController {
       res.status(201).json({
         message: "Epic created",
         data: { epic },
+      });
+
+      void activityLogService.logActivity({
+        projectId,
+        entityType: "epic",
+        entityId: epic.id,
+        entityName: epic.name,
+        action: "created",
+        userId: user._id.toString(),
+        userName:
+          user.name ||
+          [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+          "Unknown",
+        description: `created epic "${epic.name}"`,
       });
     } catch (error) {
       const status = (error as any).status || 500;
@@ -101,6 +116,20 @@ class EpicController {
         message: "Epic updated",
         data: { epic },
       });
+
+      void activityLogService.logActivity({
+        projectId,
+        entityType: "epic",
+        entityId: epicId,
+        entityName: epic.name,
+        action: "updated",
+        userId: user._id.toString(),
+        userName:
+          user.name ||
+          [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+          "Unknown",
+        description: `updated epic "${epic.name}"`,
+      });
     } catch (error) {
       const status = (error as any).status || 500;
       res.status(status).json({ error: (error as Error).message });
@@ -126,6 +155,19 @@ class EpicController {
       res.status(200).json({
         message: "Epic deleted",
         data: { epicId },
+      });
+
+      void activityLogService.logActivity({
+        projectId,
+        entityType: "epic",
+        entityId: epicId,
+        action: "deleted",
+        userId: user._id.toString(),
+        userName:
+          user.name ||
+          [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+          "Unknown",
+        description: `deleted an epic`,
       });
     } catch (error) {
       const status = (error as any).status || 500;

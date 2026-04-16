@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import type { IUserDocument } from "../models/user.model.js";
 import type { ProjectPayload } from "../services/project.service.js";
 import projectService from "../services/project.service.js";
+import activityLogService from "../services/activity-log.service.js";
 
 type AuthenticatedRequest = Request & { user?: IUserDocument };
 
@@ -39,6 +40,20 @@ class ProjectController {
       res.status(201).json({
         message: "Project created",
         data: { project },
+      });
+
+      void activityLogService.logActivity({
+        projectId: project.id,
+        entityType: "project",
+        entityId: project.id,
+        entityName: project.name,
+        action: "created",
+        userId: user._id.toString(),
+        userName:
+          user.name ||
+          [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+          "Unknown",
+        description: `created project "${project.name}"`,
       });
     } catch (error) {
       const status = (error as any).status || 500;
@@ -102,6 +117,20 @@ class ProjectController {
         message: "Project updated",
         data: { project },
       });
+
+      void activityLogService.logActivity({
+        projectId,
+        entityType: "project",
+        entityId: projectId,
+        entityName: project.name,
+        action: "updated",
+        userId: user._id.toString(),
+        userName:
+          user.name ||
+          [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+          "Unknown",
+        description: `updated project "${project.name}"`,
+      });
     } catch (error) {
       const status = (error as any).status || 500;
       res.status(status).json({ error: (error as Error).message });
@@ -126,6 +155,19 @@ class ProjectController {
       res.status(200).json({
         message: "Project deleted",
         data: { projectId },
+      });
+
+      void activityLogService.logActivity({
+        projectId,
+        entityType: "project",
+        entityId: projectId,
+        action: "deleted",
+        userId: user._id.toString(),
+        userName:
+          user.name ||
+          [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+          "Unknown",
+        description: `deleted a project`,
       });
     } catch (error) {
       const status = (error as any).status || 500;
@@ -218,6 +260,19 @@ class ProjectController {
         message: "Project member added",
         data: { member },
       });
+
+      void activityLogService.logActivity({
+        projectId,
+        entityType: "project",
+        entityId: projectId,
+        action: "member_added",
+        userId: user._id.toString(),
+        userName:
+          user.name ||
+          [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+          "Unknown",
+        description: `added a member to the project`,
+      });
     } catch (error) {
       const status = (error as any).status || 500;
       res.status(status).json({ error: (error as Error).message });
@@ -247,6 +302,19 @@ class ProjectController {
       res.status(200).json({
         message: "Project member removed",
         data: { userId: targetUserId },
+      });
+
+      void activityLogService.logActivity({
+        projectId,
+        entityType: "project",
+        entityId: projectId,
+        action: "member_removed",
+        userId: user._id.toString(),
+        userName:
+          user.name ||
+          [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+          "Unknown",
+        description: `removed a member from the project`,
       });
     } catch (error) {
       const status = (error as any).status || 500;

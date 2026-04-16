@@ -8,6 +8,7 @@ import NoteRoutes from "./routes/note.routes.js";
 import EpicRoutes from "./routes/epic.routes.js";
 import UserRoutes from "./routes/users.routes.js";
 import ChatRoutes from "./routes/chat.routes.js";
+import ActivityLogRoutes from "./routes/activity-log.routes.js";
 import logger from "./lib/logger.js";
 
 const server = new App([
@@ -20,6 +21,7 @@ const server = new App([
   new NoteRoutes(),
   new SyncRoutes(),
   new ChatRoutes(),
+  new ActivityLogRoutes(),
 ]);
 
 void server.listen().catch((error) => {
