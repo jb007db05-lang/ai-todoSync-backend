@@ -36,6 +36,8 @@ interface SubtaskDto {
   status: TaskWorkflowStatus;
   completed: boolean;
   completedAt: Date | null;
+  assignedToUserId: string | null;
+  assignedToUser: TaskUserDto | null;
 }
 
 interface TaskPermissionsDto {
@@ -58,8 +60,6 @@ interface TaskDto {
   source?: string;
   projectId: string | null;
   epicId: string | null;
-  assignedToUserId: string | null;
-  assignedToUser: TaskUserDto | null;
   subtasks: SubtaskDto[];
   permissions: TaskPermissionsDto;
 }
@@ -101,7 +101,6 @@ class TaskService {
 
     payload.projectId = this.normalizeNullableId(payload.projectId);
     payload.epicId = this.normalizeNullableId(payload.epicId);
-    payload.assignedToUserId = null;
 
     if (payload.projectId) {
       await projectService.assertProjectRole(
@@ -180,13 +179,6 @@ class TaskService {
 
     if (permission.canUpdate === false) {
       throw new HttpError(403, "Task update not allowed");
-    }
-
-    if (Object.prototype.hasOwnProperty.call(updates, "assignedToUserId")) {
-      throw new HttpError(
-        400,
-        "Use the dedicated task assignment endpoint to change assignees",
-      );
     }
 
     const hasFullEditAccess = permission.canEdit;
@@ -287,52 +279,13 @@ class TaskService {
   }
 
   public async assignTask(
-    taskId: string,
-    actorUserId: string,
-    payload: AssignTaskPayload,
-  ): Promise<TaskDto> {
-    const task = await getTaskById(taskId);
-
-    if (task == null) {
-      throw new HttpError(404, "Task not found");
-    }
-
-    if (task.projectId == null) {
-      throw new HttpError(400, "Task assignment requires a project task");
-    }
-
-    const projectId = task.projectId.toString();
-    const access = await projectService.assertProjectMembership(
-      actorUserId,
-      projectId,
-    );
-    const isCreator = task.userId.toString() === actorUserId;
-
-    if (access.role !== "ADMIN" && !isCreator) {
-      throw new HttpError(
-        403,
-        "Only project admins or the task creator can assign tasks",
-      );
-    }
-
-    const assignedToUserId = this.normalizeNullableId(payload.userId);
-
-    if (assignedToUserId != null) {
-      await projectService.assertProjectMembership(assignedToUserId, projectId);
-    }
-
-    const updated = await updateTask(taskId, {
-      assignedToUserId,
-    });
-
-    if (updated == null) {
-      throw new HttpError(404, "Task not found");
-    }
-
-    return this.toDto(
-      actorUserId,
-      updated,
-      new Map([[projectId, access.role]]),
+    _taskId: string,
+    _actorUserId: string,
+    _payload: AssignTaskPayload,
+  ): Promise<void> {
+    throw new HttpError(
+      400,
+      "Task-level assignment is deprecated. Assign subtasks instead.",
     );
   }
 
@@ -406,7 +359,6 @@ class TaskService {
       task,
       currentRole,
     );
-    const assignedUser = this.toTaskUser(task.assignedToUserId);
 
     return {
       id: task._id.toString(),
@@ -418,11 +370,8 @@ class TaskService {
       status: this.normalizeStoredTaskStatus(task.status),
       rolledOver: task.rolledOver,
       rolloverCount: task.rolloverCount,
-      source: task.source,
       projectId,
       epicId: task.epicId?.toString() ?? null,
-      assignedToUserId: assignedUser?.id ?? null,
-      assignedToUser: assignedUser,
       subtasks: this.toSubtaskDtos(task.subtasks),
       permissions,
     };
@@ -464,8 +413,9 @@ class TaskService {
   ): TaskPermissionsDto {
     const isCreator = task.userId.toString() === currentUserId;
     const isAdmin = role === "ADMIN";
-    const assignedToUser = this.toTaskUser(task.assignedToUserId);
-    const isAssignee = assignedToUser?.id === currentUserId;
+    const isAssignee = (task.subtasks ?? []).some(
+      (st) => st.assignedToUserId?.toString() === currentUserId,
+    );
 
     return {
       canEdit: isAdmin || isCreator,
@@ -534,6 +484,8 @@ class TaskService {
       status: subtask.status,
       completed: subtask.completed,
       completedAt: subtask.completedAt ?? null,
+      assignedToUserId: subtask.assignedToUserId?.toString() ?? null,
+      assignedToUser: this.toTaskUser(subtask.assignedToUserId),
     }));
   }
 
@@ -581,6 +533,7 @@ class TaskService {
       status,
       completed,
       completedAt,
+      assignedToUserId: this.normalizeNullableId(subtask.assignedToUserId),
     };
   }
 

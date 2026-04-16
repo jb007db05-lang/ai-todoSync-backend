@@ -16,13 +16,20 @@ import type { AuthResult, AuthenticatedRequest } from "../types/auth.js";
 class AuthController {
   public register = async (req: Request, res: Response): Promise<void> => {
     try {
-      const { email, password } = req.body as {
+      const { email, password, firstName, lastName } = req.body as {
         email?: string;
         password?: string;
+        firstName?: string;
+        lastName?: string;
       };
+
+      const nameParts = [firstName, lastName].filter(Boolean);
       const payload: CreateUserPayload = {
         email: email ?? "",
         password: password ?? "",
+        firstName,
+        lastName,
+        name: nameParts.length > 0 ? nameParts.join(" ") : null,
       };
       const authResult = await authService.register(
         payload,
@@ -376,6 +383,37 @@ class AuthController {
       res.status(200).json({
         message: "Sync API key regenerated",
         data: { syncApiKey },
+      });
+    } catch (error) {
+      this.respondWithError(res, error);
+    }
+  };
+
+  public updateProfile = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const user = req.user;
+
+      if (user == null) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+
+      const { firstName, lastName } = req.body as {
+        firstName?: string;
+        lastName?: string;
+      };
+
+      const profile = await authService.updateProfile(user._id.toString(), {
+        firstName,
+        lastName,
+      });
+
+      res.status(200).json({
+        message: "Profile updated successfully",
+        data: { user: profile },
       });
     } catch (error) {
       this.respondWithError(res, error);

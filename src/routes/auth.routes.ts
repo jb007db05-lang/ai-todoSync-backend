@@ -69,6 +69,7 @@ class AuthRoutes implements Routes {
       authMiddleware,
       authController.regenerateSyncKey,
     );
+    this.router.patch("/profile", authMiddleware, authController.updateProfile);
   }
 }
 
