@@ -15,7 +15,6 @@ export interface CreateTaskPayload {
   source?: string;
   projectId?: string | null;
   epicId?: string | null;
-  assignedToUserId?: string | null;
   subtasks?: ISubtask[];
 }
 
@@ -27,12 +26,11 @@ export interface UpdateTaskPayload {
   status?: TaskStatus;
   projectId?: string | null;
   epicId?: string | null;
-  assignedToUserId?: string | null;
   subtasks?: ISubtask[];
 }
 
-const taskAssigneePopulation = {
-  path: "assignedToUserId",
+const subtaskAssigneePopulation = {
+  path: "subtasks.assignedToUserId",
   select: "email name",
 };
 
@@ -40,7 +38,7 @@ export const createTask = async (
   payload: CreateTaskPayload,
 ): Promise<TaskDocumentWithAssignee> =>
   TaskModel.create(payload).then((task) =>
-    task.populate(taskAssigneePopulation),
+    task.populate(subtaskAssigneePopulation),
   );
 
 export const getTasksByUser = async (
@@ -50,7 +48,7 @@ export const getTasksByUser = async (
   TaskModel.find({
     $or: [{ userId }, { projectId: { $in: projectIds } }],
   })
-    .populate(taskAssigneePopulation)
+    .populate(subtaskAssigneePopulation)
     .sort({ date: 1, _id: 1 })
     .exec();
 
@@ -61,7 +59,7 @@ export const updateTask = async (
   TaskModel.findByIdAndUpdate(taskId, updates, {
     new: true,
   })
-    .populate(taskAssigneePopulation)
+    .populate(subtaskAssigneePopulation)
     .exec();
 
 export const getTaskByIdAndUser = async (
@@ -73,13 +71,13 @@ export const getTaskByIdAndUser = async (
     _id: taskId,
     $or: [{ userId }, { projectId: { $in: projectIds } }],
   })
-    .populate(taskAssigneePopulation)
+    .populate(subtaskAssigneePopulation)
     .exec();
 
 export const getTaskById = async (
   taskId: string,
 ): Promise<TaskDocumentWithAssignee | null> =>
-  TaskModel.findById(taskId).populate(taskAssigneePopulation).exec();
+  TaskModel.findById(taskId).populate(subtaskAssigneePopulation).exec();
 
 export const deleteTask = async (taskId: string): Promise<boolean> => {
   const result = await TaskModel.deleteOne({ _id: taskId }).exec();
@@ -95,7 +93,7 @@ export const getTasksByDate = async (
     date,
     $or: [{ userId }, { projectId: { $in: projectIds } }],
   })
-    .populate(taskAssigneePopulation)
+    .populate(subtaskAssigneePopulation)
     .sort({ status: 1, _id: 1 })
     .exec();
 

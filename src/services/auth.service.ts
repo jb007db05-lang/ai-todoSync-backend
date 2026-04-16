@@ -245,6 +245,29 @@ class AuthService {
     return syncApiKey;
   }
 
+  public async updateProfile(
+    userId: string,
+    data: { firstName?: string; lastName?: string },
+  ): Promise<AuthProfile> {
+    const user = await findUserById(userId);
+
+    if (user == null) {
+      throw new HttpError(404, "User not found");
+    }
+
+    if (data.firstName !== undefined) user.firstName = data.firstName;
+    if (data.lastName !== undefined) user.lastName = data.lastName;
+
+    // Compute display name
+    const parts = [user.firstName, user.lastName].filter(Boolean);
+    if (parts.length > 0) {
+      user.name = parts.join(" ");
+    }
+
+    await user.save();
+    return this.buildProfile(user);
+  }
+
   public async createCompanionAccessKey(
     userId: string,
     input: CreateCompanionKeyInput,
@@ -753,6 +776,8 @@ class AuthService {
       email: user.email,
       syncApiKey: user.syncApiKey,
       name: user.name ?? null,
+      firstName: user.firstName ?? null,
+      lastName: user.lastName ?? null,
       authProvider: user.authProvider,
     };
   }

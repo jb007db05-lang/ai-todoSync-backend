@@ -1,15 +1,17 @@
-import bcrypt from 'bcryptjs';
-import { randomBytes } from 'crypto';
-import type { Document } from 'mongoose';
-import { Schema, model } from 'mongoose';
+import bcrypt from "bcryptjs";
+import { randomBytes } from "crypto";
+import type { Document } from "mongoose";
+import { Schema, model } from "mongoose";
 
 export interface IUser {
   email: string;
   password: string | null;
   syncApiKey: string;
-  authProvider: 'local' | 'google';
+  authProvider: "local" | "google";
   googleId?: string | null;
   name?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -19,7 +21,7 @@ export interface IUserDocument extends IUser, Document {
   regenerateSyncApiKey(): string;
 }
 
-const generateSyncApiKey = () => randomBytes(32).toString('hex');
+const generateSyncApiKey = () => randomBytes(32).toString("hex");
 
 const userSchema = new Schema<IUserDocument>(
   {
@@ -28,38 +30,48 @@ const userSchema = new Schema<IUserDocument>(
       required: true,
       unique: true,
       lowercase: true,
-      trim: true
+      trim: true,
     },
     password: {
       type: String,
-      default: null
+      default: null,
     },
     syncApiKey: {
       type: String,
       required: true,
-      default: generateSyncApiKey
+      default: generateSyncApiKey,
     },
     authProvider: {
       type: String,
-      enum: ['local', 'google'],
+      enum: ["local", "google"],
       required: true,
-      default: 'local'
+      default: "local",
     },
     googleId: {
       type: String,
-      default: null
+      default: null,
     },
     name: {
       type: String,
       trim: true,
-      default: null
-    }
+      default: null,
+    },
+    firstName: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    lastName: {
+      type: String,
+      trim: true,
+      default: null,
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-userSchema.pre<IUserDocument>('save', async function () {
-  if (!this.isModified('password') || this.password == null) {
+userSchema.pre<IUserDocument>("save", async function () {
+  if (!this.isModified("password") || this.password == null) {
     return;
   }
 
@@ -80,6 +92,6 @@ userSchema.methods.regenerateSyncApiKey = function () {
   return this.syncApiKey;
 };
 
-const UserModel = model<IUserDocument>('User', userSchema);
+const UserModel = model<IUserDocument>("User", userSchema);
 
 export default UserModel;

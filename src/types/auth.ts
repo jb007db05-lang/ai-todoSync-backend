@@ -14,6 +14,8 @@ export interface AuthProfile {
   email: string;
   syncApiKey: string;
   name: string | null;
+  firstName: string | null;
+  lastName: string | null;
   authProvider: "local" | "google";
 }
 
