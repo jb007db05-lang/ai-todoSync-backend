@@ -41,7 +41,8 @@ class ChatController {
   ): Promise<void> => {
     try {
       const user = req.user;
-      const projectId = req.projectId;
+      const projectId =
+        req.params.projectId || req.projectAccess?.project._id.toString();
 
       if (user == null) {
         res.status(401).json({ error: "Authentication required" });
@@ -60,7 +61,7 @@ class ChatController {
       };
 
       const result = await chatService.getMessages(
-        projectId,
+        projectId as string,
         paginationOptions,
       );
 
@@ -83,7 +84,8 @@ class ChatController {
   ): Promise<void> => {
     try {
       const user = req.user;
-      const projectId = req.projectId;
+      const projectId =
+        req.params.projectId || req.projectAccess?.project._id.toString();
       const { content, replyToId, type, metadata } =
         req.body as SendMessageRequestBody;
 
@@ -103,7 +105,7 @@ class ChatController {
       }
 
       const message = await chatService.sendMessage(
-        projectId,
+        projectId as string,
         user._id.toString(),
         content,
         {
@@ -132,7 +134,9 @@ class ChatController {
   ): Promise<void> => {
     try {
       const user = req.user;
-      const projectId = req.projectId;
+      const projectId =
+        (req.params.projectId as string) ||
+        req.projectAccess?.project._id.toString();
       const messageId = req.params.messageId as string;
       const { content } = req.body as EditMessageRequestBody;
 
@@ -182,9 +186,11 @@ class ChatController {
   ): Promise<void> => {
     try {
       const user = req.user;
-      const projectId = req.projectId;
+      const projectId =
+        req.params.projectId || req.projectAccess?.project._id.toString();
       const messageId = req.params.messageId as string;
-      const isAdmin = req.projectRole === "ADMIN";
+      const isAdmin =
+        req.projectRole === "ADMIN" || req.projectAccess?.role === "ADMIN";
 
       if (user == null) {
         res.status(401).json({ error: "Authentication required" });
@@ -202,7 +208,7 @@ class ChatController {
       }
 
       await chatService.deleteMessage(
-        projectId,
+        projectId as string,
         messageId,
         user._id.toString(),
         isAdmin,
@@ -227,7 +233,8 @@ class ChatController {
   ): Promise<void> => {
     try {
       const user = req.user;
-      const projectId = req.projectId;
+      const projectId =
+        req.params.projectId || req.projectAccess?.project._id.toString();
       const messageId = req.params.messageId as string;
 
       if (user == null) {
@@ -251,7 +258,7 @@ class ChatController {
       };
 
       const result = await chatService.getThreadReplies(
-        projectId,
+        projectId as string,
         messageId,
         paginationOptions,
       );
@@ -275,7 +282,9 @@ class ChatController {
   ): Promise<void> => {
     try {
       const user = req.user;
-      const projectId = req.projectId;
+      const projectId =
+        (req.params.projectId as string) ||
+        req.projectAccess?.project._id.toString();
       const messageId = req.params.messageId as string;
       const { emoji } = req.body as AddReactionRequestBody;
 
@@ -325,7 +334,9 @@ class ChatController {
   ): Promise<void> => {
     try {
       const user = req.user;
-      const projectId = req.projectId;
+      const projectId =
+        (req.params.projectId as string) ||
+        req.projectAccess?.project._id.toString();
       const messageId = req.params.messageId as string;
       const emoji = req.query.emoji as string;
 
@@ -375,7 +386,8 @@ class ChatController {
   ): Promise<void> => {
     try {
       const user = req.user;
-      const projectId = req.projectId;
+      const projectId =
+        req.params.projectId || req.projectAccess?.project._id.toString();
       const { messageIds } = req.body as { messageIds?: string[] };
 
       if (user == null) {
@@ -389,7 +401,7 @@ class ChatController {
       }
 
       await chatService.markMessagesAsRead(
-        projectId,
+        projectId as string,
         user._id.toString(),
         messageIds,
       );
@@ -413,7 +425,8 @@ class ChatController {
   ): Promise<void> => {
     try {
       const user = req.user;
-      const projectId = req.projectId;
+      const projectId =
+        req.params.projectId || req.projectAccess?.project._id.toString();
 
       if (user == null) {
         res.status(401).json({ error: "Authentication required" });
@@ -426,7 +439,7 @@ class ChatController {
       }
 
       const count = await chatService.getUnreadCount(
-        projectId,
+        projectId as string,
         user._id.toString(),
       );
 
@@ -449,7 +462,8 @@ class ChatController {
   ): Promise<void> => {
     try {
       const user = req.user;
-      const projectId = req.projectId;
+      const projectId =
+        req.params.projectId || req.projectAccess?.project._id.toString();
       const { q } = req.query as SearchMessagesQuery;
 
       if (user == null) {
@@ -467,7 +481,7 @@ class ChatController {
       };
 
       const result = await chatService.searchMessages(
-        projectId,
+        projectId as string,
         q || "",
         paginationOptions,
       );

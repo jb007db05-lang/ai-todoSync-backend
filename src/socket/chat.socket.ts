@@ -199,11 +199,15 @@ class ChatSocketServer {
    */
   private setupEventHandlers(socket: AuthenticatedSocket): void {
     // Project room management
-    socket.on(ChatSocketEvents.JOIN_PROJECT, (payload: JoinProjectPayload) =>
-      this.handleJoinProject(socket, payload),
+    socket.on(
+      ChatSocketEvents.JOIN_PROJECT,
+      (payload: JoinProjectPayload, callback?: (resp: any) => void) =>
+        this.handleJoinProject(socket, payload, callback),
     );
-    socket.on(ChatSocketEvents.LEAVE_PROJECT, () =>
-      this.handleLeaveProject(socket),
+    socket.on(
+      ChatSocketEvents.LEAVE_PROJECT,
+      (callback?: (resp: any) => void) =>
+        this.handleLeaveProject(socket, callback),
     );
 
     // Message events
@@ -253,6 +257,7 @@ class ChatSocketServer {
   private async handleJoinProject(
     socket: AuthenticatedSocket,
     payload: JoinProjectPayload,
+    callback?: (resp: any) => void,
   ): Promise<void> {
     try {
       const { projectId } = payload;
@@ -287,21 +292,35 @@ class ChatSocketServer {
       // Get unread count
       const unreadCount = await chatService.getUnreadCount(projectId, userId);
 
-      socket.emit(ChatSocketEvents.JOIN_PROJECT, {
+      const response = {
         success: true,
         projectId,
         unreadCount,
-      });
+      };
+
+      if (callback) {
+        callback(response);
+      } else {
+        socket.emit(ChatSocketEvents.JOIN_PROJECT, response);
+      }
     } catch (error) {
       logger.error("Error joining project", error as Error);
-      socket.emit("error", { message: "Failed to join project" });
+      const errorResp = { success: false, message: "Failed to join project" };
+      if (callback) {
+        callback(errorResp);
+      } else {
+        socket.emit("error", errorResp);
+      }
     }
   }
 
   /**
    * Handle leaving a project room
    */
-  private handleLeaveProject(socket: AuthenticatedSocket): void {
+  private handleLeaveProject(
+    socket: AuthenticatedSocket,
+    callback?: (resp: any) => void,
+  ): void {
     if (socket.currentProjectId) {
       const userId = socket.user!._id.toString();
 
@@ -314,6 +333,10 @@ class ChatSocketServer {
         });
 
       socket.currentProjectId = undefined;
+    }
+
+    if (callback) {
+      callback({ success: true });
     }
   }
 
