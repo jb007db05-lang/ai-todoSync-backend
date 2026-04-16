@@ -2,6 +2,10 @@ import { Router } from "express";
 
 import { Routes } from "../interfaces/routes.interface.js";
 import authMiddleware from "../middleware/auth.middleware.js";
+import {
+  isProjectMember,
+  requireProjectRole,
+} from "../middleware/project-access.middleware.js";
 import projectController from "../controllers/project.controller.js";
 
 class ProjectRoutes implements Routes {
@@ -17,8 +21,31 @@ class ProjectRoutes implements Routes {
     this.router.post("/", projectController.createProject);
     this.router.get("/", projectController.getProjects);
     this.router.post("/bulk-delete", projectController.bulkDeleteProjects);
-    this.router.patch("/:id", projectController.updateProject);
-    this.router.delete("/:id", projectController.deleteProject);
+    this.router.get(
+      "/:projectId/members",
+      isProjectMember,
+      projectController.getMembers,
+    );
+    this.router.post(
+      "/:projectId/members",
+      requireProjectRole("ADMIN"),
+      projectController.addMember,
+    );
+    this.router.delete(
+      "/:projectId/members/:userId",
+      requireProjectRole("ADMIN"),
+      projectController.removeMember,
+    );
+    this.router.patch(
+      "/:id",
+      requireProjectRole("ADMIN"),
+      projectController.updateProject,
+    );
+    this.router.delete(
+      "/:id",
+      requireProjectRole("ADMIN"),
+      projectController.deleteProject,
+    );
   }
 }
 

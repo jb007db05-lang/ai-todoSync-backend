@@ -8,7 +8,7 @@ const checks = [
 
 for (const check of checks) {
   try {
-    console.log(`🔍 Running: ${check}`);
+    process.stdout.write(`🔍 Running: ${check}` + "\n");
     execSync(check, { stdio: "inherit" });
   } catch {
     console.error(`❌ Failed: ${check}`);
@@ -16,4 +16,4 @@ for (const check of checks) {
   }
 }
 
-console.log("✅ All checks passed");
+process.stdout.write("✅ All checks passed" + "\n");

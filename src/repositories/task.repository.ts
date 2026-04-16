@@ -1,5 +1,9 @@
+import type { ClientSession } from "mongoose";
+
 import TaskModel, { ISubtask, ITaskDocument } from "../models/task.model.js";
 import type { TaskStatus } from "../models/task.model.js";
+
+export type TaskDocumentWithAssignee = ITaskDocument;
 
 export interface CreateTaskPayload {
   userId: string;
@@ -11,6 +15,7 @@ export interface CreateTaskPayload {
   source?: string;
   projectId?: string | null;
   epicId?: string | null;
+  assignedToUserId?: string | null;
   subtasks?: ISubtask[];
 }
 
@@ -22,46 +27,77 @@ export interface UpdateTaskPayload {
   status?: TaskStatus;
   projectId?: string | null;
   epicId?: string | null;
+  assignedToUserId?: string | null;
   subtasks?: ISubtask[];
 }
 
+const taskAssigneePopulation = {
+  path: "assignedToUserId",
+  select: "email name",
+};
+
 export const createTask = async (
   payload: CreateTaskPayload,
-): Promise<ITaskDocument> => TaskModel.create(payload);
+): Promise<TaskDocumentWithAssignee> =>
+  TaskModel.create(payload).then((task) =>
+    task.populate(taskAssigneePopulation),
+  );
 
 export const getTasksByUser = async (
   userId: string,
-): Promise<ITaskDocument[]> =>
-  TaskModel.find({ userId }).sort({ date: 1, _id: 1 }).exec();
+  projectIds: string[],
+): Promise<TaskDocumentWithAssignee[]> =>
+  TaskModel.find({
+    $or: [{ userId }, { projectId: { $in: projectIds } }],
+  })
+    .populate(taskAssigneePopulation)
+    .sort({ date: 1, _id: 1 })
+    .exec();
 
 export const updateTask = async (
   taskId: string,
-  userId: string,
   updates: UpdateTaskPayload,
-): Promise<ITaskDocument | null> =>
-  TaskModel.findOneAndUpdate({ _id: taskId, userId }, updates, {
+): Promise<TaskDocumentWithAssignee | null> =>
+  TaskModel.findByIdAndUpdate(taskId, updates, {
     new: true,
-  }).exec();
+  })
+    .populate(taskAssigneePopulation)
+    .exec();
 
 export const getTaskByIdAndUser = async (
   taskId: string,
   userId: string,
-): Promise<ITaskDocument | null> =>
-  TaskModel.findOne({ _id: taskId, userId }).exec();
+  projectIds: string[],
+): Promise<TaskDocumentWithAssignee | null> =>
+  TaskModel.findOne({
+    _id: taskId,
+    $or: [{ userId }, { projectId: { $in: projectIds } }],
+  })
+    .populate(taskAssigneePopulation)
+    .exec();
 
-export const deleteTask = async (
+export const getTaskById = async (
   taskId: string,
-  userId: string,
-): Promise<boolean> => {
-  const result = await TaskModel.deleteOne({ _id: taskId, userId }).exec();
+): Promise<TaskDocumentWithAssignee | null> =>
+  TaskModel.findById(taskId).populate(taskAssigneePopulation).exec();
+
+export const deleteTask = async (taskId: string): Promise<boolean> => {
+  const result = await TaskModel.deleteOne({ _id: taskId }).exec();
   return result.deletedCount !== undefined && result.deletedCount > 0;
 };
 
 export const getTasksByDate = async (
   userId: string,
+  projectIds: string[],
   date: string,
-): Promise<ITaskDocument[]> =>
-  TaskModel.find({ userId, date }).sort({ status: 1, _id: 1 }).exec();
+): Promise<TaskDocumentWithAssignee[]> =>
+  TaskModel.find({
+    date,
+    $or: [{ userId }, { projectId: { $in: projectIds } }],
+  })
+    .populate(taskAssigneePopulation)
+    .sort({ status: 1, _id: 1 })
+    .exec();
 
 export const getPendingTasksByDate = async (
   date: string,
@@ -76,5 +112,17 @@ export const markTasksRolledOver = async (taskIds: string[]): Promise<void> => {
   await TaskModel.updateMany(
     { _id: { $in: taskIds } },
     { status: "rolled_over", rolledOver: true },
+  ).exec();
+};
+
+export const clearTaskAssignmentsForUser = async (
+  projectId: string,
+  userId: string,
+  session?: ClientSession,
+): Promise<void> => {
+  await TaskModel.updateMany(
+    { projectId, assignedToUserId: userId },
+    { $set: { assignedToUserId: null } },
+    { session },
   ).exec();
 };

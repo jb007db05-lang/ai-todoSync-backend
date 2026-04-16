@@ -4,20 +4,30 @@ import type {
 } from "../repositories/task.repository.js";
 import {
   createTask,
-  getTasksByUser,
-  getTasksByDate,
-  getTaskByIdAndUser,
-  updateTask,
   deleteTask,
+  getTaskById,
+  getTaskByIdAndUser,
+  getTasksByDate,
+  getTasksByUser,
+  updateTask,
 } from "../repositories/task.repository.js";
+import type { TaskDocumentWithAssignee } from "../repositories/task.repository.js";
 import type {
   ISubtask,
-  ITaskDocument,
   TaskStatus,
   TaskWorkflowStatus,
 } from "../models/task.model.js";
+import type { ProjectRole } from "../models/project-member.model.js";
+import type { IUserDocument } from "../models/user.model.js";
+import { getProjectMembershipsByUser } from "../repositories/project-member.repository.js";
 import projectService from "./project.service.js";
 import epicService from "./epic.service.js";
+
+interface TaskUserDto {
+  id: string;
+  email: string;
+  name: string | null;
+}
 
 interface SubtaskDto {
   id: string;
@@ -26,6 +36,13 @@ interface SubtaskDto {
   status: TaskWorkflowStatus;
   completed: boolean;
   completedAt: Date | null;
+}
+
+interface TaskPermissionsDto {
+  canEdit: boolean;
+  canDelete: boolean;
+  canAssign: boolean;
+  canUpdate: boolean;
 }
 
 interface TaskDto {
@@ -41,7 +58,10 @@ interface TaskDto {
   source?: string;
   projectId: string | null;
   epicId: string | null;
+  assignedToUserId: string | null;
+  assignedToUser: TaskUserDto | null;
   subtasks: SubtaskDto[];
+  permissions: TaskPermissionsDto;
 }
 
 interface TaskSummary {
@@ -52,6 +72,10 @@ interface TaskSummary {
   completed: number;
   rolledOver: number;
   date?: string;
+}
+
+interface AssignTaskPayload {
+  userId?: unknown;
 }
 
 class HttpError extends Error {
@@ -77,11 +101,13 @@ class TaskService {
 
     payload.projectId = this.normalizeNullableId(payload.projectId);
     payload.epicId = this.normalizeNullableId(payload.epicId);
+    payload.assignedToUserId = null;
 
     if (payload.projectId) {
-      await projectService.assertProjectOwnership(
+      await projectService.assertProjectRole(
         payload.userId,
         payload.projectId,
+        "ADMIN",
       );
     }
 
@@ -108,15 +134,26 @@ class TaskService {
     );
 
     const task = await createTask(payload);
-    return this.toDto(task);
+    return this.toDto(
+      payload.userId,
+      task,
+      payload.projectId
+        ? new Map([[payload.projectId, "ADMIN" as const]])
+        : new Map(),
+    );
   }
 
   public async fetchTasks(userId: string, date?: unknown): Promise<TaskDto[]> {
     const normalizedDate = this.normalizeDate(date);
+    const memberships = await getProjectMembershipsByUser(userId);
+    const projectIds = memberships.map((membership) =>
+      membership.projectId.toString(),
+    );
+    const roleMap = this.buildRoleMap(memberships);
     const tasks = normalizedDate
-      ? await getTasksByDate(userId, normalizedDate)
-      : await getTasksByUser(userId);
-    return tasks.map((task) => this.toDto(task));
+      ? await getTasksByDate(userId, projectIds, normalizedDate)
+      : await getTasksByUser(userId, projectIds);
+    return tasks.map((task) => this.toDto(userId, task, roleMap));
   }
 
   public async updateTask(
@@ -124,10 +161,54 @@ class TaskService {
     userId: string,
     updates: UpdateTaskPayload,
   ): Promise<TaskDto> {
-    const currentTask = await getTaskByIdAndUser(taskId, userId);
+    const memberships = await getProjectMembershipsByUser(userId);
+    const roleMap = this.buildRoleMap(memberships);
+    const currentTask = await getTaskByIdAndUser(
+      taskId,
+      userId,
+      Array.from(roleMap.keys()),
+    );
 
     if (currentTask == null) {
       throw new HttpError(404, "Task not found");
+    }
+
+    const currentRole = currentTask.projectId
+      ? (roleMap.get(currentTask.projectId.toString()) ?? null)
+      : null;
+    const permission = this.getTaskPermission(userId, currentTask, currentRole);
+
+    if (permission.canUpdate === false) {
+      throw new HttpError(403, "Task update not allowed");
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, "assignedToUserId")) {
+      throw new HttpError(
+        400,
+        "Use the dedicated task assignment endpoint to change assignees",
+      );
+    }
+
+    const hasFullEditAccess = permission.canEdit;
+
+    if (!hasFullEditAccess) {
+      const disallowedFields = [
+        "title",
+        "description",
+        "date",
+        "projectId",
+        "epicId",
+      ];
+      const attemptedRestrictedField = disallowedFields.some((field) =>
+        Object.prototype.hasOwnProperty.call(updates, field),
+      );
+
+      if (attemptedRestrictedField) {
+        throw new HttpError(
+          403,
+          "Assigned members can only update status, notes, and subtasks",
+        );
+      }
     }
 
     if (Object.prototype.hasOwnProperty.call(updates, "projectId")) {
@@ -142,7 +223,11 @@ class TaskService {
       Object.prototype.hasOwnProperty.call(updates, "projectId") &&
       updates.projectId
     ) {
-      await projectService.assertProjectOwnership(userId, updates.projectId);
+      await projectService.assertProjectRole(
+        userId,
+        updates.projectId,
+        "ADMIN",
+      );
     }
 
     const nextProjectId = Object.prototype.hasOwnProperty.call(
@@ -192,17 +277,88 @@ class TaskService {
       );
     }
 
-    const updated = await updateTask(taskId, userId, updates);
+    const updated = await updateTask(taskId, updates);
 
     if (updated == null) {
       throw new HttpError(404, "Task not found");
     }
 
-    return this.toDto(updated);
+    return this.toDto(userId, updated, roleMap);
+  }
+
+  public async assignTask(
+    taskId: string,
+    actorUserId: string,
+    payload: AssignTaskPayload,
+  ): Promise<TaskDto> {
+    const task = await getTaskById(taskId);
+
+    if (task == null) {
+      throw new HttpError(404, "Task not found");
+    }
+
+    if (task.projectId == null) {
+      throw new HttpError(400, "Task assignment requires a project task");
+    }
+
+    const projectId = task.projectId.toString();
+    const access = await projectService.assertProjectMembership(
+      actorUserId,
+      projectId,
+    );
+    const isCreator = task.userId.toString() === actorUserId;
+
+    if (access.role !== "ADMIN" && !isCreator) {
+      throw new HttpError(
+        403,
+        "Only project admins or the task creator can assign tasks",
+      );
+    }
+
+    const assignedToUserId = this.normalizeNullableId(payload.userId);
+
+    if (assignedToUserId != null) {
+      await projectService.assertProjectMembership(assignedToUserId, projectId);
+    }
+
+    const updated = await updateTask(taskId, {
+      assignedToUserId,
+    });
+
+    if (updated == null) {
+      throw new HttpError(404, "Task not found");
+    }
+
+    return this.toDto(
+      actorUserId,
+      updated,
+      new Map([[projectId, access.role]]),
+    );
   }
 
   public async deleteTask(taskId: string, userId: string): Promise<void> {
-    const deleted = await deleteTask(taskId, userId);
+    const memberships = await getProjectMembershipsByUser(userId);
+    const roleMap = this.buildRoleMap(memberships);
+    const task = await getTaskByIdAndUser(
+      taskId,
+      userId,
+      Array.from(roleMap.keys()),
+    );
+
+    if (task == null) {
+      throw new HttpError(404, "Task not found");
+    }
+
+    const currentRole = task.projectId
+      ? (roleMap.get(task.projectId.toString()) ?? null)
+      : null;
+    const permission = this.getTaskPermission(userId, task, currentRole);
+
+    if (permission.canDelete === false) {
+      throw new HttpError(403, "Task deletion not allowed");
+    }
+
+    const deleted = await deleteTask(taskId);
 
     if (deleted === false) {
       throw new HttpError(404, "Task not found");
@@ -213,10 +369,7 @@ class TaskService {
     userId: string,
     date?: unknown,
   ): Promise<TaskSummary> {
-    const normalizedDate = this.normalizeDate(date);
-    const tasks = normalizedDate
-      ? await getTasksByDate(userId, normalizedDate)
-      : await getTasksByUser(userId);
+    const tasks = await this.fetchTasks(userId, date);
     const total = tasks.length;
     const pending = tasks.filter((task) => task.status === "pending").length;
     const inProgress = tasks.filter(
@@ -237,11 +390,24 @@ class TaskService {
       inReview,
       completed,
       rolledOver,
-      date: normalizedDate,
+      date: this.normalizeDate(date),
     };
   }
 
-  private toDto(task: ITaskDocument): TaskDto {
+  private toDto(
+    currentUserId: string,
+    task: TaskDocumentWithAssignee,
+    roleMap: Map<string, ProjectRole>,
+  ): TaskDto {
+    const projectId = task.projectId?.toString() ?? null;
+    const currentRole = projectId ? (roleMap.get(projectId) ?? null) : null;
+    const permissions = this.getTaskPermission(
+      currentUserId,
+      task,
+      currentRole,
+    );
+    const assignedUser = this.toTaskUser(task.assignedToUserId);
+
     return {
       id: task._id.toString(),
       userId: task.userId.toString(),
@@ -253,9 +419,59 @@ class TaskService {
       rolledOver: task.rolledOver,
       rolloverCount: task.rolloverCount,
       source: task.source,
-      projectId: task.projectId?.toString() ?? null,
+      projectId,
       epicId: task.epicId?.toString() ?? null,
+      assignedToUserId: assignedUser?.id ?? null,
+      assignedToUser: assignedUser,
       subtasks: this.toSubtaskDtos(task.subtasks),
+      permissions,
+    };
+  }
+
+  private toTaskUser(value: unknown): TaskUserDto | null {
+    if (value == null || typeof value !== "object") {
+      return null;
+    }
+
+    const user = value as IUserDocument;
+
+    if (user._id == null || user.email == null) {
+      return null;
+    }
+
+    return {
+      id: user._id.toString(),
+      email: user.email,
+      name: user.name ?? null,
+    };
+  }
+
+  private buildRoleMap(
+    memberships: Awaited<ReturnType<typeof getProjectMembershipsByUser>>,
+  ): Map<string, ProjectRole> {
+    return new Map(
+      memberships.map((membership) => [
+        membership.projectId.toString(),
+        membership.role,
+      ]),
+    );
+  }
+
+  private getTaskPermission(
+    currentUserId: string,
+    task: TaskDocumentWithAssignee,
+    role: ProjectRole | null,
+  ): TaskPermissionsDto {
+    const isCreator = task.userId.toString() === currentUserId;
+    const isAdmin = role === "ADMIN";
+    const assignedToUser = this.toTaskUser(task.assignedToUserId);
+    const isAssignee = assignedToUser?.id === currentUserId;
+
+    return {
+      canEdit: isAdmin || isCreator,
+      canDelete: isAdmin || isCreator,
+      canAssign: task.projectId != null && (isAdmin || isCreator),
+      canUpdate: isAdmin || isCreator || isAssignee,
     };
   }
 
@@ -272,7 +488,7 @@ class TaskService {
       throw new HttpError(400, "Epic assignment requires a project");
     }
 
-    await projectService.assertProjectOwnership(userId, projectId);
+    await projectService.assertProjectMembership(userId, projectId);
     const epic = await epicService.assertEpicInProject(projectId, epicId);
     return epic.id;
   }

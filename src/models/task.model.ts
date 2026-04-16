@@ -29,6 +29,7 @@ export interface ITask {
   source?: string;
   projectId?: Types.ObjectId | string | null;
   epicId?: Types.ObjectId | string | null;
+  assignedToUserId?: Types.ObjectId | string | null;
   subtasks?: ISubtask[];
   createdAt?: Date;
   updatedAt?: Date;
@@ -118,6 +119,11 @@ const taskSchema = new Schema<ITaskDocument>(
     epicId: {
       type: Schema.Types.ObjectId,
       ref: "Epic",
+      default: null,
+    },
+    assignedToUserId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
       default: null,
     },
     subtasks: {

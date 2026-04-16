@@ -5,6 +5,8 @@ import type {
   IDeviceSessionDocument,
   SessionDeviceKind,
 } from "../models/device-session.model.js";
+import type { IProjectDocument } from "../models/project.model.js";
+import type { ProjectRole } from "../models/project-member.model.js";
 import type { IUserDocument } from "../models/user.model.js";
 
 export interface AuthProfile {
@@ -40,4 +42,8 @@ export interface AuthenticatedRequest extends Request {
   auth?: SessionDeviceContext;
   deviceSession?: IDeviceSessionDocument | null;
   companionDevice?: ICompanionDeviceDocument | null;
+  projectAccess?: {
+    project: IProjectDocument;
+    role: ProjectRole;
+  };
 }

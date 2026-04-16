@@ -65,7 +65,7 @@ class NoteService {
     userId: string,
     projectId: string,
   ): Promise<NoteDto[]> {
-    await projectService.assertProjectOwnership(userId, projectId);
+    await projectService.assertProjectMembership(userId, projectId);
     const notes = await getNotesByProject(projectId);
     return notes.map((note) => this.toDto(note));
   }
@@ -96,7 +96,7 @@ class NoteService {
     projectId: string,
     epicId: string,
   ): Promise<NoteDto[]> {
-    await projectService.assertProjectOwnership(userId, projectId);
+    await projectService.assertProjectMembership(userId, projectId);
     await epicService.assertEpicInProject(projectId, epicId);
     const notes = await getNotesByEpic(projectId, epicId);
     return notes.map((note) => this.toDto(note));
@@ -112,7 +112,7 @@ class NoteService {
     noteId: string,
     payload: NotePayload,
   ): Promise<NoteDto> {
-    const existingNote = await this.getAccessibleNote(userId, noteId);
+    const existingNote = await this.getAccessibleNote(userId, noteId, true);
     const updates: UpdateNoteRepositoryPayload = {};
     const appendContent = payload.appendContent === true;
 
@@ -137,7 +137,7 @@ class NoteService {
   }
 
   public async deleteNote(userId: string, noteId: string): Promise<string> {
-    const note = await this.getAccessibleNote(userId, noteId);
+    const note = await this.getAccessibleNote(userId, noteId, true);
     const deleted = await deleteNote(note._id.toString());
 
     if (deleted == null) {
@@ -150,6 +150,7 @@ class NoteService {
   private async getAccessibleNote(
     userId: string,
     noteId: string,
+    requireAdmin = false,
   ): Promise<INoteDocument> {
     const note = await getNoteById(noteId);
 
@@ -157,10 +158,17 @@ class NoteService {
       throw new HttpError(404, "Note not found");
     }
 
-    await projectService.assertProjectOwnership(
-      userId,
-      note.projectId.toString(),
-    );
+    if (requireAdmin) {
+      await projectService.assertProjectOwnership(
+        userId,
+        note.projectId.toString(),
+      );
+    } else {
+      await projectService.assertProjectMembership(
+        userId,
+        note.projectId.toString(),
+      );
+    }
     return note;
   }
 

@@ -1,3 +1,4 @@
+import http from "http";
 import express, { Application } from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -8,20 +9,24 @@ import logger from "./lib/logger.js";
 import env from "./config/env.js";
 import { connectDatabase } from "./config/db.config.js";
 import { scheduleRolloverJob } from "./utils/rollover.js";
+import chatSocketServer from "./socket/chat.socket.js";
 
 class App {
   public app: Application;
+  public server: http.Server;
   public port: number;
 
   private databaseConnection?: Promise<void>;
 
   constructor(routes: Routes[]) {
     this.app = express();
+    this.server = http.createServer(this.app);
     this.port = env.PORT || 5000;
 
     this.initializeMiddlewares();
     this.initializeRoutes(routes);
     this.initializeCronJobs();
+    this.initializeSocketIO();
   }
 
   private initializeMiddlewares(): void {
@@ -54,6 +59,10 @@ class App {
     scheduleRolloverJob();
   }
 
+  private initializeSocketIO(): void {
+    chatSocketServer.initialize(this.server);
+  }
+
   private initializeDatabase(): Promise<void> {
     if (!this.databaseConnection) {
       this.databaseConnection = connectDatabase();
@@ -65,8 +74,9 @@ class App {
   public async listen(): Promise<void> {
     try {
       await this.initializeDatabase();
-      this.app.listen(this.port, () => {
+      this.server.listen(this.port, () => {
         logger.info(`Server listening on port ${this.port}`);
+        logger.info(`Socket.IO server ready for connections`);
       });
     } catch (error) {
       logger.error(
