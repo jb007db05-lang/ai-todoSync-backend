@@ -1,6 +1,10 @@
 import type { ClientSession } from "mongoose";
 
-import TaskModel, { ISubtask, ITaskDocument } from "../models/task.model.js";
+import TaskModel, {
+  ISubtask,
+  ITaskDocument,
+  TaskPriority,
+} from "../models/task.model.js";
 import type { TaskStatus } from "../models/task.model.js";
 
 export type TaskDocumentWithAssignee = ITaskDocument;
@@ -12,9 +16,16 @@ export interface CreateTaskPayload {
   note?: string;
   date: string;
   status?: TaskStatus;
+  priority?: TaskPriority;
+  isBlocked?: boolean;
+  blockedByTaskId?: string | null;
+  order?: number;
   source?: string;
   projectId?: string | null;
   epicId?: string | null;
+  assignedTo: string;
+  assignedBy?: string | null;
+  assignedAt?: Date;
   subtasks?: ISubtask[];
 }
 
@@ -24,33 +35,56 @@ export interface UpdateTaskPayload {
   note?: string;
   date?: string;
   status?: TaskStatus;
+  priority?: TaskPriority;
+  isBlocked?: boolean;
+  blockedByTaskId?: string | null;
+  order?: number;
   projectId?: string | null;
   epicId?: string | null;
+  assignedTo?: string;
+  assignedBy?: string | null;
+  assignedAt?: Date;
   subtasks?: ISubtask[];
 }
 
-const subtaskAssigneePopulation = {
-  path: "subtasks.assignedToUserId",
-  select: "email name",
-};
+export interface BulkAssignTasksPayload {
+  taskIds: string[];
+  assignedTo: string;
+}
+
+export const taskPopulateOptions = [
+  { path: "assignedTo", select: "email name firstName lastName" },
+  { path: "assignedBy", select: "email name firstName lastName" },
+  {
+    path: "subtasks.assignedToUserId",
+    select: "email name firstName lastName",
+  },
+  { path: "blockedByTaskId", select: "title status" },
+];
 
 export const createTask = async (
   payload: CreateTaskPayload,
 ): Promise<TaskDocumentWithAssignee> =>
-  TaskModel.create(payload).then((task) =>
-    task.populate(subtaskAssigneePopulation),
-  );
+  TaskModel.create(payload).then((task) => task.populate(taskPopulateOptions));
 
 export const getTasksByUser = async (
   userId: string,
   projectIds: string[],
-): Promise<TaskDocumentWithAssignee[]> =>
-  TaskModel.find({
+  assigneeId?: string,
+): Promise<TaskDocumentWithAssignee[]> => {
+  const filter: any = {
     $or: [{ userId }, { projectId: { $in: projectIds } }],
-  })
-    .populate(subtaskAssigneePopulation)
+  };
+
+  if (assigneeId) {
+    filter.assignedTo = assigneeId;
+  }
+
+  return TaskModel.find(filter)
+    .populate(taskPopulateOptions)
     .sort({ date: 1, _id: 1 })
     .exec();
+};
 
 export const updateTask = async (
   taskId: string,
@@ -59,7 +93,7 @@ export const updateTask = async (
   TaskModel.findByIdAndUpdate(taskId, updates, {
     new: true,
   })
-    .populate(subtaskAssigneePopulation)
+    .populate(taskPopulateOptions)
     .exec();
 
 export const getTaskByIdAndUser = async (
@@ -71,13 +105,13 @@ export const getTaskByIdAndUser = async (
     _id: taskId,
     $or: [{ userId }, { projectId: { $in: projectIds } }],
   })
-    .populate(subtaskAssigneePopulation)
+    .populate(taskPopulateOptions)
     .exec();
 
 export const getTaskById = async (
   taskId: string,
 ): Promise<TaskDocumentWithAssignee | null> =>
-  TaskModel.findById(taskId).populate(subtaskAssigneePopulation).exec();
+  TaskModel.findById(taskId).populate(taskPopulateOptions).exec();
 
 export const deleteTask = async (taskId: string): Promise<boolean> => {
   const result = await TaskModel.deleteOne({ _id: taskId }).exec();
@@ -88,14 +122,22 @@ export const getTasksByDate = async (
   userId: string,
   projectIds: string[],
   date: string,
-): Promise<TaskDocumentWithAssignee[]> =>
-  TaskModel.find({
+  assigneeId?: string,
+): Promise<TaskDocumentWithAssignee[]> => {
+  const filter: any = {
     date,
     $or: [{ userId }, { projectId: { $in: projectIds } }],
-  })
-    .populate(subtaskAssigneePopulation)
+  };
+
+  if (assigneeId) {
+    filter.assignedTo = assigneeId;
+  }
+
+  return TaskModel.find(filter)
+    .populate(taskPopulateOptions)
     .sort({ status: 1, _id: 1 })
     .exec();
+};
 
 export const getPendingTasksByDate = async (
   date: string,

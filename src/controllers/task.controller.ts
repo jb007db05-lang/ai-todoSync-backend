@@ -1,10 +1,11 @@
 import { Request, Response } from "express";
 
 import type { IUserDocument } from "../models/user.model.js";
-import type { ISubtask } from "../models/task.model.js";
+import type { ISubtask, TaskPriority } from "../models/task.model.js";
 import type {
   CreateTaskPayload,
   UpdateTaskPayload,
+  BulkAssignTasksPayload,
 } from "../repositories/task.repository.js";
 import taskService from "../services/task.service.js";
 import activityLogService from "../services/activity-log.service.js";
@@ -17,10 +18,12 @@ interface CreateTaskRequestBody {
   note?: string;
   date?: string;
   status?: CreateTaskPayload["status"];
+  priority?: TaskPriority;
   source?: string;
   projectId?: string | null;
   epicId?: string | null;
   subtasks?: ISubtask[];
+  assignedTo?: string;
 }
 
 interface AssignTaskRequestBody {
@@ -69,10 +72,34 @@ class TaskController {
       const tasks = await taskService.fetchTasks(
         user._id.toString(),
         getDateQuery(req),
+        req.query.assigneeId as string | undefined,
       );
 
       res.status(200).json({
         message: "Task list fetched",
+        data: { tasks },
+      });
+    } catch (error) {
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
+    }
+  };
+
+  public getTasksAssignedToMe = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const user = req.user;
+      if (user == null) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+
+      const tasks = await taskService.getTasksAssignedToMe(user._id.toString());
+
+      res.status(200).json({
+        message: "Assigned tasks list fetched",
         data: { tasks },
       });
     } catch (error) {
@@ -100,9 +127,9 @@ class TaskController {
         date,
         status,
         source,
-        projectId,
         epicId,
         subtasks,
+        assignedTo,
       } = req.body as CreateTaskRequestBody;
       const payload: CreateTaskPayload = {
         userId: user._id.toString(),
@@ -112,9 +139,9 @@ class TaskController {
         date: date ?? "",
         status,
         source,
-        projectId,
         epicId,
         subtasks,
+        assignedTo: assignedTo || user._id.toString(),
       };
       const task = await taskService.createTask(payload);
 
@@ -236,6 +263,149 @@ class TaskController {
 
       res.status(200).json({
         message: "Task assignment updated",
+        data: { task },
+      });
+
+      if (task.projectId) {
+        void activityLogService.logActivity({
+          projectId: task.projectId,
+          entityType: "task",
+          entityId: task.id,
+          entityName: task.title,
+          action: "assigned",
+          userId: user._id.toString(),
+          userName:
+            user.name ||
+            [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+            "Unknown",
+          description: `assigned task "${task.title}" to ${task.assignedTo.name || task.assignedTo.email}`,
+        });
+      }
+    } catch (error) {
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
+    }
+  };
+
+  public reassignTask = this.assignTask;
+
+  public bulkAssignTasks = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const user = req.user;
+      if (user == null) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+
+      const tasks = await taskService.bulkAssignTasks(
+        user._id.toString(),
+        req.body as BulkAssignTasksPayload,
+      );
+
+      res.status(200).json({
+        message: `${tasks.length} tasks assigned successfully`,
+        data: { tasks },
+      });
+
+      // Log activity for each task
+      for (const task of tasks) {
+        if (task.projectId) {
+          void activityLogService.logActivity({
+            projectId: task.projectId,
+            entityType: "task",
+            entityId: task.id,
+            entityName: task.title,
+            action: "assigned",
+            userId: user._id.toString(),
+            userName:
+              user.name ||
+              [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+              "Unknown",
+            description: `bulk assigned task "${task.title}" to ${task.assignedTo.name || task.assignedTo.email}`,
+          });
+        }
+      }
+    } catch (error) {
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
+    }
+  };
+
+  public updateTaskStatus = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const user = req.user;
+      if (user == null) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+
+      const taskId = getRouteParam(req.params.id);
+      const { status } = req.body;
+      const task = await taskService.updateTask(taskId, user._id.toString(), {
+        status,
+      });
+
+      res.status(200).json({
+        message: "Task status updated",
+        data: { task },
+      });
+    } catch (error) {
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
+    }
+  };
+
+  public markTaskBlocked = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const user = req.user;
+      if (user == null) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+
+      const taskId = getRouteParam(req.params.id);
+      const { blockedByTaskId } = req.body;
+      const task = await taskService.markTaskBlocked(
+        taskId,
+        user._id.toString(),
+        blockedByTaskId,
+      );
+
+      res.status(200).json({
+        message: "Task marked as blocked",
+        data: { task },
+      });
+    } catch (error) {
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
+    }
+  };
+
+  public unblockTask = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const user = req.user;
+      if (user == null) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+
+      const taskId = getRouteParam(req.params.id);
+      const task = await taskService.unblockTask(taskId, user._id.toString());
+
+      res.status(200).json({
+        message: "Task unblocked",
         data: { task },
       });
     } catch (error) {

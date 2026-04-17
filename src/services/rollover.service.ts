@@ -32,7 +32,7 @@ class RolloverService {
       description: task.description,
       note: task.note,
       date: tomorrow,
-      status: "pending",
+      status: "TODO",
       source: task.source ?? "manual",
       projectId: task.projectId?.toString() ?? null,
       subtasks: task.subtasks?.map((subtask) => ({

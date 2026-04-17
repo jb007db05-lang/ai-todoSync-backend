@@ -2,11 +2,15 @@ import type { Document, Types } from "mongoose";
 import { Schema, model } from "mongoose";
 
 export type TaskWorkflowStatus =
-  | "pending"
-  | "in_progress"
-  | "in_review"
-  | "completed";
+  | "BACKLOG"
+  | "TODO"
+  | "IN_PROGRESS"
+  | "IN_REVIEW"
+  | "BLOCKED"
+  | "DONE";
 export type TaskStatus = TaskWorkflowStatus | "rolled_over";
+
+export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
 
 export interface ISubtask {
   title: string;
@@ -25,11 +29,18 @@ export interface ITask {
   note?: string;
   date: string;
   status: TaskStatus;
+  priority: TaskPriority;
+  isBlocked: boolean;
+  blockedByTaskId?: Types.ObjectId | string | null;
+  order: number;
   rolledOver: boolean;
   rolloverCount: number;
   source?: string;
   projectId?: Types.ObjectId | string | null;
   epicId?: Types.ObjectId | string | null;
+  assignedTo: Types.ObjectId | string;
+  assignedBy?: Types.ObjectId | string | null;
+  assignedAt?: Date;
   subtasks?: ISubtask[];
   createdAt?: Date;
   updatedAt?: Date;
@@ -54,8 +65,8 @@ const subtaskSchema = new Schema<ISubtask>(
     },
     status: {
       type: String,
-      enum: ["pending", "in_progress", "in_review", "completed"],
-      default: "pending",
+      enum: ["BACKLOG", "TODO", "IN_PROGRESS", "IN_REVIEW", "BLOCKED", "DONE"],
+      default: "TODO",
     },
     completed: {
       type: Boolean,
@@ -101,8 +112,34 @@ const taskSchema = new Schema<ITaskDocument>(
     },
     status: {
       type: String,
-      enum: ["pending", "in_progress", "in_review", "completed", "rolled_over"],
-      default: "pending",
+      enum: [
+        "BACKLOG",
+        "TODO",
+        "IN_PROGRESS",
+        "IN_REVIEW",
+        "BLOCKED",
+        "DONE",
+        "rolled_over",
+      ],
+      default: "TODO",
+    },
+    priority: {
+      type: String,
+      enum: ["LOW", "MEDIUM", "HIGH"],
+      default: "MEDIUM",
+    },
+    isBlocked: {
+      type: Boolean,
+      default: false,
+    },
+    blockedByTaskId: {
+      type: Schema.Types.ObjectId,
+      ref: "Task",
+      default: null,
+    },
+    order: {
+      type: Number,
+      default: 0,
     },
     rolledOver: {
       type: Boolean,
@@ -125,6 +162,20 @@ const taskSchema = new Schema<ITaskDocument>(
       type: Schema.Types.ObjectId,
       ref: "Epic",
       default: null,
+    },
+    assignedTo: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    assignedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    assignedAt: {
+      type: Date,
+      default: Date.now,
     },
     subtasks: {
       type: [subtaskSchema],
