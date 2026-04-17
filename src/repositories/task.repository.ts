@@ -71,6 +71,7 @@ export const getTasksByUser = async (
   userId: string,
   projectIds: string[],
   assigneeId?: string,
+  search?: string,
 ): Promise<TaskDocumentWithAssignee[]> => {
   const filter: any = {
     $or: [{ userId }, { projectId: { $in: projectIds } }],
@@ -83,6 +84,18 @@ export const getTasksByUser = async (
         $or: [{ assignedTo: aid }, { "subtasks.assignedToUserId": aid }],
       },
     ];
+  }
+
+  if (search) {
+    const searchRegex = { $regex: search.trim(), $options: "i" };
+    const searchFilter = {
+      $or: [{ title: searchRegex }, { note: searchRegex }],
+    };
+    if (filter.$and) {
+      filter.$and.push(searchFilter);
+    } else {
+      filter.$and = [searchFilter];
+    }
   }
 
   return TaskModel.find(filter)
@@ -128,6 +141,7 @@ export const getTasksByDate = async (
   projectIds: string[],
   date: string,
   assigneeId?: string,
+  search?: string,
 ): Promise<TaskDocumentWithAssignee[]> => {
   const filter: any = {
     date,
@@ -141,6 +155,18 @@ export const getTasksByDate = async (
         $or: [{ assignedTo: aid }, { "subtasks.assignedToUserId": aid }],
       },
     ];
+  }
+
+  if (search) {
+    const searchRegex = { $regex: search.trim(), $options: "i" };
+    const searchFilter = {
+      $or: [{ title: searchRegex }, { note: searchRegex }],
+    };
+    if (filter.$and) {
+      filter.$and.push(searchFilter);
+    } else {
+      filter.$and = [searchFilter];
+    }
   }
 
   return TaskModel.find(filter)
