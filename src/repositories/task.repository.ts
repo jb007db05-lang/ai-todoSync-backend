@@ -77,7 +77,12 @@ export const getTasksByUser = async (
   };
 
   if (assigneeId) {
-    filter.assignedTo = assigneeId;
+    const aid = assigneeId.toString();
+    filter.$and = [
+      {
+        $or: [{ assignedTo: aid }, { "subtasks.assignedToUserId": aid }],
+      },
+    ];
   }
 
   return TaskModel.find(filter)
@@ -130,7 +135,12 @@ export const getTasksByDate = async (
   };
 
   if (assigneeId) {
-    filter.assignedTo = assigneeId;
+    const aid = assigneeId.toString();
+    filter.$and = [
+      {
+        $or: [{ assignedTo: aid }, { "subtasks.assignedToUserId": aid }],
+      },
+    ];
   }
 
   return TaskModel.find(filter)

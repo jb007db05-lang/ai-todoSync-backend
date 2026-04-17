@@ -3,6 +3,7 @@ import type { Types } from "mongoose";
 import { MessageType } from "../models/chat-message.model.js";
 import type { IMessageMetadata } from "../models/chat-message.model.js";
 import * as chatRepository from "../repositories/chat.repository.js";
+import * as projectMemberRepository from "../repositories/project-member.repository.js";
 import type {
   CreateMessagePayload,
   UpdateMessagePayload,
@@ -82,6 +83,15 @@ class ChatService {
 
     if (!trimmedContent || trimmedContent.length === 0) {
       throw new HttpError(400, "Message content is required");
+    }
+
+    // Issue #5: Validate active membership server-side
+    const membership = await projectMemberRepository.getProjectMembership(
+      projectId,
+      senderId,
+    );
+    if (membership == null) {
+      throw new HttpError(403, "Only active project members can send messages");
     }
 
     if (trimmedContent.length > this.MAX_CONTENT_LENGTH) {
