@@ -57,6 +57,19 @@ class NoteService {
       content: this.normalizeContent(payload.content),
     };
 
+    // Issue #10: Unique note titles within project
+    const projectNotes = await getNotesByProject(projectId);
+    if (
+      projectNotes.some(
+        (n) => n.title.toLowerCase() === createPayload.title.toLowerCase(),
+      )
+    ) {
+      throw new HttpError(
+        409,
+        `A note with the title "${createPayload.title}" already exists in this project`,
+      );
+    }
+
     const note = await createNote(createPayload);
     return this.toDto(note);
   }
@@ -86,6 +99,19 @@ class NoteService {
       title: this.normalizeTitle(payload.title),
       content: this.normalizeContent(payload.content),
     };
+
+    // Issue #10: Unique note titles within project
+    const projectNotes = await getNotesByProject(projectId);
+    if (
+      projectNotes.some(
+        (n) => n.title.toLowerCase() === createPayload.title.toLowerCase(),
+      )
+    ) {
+      throw new HttpError(
+        409,
+        `A note with the title "${createPayload.title}" already exists in this project`,
+      );
+    }
 
     const note = await createNote(createPayload);
     return this.toDto(note);
@@ -117,7 +143,25 @@ class NoteService {
     const appendContent = payload.appendContent === true;
 
     if (Object.prototype.hasOwnProperty.call(payload, "title")) {
-      updates.title = this.normalizeTitle(payload.title);
+      const newTitle = this.normalizeTitle(payload.title);
+
+      // Issue #10: Check for unique title if it changed
+      if (newTitle.toLowerCase() !== existingNote.title.toLowerCase()) {
+        const projectNotes = await getNotesByProject(
+          existingNote.projectId.toString(),
+        );
+        if (
+          projectNotes.some(
+            (n) => n.title.toLowerCase() === newTitle.toLowerCase(),
+          )
+        ) {
+          throw new HttpError(
+            409,
+            `A note with the title "${newTitle}" already exists in this project`,
+          );
+        }
+      }
+      updates.title = newTitle;
     }
 
     if (Object.prototype.hasOwnProperty.call(payload, "content")) {
@@ -127,6 +171,8 @@ class NoteService {
         : normalizedContent;
     }
 
+    // Issue #9: Repository already uses $set internally for findByIdAndUpdate,
+    // ensuring fields like title/content are only updated if present in 'updates'.
     const updatedNote = await updateNote(existingNote._id.toString(), updates);
 
     if (updatedNote == null) {
@@ -195,6 +241,7 @@ class NoteService {
     return title;
   }
 
+  // Issue #11: Reject whitespace-only content
   private normalizeContent(value: unknown): string {
     if (value === undefined) {
       return "";
@@ -202,6 +249,14 @@ class NoteService {
 
     if (typeof value !== "string") {
       throw new HttpError(400, "Note content must be a string");
+    }
+
+    const trimmed = value.replace(/<[^>]*>/g, "").trim();
+    if (value.length > 0 && trimmed.length === 0) {
+      throw new HttpError(
+        400,
+        "Note content cannot be empty or whitespace only",
+      );
     }
 
     return value;
