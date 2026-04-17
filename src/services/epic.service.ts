@@ -50,7 +50,7 @@ class EpicService {
     projectId: string,
     payload: EpicPayload,
   ): Promise<EpicDto> {
-    await projectService.assertProjectOwnership(userId, projectId);
+    await projectService.assertProjectMembership(userId, projectId);
 
     const epic = await createEpic({
       projectId,
@@ -78,7 +78,7 @@ class EpicService {
     epicId: string,
     payload: EpicPayload,
   ): Promise<EpicDto> {
-    await projectService.assertProjectOwnership(userId, projectId);
+    await projectService.assertProjectMembership(userId, projectId);
 
     const existingEpic = await getEpicByIdAndProject(epicId, projectId);
 
@@ -128,7 +128,7 @@ class EpicService {
     projectId: string,
     payload: ReorderEpicsInput,
   ): Promise<EpicDto[]> {
-    await projectService.assertProjectOwnership(userId, projectId);
+    await projectService.assertProjectMembership(userId, projectId);
 
     const epics = await getEpicsByProject(projectId);
     const epicIds = this.normalizeEpicOrderPayload(payload.epicIds, epics);
