@@ -2,7 +2,6 @@ import mongoose from "mongoose";
 
 import type { IProjectDocument } from "../models/project.model.js";
 import type { ProjectRole } from "../models/project-member.model.js";
-import type { IUserDocument } from "../models/user.model.js";
 import {
   findUserById,
   searchUsersByEmail,
