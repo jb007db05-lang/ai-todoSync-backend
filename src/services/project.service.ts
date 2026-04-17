@@ -34,6 +34,11 @@ interface ProjectDto {
   currentUserRole: ProjectRole;
   createdAt?: Date;
   updatedAt?: Date;
+  creator?: {
+    id: string;
+    email: string;
+    name: string | null;
+  };
 }
 
 interface ProjectPayload {
@@ -513,15 +518,28 @@ class ProjectService {
     project: IProjectDocument,
     currentUserRole: ProjectRole,
   ): ProjectDto {
-    return {
+    const creatorUser = project.userId as any;
+    const dto: ProjectDto = {
       id: project._id.toString(),
       name: project.name,
       description: project.description,
-      userId: project.userId.toString(),
+      userId: creatorUser?._id
+        ? creatorUser._id.toString()
+        : project.userId.toString(),
       currentUserRole,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
     };
+
+    if (creatorUser?._id) {
+      dto.creator = {
+        id: creatorUser._id.toString(),
+        email: creatorUser.email,
+        name: creatorUser.name ?? null,
+      };
+    }
+
+    return dto;
   }
 
   private normalizeName(value: unknown): string {

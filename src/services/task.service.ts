@@ -671,13 +671,14 @@ class TaskService {
 
     return {
       canEdit: isAdmin || isCreator,
-      canDelete: isAdmin || isCreator,
+      canDelete: isAdmin,
       canAssign: task.projectId != null && (isAdmin || isCreator),
       canUpdate:
         isAdmin ||
         isCreator ||
         isAssignee ||
-        task.assignedTo?.toString() === currentUserId,
+        task.assignedTo?.toString() === currentUserId ||
+        role !== null,
       canReassign: task.projectId != null && (isAdmin || isCreator),
     };
   }

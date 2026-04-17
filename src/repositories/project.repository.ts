@@ -7,6 +7,11 @@ import EpicModel from "../models/epic.model.js";
 import NoteModel from "../models/note.model.js";
 import ProjectMemberModel from "../models/project-member.model.js";
 import { deleteProjectMembershipsByProject } from "./project-member.repository.js";
+import UserModel from "../models/user.model.js";
+
+export const projectPopulateOptions = [
+  { path: "userId", select: "email name firstName lastName" },
+];
 
 export interface CreateProjectPayload {
   userId: string;
@@ -54,6 +59,7 @@ export const getProjectsByUser = async (
   }
 
   return ProjectModel.find(query)
+    .populate(projectPopulateOptions)
     .sort({ name: 1, _id: 1 })
     .skip(params.skip || 0)
     .limit(params.limit || 0)
@@ -85,7 +91,8 @@ export const countProjectsByUser = async (
 
 export const getProjectById = async (
   projectId: string,
-): Promise<IProjectDocument | null> => ProjectModel.findById(projectId).exec();
+): Promise<IProjectDocument | null> =>
+  ProjectModel.findById(projectId).populate(projectPopulateOptions).exec();
 
 export const getProjectByIdAndUser = async (
   projectId: string,
@@ -96,7 +103,9 @@ export const getProjectByIdAndUser = async (
       return null;
     }
 
-    return ProjectModel.findById(projectId).exec();
+    return ProjectModel.findById(projectId)
+      .populate(projectPopulateOptions)
+      .exec();
   });
 
 export const getProjectByName = async (
