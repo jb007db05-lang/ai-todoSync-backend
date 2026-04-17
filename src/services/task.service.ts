@@ -170,6 +170,7 @@ class TaskService {
     userId: string,
     date?: unknown,
     assigneeId?: string,
+    search?: string,
   ): Promise<TaskDto[]> {
     const normalizedDate = this.normalizeDate(date);
     const memberships = await getProjectMembershipsByUser(userId);
@@ -178,8 +179,14 @@ class TaskService {
     );
     const roleMap = this.buildRoleMap(memberships);
     const tasks = normalizedDate
-      ? await getTasksByDate(userId, projectIds, normalizedDate, assigneeId)
-      : await getTasksByUser(userId, projectIds, assigneeId);
+      ? await getTasksByDate(
+          userId,
+          projectIds,
+          normalizedDate,
+          assigneeId,
+          search,
+        )
+      : await getTasksByUser(userId, projectIds, assigneeId, search);
     return tasks.map((task) => this.toDto(userId, task, roleMap));
   }
 
