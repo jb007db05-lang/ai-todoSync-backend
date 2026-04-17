@@ -295,13 +295,15 @@ export const searchMessages = async (
 ): Promise<ChatMessageDocument[]> => {
   const { limit = 20 } = options;
 
+  const searchRegex = { $regex: query.trim(), $options: "i" };
+
   return ChatMessageModel.find({
     projectId,
-    $text: { $search: query },
+    content: searchRegex,
     isDeleted: false,
   })
     .populate([senderPopulation, replyToPopulation])
-    .sort({ score: { $meta: "textScore" } })
+    .sort({ createdAt: -1 })
     .limit(limit)
     .exec();
 };

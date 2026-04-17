@@ -73,6 +73,7 @@ class TaskController {
         user._id.toString(),
         getDateQuery(req),
         req.query.assigneeId as string | undefined,
+        req.query.search as string | undefined,
       );
 
       res.status(200).json({
