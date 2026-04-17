@@ -3,6 +3,7 @@ import express, { Application } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import hpp from "hpp";
+import { rateLimit } from "express-rate-limit";
 
 import { Routes } from "./interfaces/routes.interface.js";
 import logger from "./lib/logger.js";
@@ -32,6 +33,18 @@ class App {
   private initializeMiddlewares(): void {
     logger.info(`Allowed Origins : ${env.ALLOWED_ORIGINS}`);
     this.app.set("trust proxy", 1);
+
+    // Global rate limiter: 25 requests per second per IP
+    const limiter = rateLimit({
+      windowMs: 1000,
+      max: 25,
+      message:
+        "Too many requests from this IP, please try again after a second.",
+      standardHeaders: true,
+      legacyHeaders: false,
+    });
+    this.app.use(limiter);
+
     this.app.use(helmet());
     this.app.use(
       cors({

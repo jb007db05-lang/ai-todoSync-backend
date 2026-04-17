@@ -796,7 +796,10 @@ class TaskService {
       ? this.normalizeCompletedAt(subtask.completedAt)
       : null;
 
+    const subtaskId = subtask.id || subtask._id;
+
     return {
+      _id: subtaskId ? this.normalizeNullableId(subtaskId) : undefined,
       title,
       note,
       status,

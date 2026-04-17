@@ -13,6 +13,7 @@ export type TaskStatus = TaskWorkflowStatus | "rolled_over";
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
 
 export interface ISubtask {
+  _id?: any;
   title: string;
   description?: string;
   note?: string;
