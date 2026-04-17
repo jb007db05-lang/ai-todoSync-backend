@@ -1,7 +1,3 @@
-import type {
-  CreateTaskPayload,
-  UpdateTaskPayload,
-} from "../repositories/task.repository.js";
 import {
   createTask,
   deleteTask,
@@ -10,18 +6,27 @@ import {
   getTasksByDate,
   getTasksByUser,
   updateTask,
+  type CreateTaskPayload,
+  type UpdateTaskPayload,
+  type BulkAssignTasksPayload,
+  taskPopulateOptions,
+  type TaskDocumentWithAssignee,
 } from "../repositories/task.repository.js";
-import type { TaskDocumentWithAssignee } from "../repositories/task.repository.js";
 import type {
   ISubtask,
   TaskStatus,
   TaskWorkflowStatus,
+  TaskPriority,
 } from "../models/task.model.js";
 import type { ProjectRole } from "../models/project-member.model.js";
 import type { IUserDocument } from "../models/user.model.js";
 import { getProjectMembershipsByUser } from "../repositories/project-member.repository.js";
 import projectService from "./project.service.js";
 import epicService from "./epic.service.js";
+import chatSocketServer from "../socket/chat.socket.js";
+import TaskModel from "../models/task.model.js";
+import UserModel from "../models/user.model.js";
+import ProjectMemberModel from "../models/project-member.model.js";
 
 interface TaskUserDto {
   id: string;
@@ -45,6 +50,7 @@ interface TaskPermissionsDto {
   canDelete: boolean;
   canAssign: boolean;
   canUpdate: boolean;
+  canReassign: boolean;
 }
 
 interface TaskDto {
@@ -55,21 +61,30 @@ interface TaskDto {
   note?: string;
   date: string;
   status: TaskStatus;
+  priority: TaskPriority;
+  isBlocked: boolean;
+  blockedByTaskId: string | null;
+  order: number;
   rolledOver: boolean;
   rolloverCount: number;
   source?: string;
   projectId: string | null;
   epicId: string | null;
+  assignedTo: TaskUserDto;
+  assignedBy: TaskUserDto | null;
+  assignedAt: string;
   subtasks: SubtaskDto[];
   permissions: TaskPermissionsDto;
 }
 
 interface TaskSummary {
   total: number;
-  pending: number;
+  backlog: number;
+  todo: number;
   inProgress: number;
   inReview: number;
-  completed: number;
+  blocked: number;
+  done: number;
   rolledOver: number;
   date?: string;
 }
@@ -110,11 +125,14 @@ class TaskService {
       );
     }
 
-    payload.epicId = await this.resolveEpicId(
+    const resolved = await this.resolveEpicId(
       payload.projectId,
       payload.epicId,
       payload.userId,
     );
+
+    payload.projectId = resolved.projectId;
+    payload.epicId = resolved.epicId;
 
     payload.note = this.normalizeOptionalText(payload.note);
 
@@ -123,16 +141,22 @@ class TaskService {
     }
 
     payload.subtasks = this.normalizeSubtasks(payload.subtasks);
-    payload.subtasks = this.applyCompletedStatusToSubtasks(
-      payload.status,
-      payload.subtasks,
-    );
     payload.status = this.reconcileTaskStatusWithSubtasks(
       payload.status,
       payload.subtasks,
     );
+    payload.subtasks = this.applyCompletedStatusToSubtasks(
+      payload.status,
+      payload.subtasks,
+    );
 
-    const task = await createTask(payload);
+    const task = await createTask({
+      ...payload,
+      assignedTo: payload.assignedTo || payload.userId,
+      assignedBy: payload.userId,
+      assignedAt: new Date(),
+    });
+
     return this.toDto(
       payload.userId,
       task,
@@ -142,7 +166,11 @@ class TaskService {
     );
   }
 
-  public async fetchTasks(userId: string, date?: unknown): Promise<TaskDto[]> {
+  public async fetchTasks(
+    userId: string,
+    date?: unknown,
+    assigneeId?: string,
+  ): Promise<TaskDto[]> {
     const normalizedDate = this.normalizeDate(date);
     const memberships = await getProjectMembershipsByUser(userId);
     const projectIds = memberships.map((membership) =>
@@ -150,9 +178,26 @@ class TaskService {
     );
     const roleMap = this.buildRoleMap(memberships);
     const tasks = normalizedDate
-      ? await getTasksByDate(userId, projectIds, normalizedDate)
-      : await getTasksByUser(userId, projectIds);
+      ? await getTasksByDate(userId, projectIds, normalizedDate, assigneeId)
+      : await getTasksByUser(userId, projectIds, assigneeId);
     return tasks.map((task) => this.toDto(userId, task, roleMap));
+  }
+
+  public async getTasksAssignedToMe(userId: string): Promise<TaskDto[]> {
+    const memberships = await getProjectMembershipsByUser(userId);
+    const projectIds = memberships.map((m) => m.projectId.toString());
+    const roleMap = this.buildRoleMap(memberships);
+
+    const tasks = await TaskModel.find({
+      assignedTo: userId,
+      projectId: { $in: projectIds },
+    })
+      .populate(taskPopulateOptions)
+      .exec();
+
+    return tasks.map((task) =>
+      this.toDto(userId, task as TaskDocumentWithAssignee, roleMap),
+    );
   }
 
   public async updateTask(
@@ -255,11 +300,22 @@ class TaskService {
       updates.subtasks = this.normalizeSubtasks(updates.subtasks);
     }
 
-    if (updates.status === "completed") {
+    if (updates.status === "DONE") {
       updates.subtasks = this.applyCompletedStatusToSubtasks(
         updates.status,
         updates.subtasks ?? currentTask.subtasks ?? [],
       );
+    }
+
+    if (updates.status === "BLOCKED" && !currentTask.isBlocked) {
+      updates.isBlocked = true;
+    }
+
+    if (
+      updates.status === "DONE" &&
+      (currentTask.isBlocked || updates.isBlocked)
+    ) {
+      throw new HttpError(400, "Cannot complete a blocked task");
     }
 
     if (Object.prototype.hasOwnProperty.call(updates, "subtasks")) {
@@ -279,14 +335,201 @@ class TaskService {
   }
 
   public async assignTask(
-    _taskId: string,
-    _actorUserId: string,
-    _payload: AssignTaskPayload,
-  ): Promise<void> {
-    throw new HttpError(
-      400,
-      "Task-level assignment is deprecated. Assign subtasks instead.",
+    taskId: string,
+    actorUserId: string,
+    payload: AssignTaskPayload,
+  ): Promise<TaskDto> {
+    const memberships = await getProjectMembershipsByUser(actorUserId);
+    const roleMap = this.buildRoleMap(memberships);
+    const currentTask = await getTaskByIdAndUser(
+      taskId,
+      actorUserId,
+      Array.from(roleMap.keys()),
     );
+
+    if (currentTask == null) {
+      throw new HttpError(404, "Task not found");
+    }
+
+    const currentRole = currentTask.projectId
+      ? (roleMap.get(currentTask.projectId.toString()) ?? null)
+      : null;
+    const permission = this.getTaskPermission(
+      actorUserId,
+      currentTask,
+      currentRole,
+    );
+
+    if (permission.canAssign === false) {
+      throw new HttpError(403, "Task assignment not allowed");
+    }
+
+    const targetUserId = this.normalizeNullableId(payload.userId);
+    if (!targetUserId) {
+      throw new HttpError(400, "Target user ID is required");
+    }
+
+    const targetUser = await UserModel.findById(targetUserId);
+    if (!targetUser) {
+      throw new HttpError(404, "Target user not found");
+    }
+
+    if (currentTask.projectId) {
+      const targetMembership = await ProjectMemberModel.findOne({
+        projectId: currentTask.projectId,
+        userId: targetUserId,
+      });
+      if (!targetMembership) {
+        throw new HttpError(400, "Target user is not a member of the project");
+      }
+    }
+
+    const updated = await updateTask(taskId, {
+      assignedTo: targetUserId,
+      assignedBy: actorUserId,
+      assignedAt: new Date(),
+    });
+
+    if (updated == null) {
+      throw new HttpError(404, "Task not found");
+    }
+
+    const dto = this.toDto(actorUserId, updated, roleMap);
+
+    if (targetUserId !== actorUserId) {
+      chatSocketServer.notifyUser(targetUserId, "task:assigned", {
+        task: dto,
+        assignedBy: actorUserId,
+      });
+    }
+
+    return dto;
+  }
+
+  public async markTaskBlocked(
+    taskId: string,
+    userId: string,
+    blockedByTaskId?: string,
+  ): Promise<TaskDto> {
+    const memberships = await getProjectMembershipsByUser(userId);
+    const roleMap = this.buildRoleMap(memberships);
+    const task = await getTaskByIdAndUser(
+      taskId,
+      userId,
+      Array.from(roleMap.keys()),
+    );
+
+    if (task == null) {
+      throw new HttpError(404, "Task not found");
+    }
+
+    if (blockedByTaskId) {
+      const blockingTask = await TaskModel.findById(blockedByTaskId);
+      if (!blockingTask) {
+        throw new HttpError(400, "Blocking task not found");
+      }
+    }
+
+    const updated = await updateTask(taskId, {
+      isBlocked: true,
+      blockedByTaskId: blockedByTaskId || null,
+      status: "BLOCKED",
+    });
+
+    if (!updated) throw new HttpError(404, "Task not found");
+
+    return this.toDto(userId, updated, roleMap);
+  }
+
+  public async unblockTask(taskId: string, userId: string): Promise<TaskDto> {
+    const memberships = await getProjectMembershipsByUser(userId);
+    const roleMap = this.buildRoleMap(memberships);
+    const task = await getTaskByIdAndUser(
+      taskId,
+      userId,
+      Array.from(roleMap.keys()),
+    );
+
+    if (task == null) {
+      throw new HttpError(404, "Task not found");
+    }
+
+    const updated = await updateTask(taskId, {
+      isBlocked: false,
+      blockedByTaskId: null,
+      status: "TODO",
+    });
+
+    if (!updated) throw new HttpError(404, "Task not found");
+
+    return this.toDto(userId, updated, roleMap);
+  }
+
+  public async bulkAssignTasks(
+    actorUserId: string,
+    payload: BulkAssignTasksPayload,
+  ): Promise<TaskDto[]> {
+    const { taskIds, assignedTo: targetUserId } = payload;
+
+    const targetUser = await UserModel.findById(targetUserId).lean().exec();
+    if (targetUser == null) {
+      throw new HttpError(404, "Target user not found");
+    }
+
+    const memberships = await getProjectMembershipsByUser(actorUserId);
+    const roleMap = this.buildRoleMap(memberships);
+
+    const tasks = await TaskModel.find({ _id: { $in: taskIds } }).exec();
+    if (tasks.length === 0) {
+      throw new HttpError(404, "No tasks found");
+    }
+
+    const now = new Date();
+    const results: TaskDto[] = [];
+
+    for (const task of tasks) {
+      const currentRole = task.projectId
+        ? (roleMap.get(task.projectId.toString()) ?? null)
+        : null;
+      const permission = this.getTaskPermission(
+        actorUserId,
+        task as any,
+        currentRole,
+      );
+
+      if (permission.canAssign === false && permission.canReassign === false) {
+        continue;
+      }
+
+      if (task.projectId) {
+        const isMember = await ProjectMemberModel.exists({
+          projectId: task.projectId,
+          userId: targetUserId,
+        });
+        if (!isMember) {
+          continue;
+        }
+      }
+
+      task.assignedTo = targetUserId as any;
+      task.assignedBy = actorUserId as any;
+      task.assignedAt = now;
+
+      const updated = await task.save();
+      const populated = await updated.populate(taskPopulateOptions);
+      results.push(
+        this.toDto(actorUserId, populated as TaskDocumentWithAssignee, roleMap),
+      );
+    }
+
+    if (results.length > 0) {
+      chatSocketServer.notifyUser(targetUserId, "task:bulk_assigned", {
+        count: results.length,
+        assignedBy: actorUserId,
+      });
+    }
+
+    return results;
   }
 
   public async deleteTask(taskId: string, userId: string): Promise<void> {
@@ -324,26 +567,28 @@ class TaskService {
   ): Promise<TaskSummary> {
     const tasks = await this.fetchTasks(userId, date);
     const total = tasks.length;
-    const pending = tasks.filter((task) => task.status === "pending").length;
+    const backlog = tasks.filter((task) => task.status === "BACKLOG").length;
+    const todo = tasks.filter((task) => task.status === "TODO").length;
     const inProgress = tasks.filter(
-      (task) => task.status === "in_progress",
+      (task) => task.status === "IN_PROGRESS",
     ).length;
-    const inReview = tasks.filter((task) => task.status === "in_review").length;
-    const completed = tasks.filter(
-      (task) => task.status === "completed",
-    ).length;
+    const inReview = tasks.filter((task) => task.status === "IN_REVIEW").length;
+    const blocked = tasks.filter((task) => task.status === "BLOCKED").length;
+    const done = tasks.filter((task) => task.status === "DONE").length;
     const rolledOver = tasks.filter(
       (task) => task.status === "rolled_over",
     ).length;
 
     return {
       total,
-      pending,
+      backlog,
+      todo,
       inProgress,
       inReview,
-      completed,
+      blocked,
+      done,
       rolledOver,
-      date: this.normalizeDate(date),
+      date: this.normalizeDate(date as any),
     };
   }
 
@@ -368,10 +613,17 @@ class TaskService {
       note: task.note,
       date: task.date,
       status: this.normalizeStoredTaskStatus(task.status),
+      priority: task.priority || "MEDIUM",
+      isBlocked: task.isBlocked || false,
+      blockedByTaskId: task.blockedByTaskId?.toString() ?? null,
+      order: task.order || 0,
       rolledOver: task.rolledOver,
       rolloverCount: task.rolloverCount,
       projectId,
       epicId: task.epicId?.toString() ?? null,
+      assignedTo: this.toTaskUser(task.assignedTo)!,
+      assignedBy: this.toTaskUser(task.assignedBy),
+      assignedAt: (task.assignedAt || new Date()).toISOString(),
       subtasks: this.toSubtaskDtos(task.subtasks),
       permissions,
     };
@@ -421,7 +673,12 @@ class TaskService {
       canEdit: isAdmin || isCreator,
       canDelete: isAdmin || isCreator,
       canAssign: task.projectId != null && (isAdmin || isCreator),
-      canUpdate: isAdmin || isCreator || isAssignee,
+      canUpdate:
+        isAdmin ||
+        isCreator ||
+        isAssignee ||
+        task.assignedTo?.toString() === currentUserId,
+      canReassign: task.projectId != null && (isAdmin || isCreator),
     };
   }
 
@@ -429,18 +686,24 @@ class TaskService {
     projectId: string | null,
     epicId: string | null | undefined,
     userId: string,
-  ): Promise<string | null> {
+  ): Promise<{ projectId: string | null; epicId: string | null }> {
     if (epicId == null) {
-      return null;
+      return { projectId, epicId: null };
     }
 
     if (projectId == null) {
-      throw new HttpError(400, "Epic assignment requires a project");
+      // Corrected: Use direct lookup to avoid project matching requirement
+      const epic = await epicService.getEpicById(epicId);
+      if (epic) {
+        projectId = epic.projectId;
+      } else {
+        throw new HttpError(400, "Epic assignment requires a project");
+      }
     }
 
-    await projectService.assertProjectMembership(userId, projectId);
-    const epic = await epicService.assertEpicInProject(projectId, epicId);
-    return epic.id;
+    await projectService.assertProjectMembership(userId, projectId!);
+    const epic = await epicService.assertEpicInProject(projectId!, epicId);
+    return { projectId: projectId!, epicId: epic.id };
   }
 
   private async resolveUpdatedEpicId(
@@ -451,7 +714,12 @@ class TaskService {
     requestedEpicId: string | null | undefined,
   ): Promise<string | null> {
     if (requestedEpicId !== undefined) {
-      return this.resolveEpicId(nextProjectId, requestedEpicId, userId);
+      const resolved = await this.resolveEpicId(
+        nextProjectId,
+        requestedEpicId,
+        userId,
+      );
+      return resolved.epicId;
     }
 
     if (currentProjectId !== nextProjectId) {
@@ -522,7 +790,7 @@ class TaskService {
     }
 
     const status = this.normalizeWorkflowStatus(subtask.status);
-    const completed = status === "completed";
+    const completed = status === "DONE";
     const completedAt = completed
       ? this.normalizeCompletedAt(subtask.completedAt)
       : null;
@@ -546,20 +814,23 @@ class TaskService {
   }
 
   private normalizeStoredTaskStatus(status: string): TaskStatus {
-    return status === "done" ? "completed" : (status as TaskStatus);
+    const s = status.toUpperCase();
+    if (s === "DONE" || s === "COMPLETED") return "DONE";
+    if (s === "PENDING") return "TODO";
+    return s as TaskStatus;
   }
 
   private applyCompletedStatusToSubtasks(
     taskStatus: TaskStatus | undefined,
     subtasks: ISubtask[],
   ): ISubtask[] {
-    if (taskStatus !== "completed") {
+    if (taskStatus !== "DONE") {
       return subtasks;
     }
 
     return subtasks.map((subtask) => ({
       ...subtask,
-      status: "completed",
+      status: "DONE",
       completed: true,
       completedAt: subtask.completedAt ?? new Date(),
     }));
@@ -578,40 +849,48 @@ class TaskService {
         ? undefined
         : this.normalizeStoredTaskStatus(taskStatus);
 
-    if (subtasks.every((subtask) => subtask.status === "completed")) {
-      return "completed";
+    if (subtasks.every((subtask) => subtask.status === "DONE")) {
+      return "DONE";
     }
 
-    if (normalizedTaskStatus !== "completed") {
-      return normalizedTaskStatus;
+    if (normalizedTaskStatus === "DONE") {
+      return "DONE";
     }
 
-    if (subtasks.some((subtask) => subtask.status === "in_review")) {
-      return "in_review";
+    if (subtasks.some((subtask) => subtask.status === "IN_REVIEW")) {
+      return "IN_REVIEW";
     }
 
-    if (subtasks.some((subtask) => subtask.status === "in_progress")) {
-      return "in_progress";
+    if (subtasks.some((subtask) => subtask.status === "IN_PROGRESS")) {
+      return "IN_PROGRESS";
     }
 
-    return "pending";
+    return "TODO";
   }
 
   private normalizeWorkflowStatus(value: unknown): TaskWorkflowStatus {
-    if (value === "done") {
-      return "completed";
+    if (typeof value !== "string") {
+      return "TODO";
     }
 
-    if (
-      value === "pending" ||
-      value === "in_progress" ||
-      value === "in_review" ||
-      value === "completed"
-    ) {
-      return value;
+    const s = value.toUpperCase();
+    const valid: TaskWorkflowStatus[] = [
+      "BACKLOG",
+      "TODO",
+      "IN_PROGRESS",
+      "IN_REVIEW",
+      "BLOCKED",
+      "DONE",
+    ];
+
+    if (valid.includes(s as TaskWorkflowStatus)) {
+      return s as TaskWorkflowStatus;
     }
 
-    return "pending";
+    if (s === "COMPLETED") return "DONE";
+    if (s === "PENDING") return "TODO";
+
+    return "TODO";
   }
 
   private normalizeCompletedAt(value: unknown): Date {
@@ -643,26 +922,22 @@ class TaskService {
     }
 
     if (typeof value !== "string") {
-      throw new HttpError(400, "Invalid identifier value");
+      return null;
     }
 
-    const normalizedValue = value.trim();
-    return normalizedValue === "" ? null : normalizedValue;
+    const id = value.trim();
+    return id === "" || id === "null" || id === "undefined" ? null : id;
   }
 
-  private normalizeDate(input?: unknown): string | undefined {
-    if (typeof input === "string") {
-      return input;
+  private normalizeDate(value: unknown): string | undefined {
+    if (typeof value !== "string") {
+      return undefined;
     }
 
-    if (Array.isArray(input)) {
-      return input.find((item): item is string => typeof item === "string");
-    }
-
-    return undefined;
+    const date = value.trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : undefined;
   }
 }
 
 const taskService = new TaskService();
-export type { TaskDto, TaskSummary };
 export default taskService;

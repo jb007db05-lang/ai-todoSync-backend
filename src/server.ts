@@ -9,6 +9,7 @@ import EpicRoutes from "./routes/epic.routes.js";
 import UserRoutes from "./routes/users.routes.js";
 import ChatRoutes from "./routes/chat.routes.js";
 import ActivityLogRoutes from "./routes/activity-log.routes.js";
+import CommentRoutes from "./routes/comment.routes.js";
 import logger from "./lib/logger.js";
 
 const server = new App([
@@ -22,6 +23,7 @@ const server = new App([
   new SyncRoutes(),
   new ChatRoutes(),
   new ActivityLogRoutes(),
+  new CommentRoutes(),
 ]);
 
 void server.listen().catch((error) => {

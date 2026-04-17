@@ -142,6 +142,11 @@ class EpicService {
     return reordered.map((epic) => this.toDto(epic));
   }
 
+  public async getEpicById(epicId: string): Promise<EpicDto | null> {
+    const epic = await getEpicById(epicId);
+    return epic ? this.toDto(epic) : null;
+  }
+
   public async assertEpicInProject(
     projectId: string,
     epicId: string,

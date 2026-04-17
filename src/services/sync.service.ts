@@ -187,12 +187,30 @@ class SyncService {
 
     if (
       value === "pending" ||
+      value === "TODO" ||
       value === "in_progress" ||
+      value === "IN_PROGRESS" ||
       value === "in_review" ||
+      value === "IN_REVIEW" ||
       value === "completed" ||
-      value === "done"
+      value === "done" ||
+      value === "DONE" ||
+      value === "BACKLOG" ||
+      value === "BLOCKED"
     ) {
-      return value === "done" ? "completed" : value;
+      if (value === "done" || value === "completed" || value === "DONE") {
+        return "DONE";
+      }
+      if (value === "pending" || value === "TODO") {
+        return "TODO";
+      }
+      if (value === "in_progress" || value === "IN_PROGRESS") {
+        return "IN_PROGRESS";
+      }
+      if (value === "in_review" || value === "IN_REVIEW") {
+        return "IN_REVIEW";
+      }
+      return value as TaskStatus;
     }
 
     if (value === "rolled_over") {
@@ -297,7 +315,7 @@ class SyncService {
     }
 
     const status = this.parseWorkflowStatus(subtask.status, subtask.completed);
-    const completed = status === "completed";
+    const completed = status === "DONE";
     const completedAt = completed
       ? this.parseCompletedAt(subtask.completedAt)
       : null;
@@ -316,24 +334,37 @@ class SyncService {
     statusValue: unknown,
     completedValue: unknown,
   ): TaskWorkflowStatus {
-    if (statusValue === "done") {
-      return "completed";
+    if (
+      statusValue === "done" ||
+      statusValue === "DONE" ||
+      statusValue === "completed"
+    ) {
+      return "DONE";
     }
 
     if (
       statusValue === "pending" ||
+      statusValue === "TODO" ||
       statusValue === "in_progress" ||
+      statusValue === "IN_PROGRESS" ||
       statusValue === "in_review" ||
-      statusValue === "completed"
+      statusValue === "IN_REVIEW" ||
+      statusValue === "BACKLOG" ||
+      statusValue === "BLOCKED"
     ) {
-      return statusValue;
+      if (statusValue === "pending" || statusValue === "TODO") return "TODO";
+      if (statusValue === "in_progress" || statusValue === "IN_PROGRESS")
+        return "IN_PROGRESS";
+      if (statusValue === "in_review" || statusValue === "IN_REVIEW")
+        return "IN_REVIEW";
+      return statusValue as TaskWorkflowStatus;
     }
 
     if (typeof completedValue === "boolean") {
-      return completedValue ? "completed" : "pending";
+      return completedValue ? "DONE" : "TODO";
     }
 
-    return "pending";
+    return "TODO";
   }
 
   private parseCompletedAt(value: unknown): Date {
@@ -369,7 +400,13 @@ class SyncService {
   }
 
   private normalizeStoredTaskStatus(status: string): TaskStatus {
-    return status === "done" ? "completed" : (status as TaskStatus);
+    if (status === "done" || status === "completed" || status === "DONE") {
+      return "DONE";
+    }
+    if (status === "pending" || status === "TODO") {
+      return "TODO";
+    }
+    return status as TaskStatus;
   }
 
   private isValidDate(value: string): boolean {
