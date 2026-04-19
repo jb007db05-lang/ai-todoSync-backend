@@ -2,9 +2,9 @@ name : Backend CI
 
 on:
   push: 
-    branches: [development]
+    branches: [production, staging]
   pull_request:
-    branches: [development]
+    branches: [production, staging]
 
 jobs:
   validate: 
