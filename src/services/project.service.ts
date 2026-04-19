@@ -347,6 +347,32 @@ class ProjectService {
     }
   }
 
+  public async leaveProject(userId: string, projectId: string): Promise<void> {
+    const membership = await getProjectMembership(projectId, userId);
+
+    if (membership == null) {
+      throw new HttpError(404, "You are not a member of this project");
+    }
+
+    if (membership.role === "ADMIN") {
+      throw new HttpError(
+        409,
+        "Project admins cannot leave. They must delete the project.",
+      );
+    }
+
+    const session = await mongoose.startSession();
+
+    try {
+      await session.withTransaction(async () => {
+        await deleteProjectMembership(projectId, userId, session);
+        await clearTaskAssignmentsForUser(projectId, userId, session);
+      });
+    } finally {
+      await session.endSession();
+    }
+  }
+
   public async searchRegisteredUsersByEmail(
     query: unknown,
   ): Promise<UserSearchDto[]> {

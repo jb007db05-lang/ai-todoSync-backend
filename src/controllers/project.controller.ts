@@ -321,6 +321,44 @@ class ProjectController {
       res.status(status).json({ error: (error as Error).message });
     }
   };
+
+  public leaveProject = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const user = req.user;
+
+      if (user == null) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+
+      const projectId = getRouteParam(req.params.projectId);
+      await projectService.leaveProject(user._id.toString(), projectId);
+
+      res.status(200).json({
+        message: "You have left the project",
+        data: { projectId },
+      });
+
+      void activityLogService.logActivity({
+        projectId,
+        entityType: "project",
+        entityId: projectId,
+        action: "member_removed", // Reusing member_removed for simplicity
+        userId: user._id.toString(),
+        userName:
+          user.name ||
+          [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+          "Unknown",
+        description: `left the project`,
+      });
+    } catch (error) {
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
+    }
+  };
 }
 
 export default new ProjectController();
