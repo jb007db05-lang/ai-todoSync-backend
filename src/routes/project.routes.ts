@@ -21,6 +21,11 @@ class ProjectRoutes implements Routes {
     this.router.post("/", projectController.createProject);
     this.router.get("/", projectController.getProjects);
     this.router.post("/bulk-delete", projectController.bulkDeleteProjects);
+    this.router.post(
+      "/:projectId/leave",
+      isProjectMember,
+      projectController.leaveProject,
+    );
     this.router.get(
       "/:projectId/members",
       isProjectMember,
