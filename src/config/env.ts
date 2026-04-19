@@ -69,6 +69,4 @@ const env: EnvConfig = {
   BACKEND_URL: BACKEND_URL.trim(),
 };
 
-console.log("All the envs : ",env)
-
 export default env;
