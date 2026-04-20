@@ -16,6 +16,7 @@ export interface EnvConfig {
   FRONTEND_BASE_URL: string;
   GPT_OAUTH_REDIRECT_URI: string;
   BACKEND_URL: string;
+  ENCRYPTION_KEY: string;
 }
 
 const {
@@ -32,6 +33,7 @@ const {
   FRONTEND_BASE_URL,
   GPT_OAUTH_REDIRECT_URI,
   BACKEND_URL,
+  ENCRYPTION_KEY,
 } = process.env;
 
 if (!MONGODB_URI || !JWT_SECRET || !JWT_EXPIRES_IN) {
@@ -67,6 +69,7 @@ const env: EnvConfig = {
   FRONTEND_BASE_URL: FRONTEND_BASE_URL.trim(),
   GPT_OAUTH_REDIRECT_URI: GPT_OAUTH_REDIRECT_URI.trim(),
   BACKEND_URL: BACKEND_URL.trim(),
+  ENCRYPTION_KEY: ENCRYPTION_KEY || "",
 };
 
 export default env;

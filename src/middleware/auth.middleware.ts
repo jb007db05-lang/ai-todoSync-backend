@@ -98,7 +98,6 @@ const resolveUserFromSyncKey = async (
   const authorizationHeader = getHeaderValue(req.headers.authorization);
   const apiKey =
     getHeaderValue(req.headers["x-sync-api-key"]) ??
-    getHeaderValue(req.headers["x-api-key"]) ??
     getBearerToken(authorizationHeader) ??
     (typeof req.query.apiKey === "string"
       ? req.query.apiKey.trim()
@@ -118,7 +117,6 @@ const authMiddleware = async (
 ): Promise<void> => {
   const authorizationHeader = getHeaderValue(req.headers.authorization);
   const bearerToken = getBearerToken(authorizationHeader);
-
   let user = bearerToken ? await resolveUserFromJwt(bearerToken) : null;
 
   if (user == null) {
