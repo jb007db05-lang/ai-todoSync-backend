@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import bcrypt from "bcryptjs";
 import AnalyticsKeyModel, {
   IAnalyticsKeyDocument,
 } from "../models/analytics-key.model.js";
@@ -17,7 +18,8 @@ class HttpError extends Error {
 interface AnalyticsKeyDto {
   id: string;
   name: string;
-  key: string;
+  key?: string; // Only present when key is first created
+  maskedKey: string;
   status: string;
   createdAt: Date;
 }
@@ -31,6 +33,15 @@ interface StatsDto {
 }
 
 class AnalyticsService {
+  private generateRawKey(): string {
+    return `ak_${crypto.randomBytes(24).toString("hex")}`;
+  }
+
+  private async hashKey(key: string): Promise<string> {
+    const salt = await bcrypt.genSalt(10);
+    return bcrypt.hash(key, salt);
+  }
+
   public async generateKey(
     userId: string,
     name: string,
@@ -39,16 +50,20 @@ class AnalyticsService {
       throw new HttpError(400, "Key name is required");
     }
 
-    const key = `ak_${crypto.randomBytes(24).toString("hex")}`;
+    // Generate the raw key (shown only once to user)
+    const rawKey = this.generateRawKey();
+
+    // Hash the key for storage
+    const hashedKey = await this.hashKey(rawKey);
 
     const analyticsKey = await AnalyticsKeyModel.create({
       userId,
       name: name.trim(),
-      key,
+      hashedKey,
       status: "active",
     });
 
-    return this.keyToDto(analyticsKey);
+    return this.keyToDto(analyticsKey, rawKey);
   }
 
   public async listKeys(userId: string): Promise<AnalyticsKeyDto[]> {
@@ -79,19 +94,32 @@ class AnalyticsService {
       throw new HttpError(404, "Key not found");
     }
 
-    const newKey = `ak_${crypto.randomBytes(24).toString("hex")}`;
-    keyRecord.key = newKey;
+    // Generate new raw key (shown only once)
+    const newRawKey = this.generateRawKey();
+    const newHashedKey = await this.hashKey(newRawKey);
+
+    keyRecord.hashedKey = newHashedKey;
     keyRecord.status = "active"; // Ensure it's active if it was revoked
     await keyRecord.save();
 
-    return this.keyToDto(keyRecord);
+    return this.keyToDto(keyRecord, newRawKey);
+  }
+
+  private async verifyApiKey(apiKey: string): Promise<IAnalyticsKeyDocument | null> {
+    // Get all active keys and check each one (for bcrypt comparison)
+    const activeKeys = await AnalyticsKeyModel.find({ status: "active" });
+
+    for (const keyDoc of activeKeys) {
+      const isMatch = await bcrypt.compare(apiKey, keyDoc.hashedKey);
+      if (isMatch) {
+        return keyDoc;
+      }
+    }
+    return null;
   }
 
   public async ingestBatch(apiKey: string, events: any[]): Promise<void> {
-    const keyRecord = await AnalyticsKeyModel.findOne({
-      key: apiKey,
-      status: "active",
-    });
+    const keyRecord = await this.verifyApiKey(apiKey);
 
     if (!keyRecord) {
       throw new HttpError(401, "Invalid or revoked API key");
@@ -117,10 +145,7 @@ class AnalyticsService {
     properties: any,
     metadata: any = {},
   ): Promise<void> {
-    const keyRecord = await AnalyticsKeyModel.findOne({
-      key: apiKey,
-      status: "active",
-    });
+    const keyRecord = await this.verifyApiKey(apiKey);
 
     if (!keyRecord) {
       throw new HttpError(401, "Invalid or revoked API key");
@@ -146,13 +171,11 @@ class AnalyticsService {
       offset?: number;
     },
   ) {
+    const userKeys = await AnalyticsKeyModel.find({ userId });
+    const userKeyIds = userKeys.map((k) => k._id.toString());
+
     const matchQuery: any = {
-      // Ensure we only see events for keys owned by this user
-      keyId: {
-        $in: (await AnalyticsKeyModel.find({ userId })).map((k) =>
-          k._id.toString(),
-        ),
-      },
+      keyId: { $in: userKeyIds },
     };
 
     if (query.keyId) {
@@ -179,7 +202,6 @@ class AnalyticsService {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    // Get all keys for this user to ensure stats are only for their data
     const userKeys = await AnalyticsKeyModel.find({ userId });
     const userKeyIds = userKeys.map((k) => k._id.toString());
 
@@ -231,11 +253,14 @@ class AnalyticsService {
     };
   }
 
-  private keyToDto(key: IAnalyticsKeyDocument): AnalyticsKeyDto {
+  private keyToDto(key: IAnalyticsKeyDocument, rawKey?: string): AnalyticsKeyDto {
+    const maskedKey = `ak_••••••••${key.hashedKey.slice(-4)}`;
+
     return {
       id: key._id.toString(),
       name: key.name,
-      key: key.key,
+      ...(rawKey && { key: rawKey }),
+      maskedKey,
       status: key.status,
       createdAt: key.createdAt,
     };
