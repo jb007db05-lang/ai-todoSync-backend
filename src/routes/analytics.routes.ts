@@ -7,7 +7,7 @@ import trackingController from "../controllers/tracking.controller.js";
 import analyticsDataController from "../controllers/analyticsData.controller.js";
 
 class AnalyticsRoutes implements Routes {
-  public path = "/api/events"; // Using /api as the base path for these routes
+  public path = "/api"; // Using /api as the base path for these routes
   public router = Router();
 
   constructor() {
@@ -22,13 +22,33 @@ class AnalyticsRoutes implements Routes {
 
     // 2. EVENT TRACKING (Protected by Dedicated SDK API Key validation)
     this.router.post("/track", validateSdkApiKey, trackingController.track);
-    this.router.post("/identify-track", validateSdkApiKey, trackingController.identifyTrack);
+    this.router.post(
+      "/identify-track",
+      validateSdkApiKey,
+      trackingController.identifyTrack,
+    );
 
     // 3. DATA FETCHING (Protected by JWT)
-    this.router.get("/analytics/events", authMiddleware, analyticsDataController.getEvents);
-    this.router.get("/analytics/events/:eventId/logs", authMiddleware, analyticsDataController.getEventLogs);
-    this.router.get("/analytics/users", authMiddleware, analyticsDataController.getUsers);
-    this.router.get("/analytics/users/:identifier/events", authMiddleware, analyticsDataController.getUserEvents);
+    this.router.get(
+      "/analytics/events",
+      authMiddleware,
+      analyticsDataController.getEvents,
+    );
+    this.router.get(
+      "/analytics/events/:eventId/logs",
+      authMiddleware,
+      analyticsDataController.getEventLogs,
+    );
+    this.router.get(
+      "/analytics/users",
+      authMiddleware,
+      analyticsDataController.getUsers,
+    );
+    this.router.get(
+      "/analytics/users/:identifier/events",
+      authMiddleware,
+      analyticsDataController.getUserEvents,
+    );
   }
 }
 

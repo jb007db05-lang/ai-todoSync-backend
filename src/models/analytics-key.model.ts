@@ -7,7 +7,7 @@ export interface IAnalyticsKey {
   userId: string;
   name: string;
   hashedKey: string; // Reversible encrypted storage
-  keyHash: string;   // Deterministic hash for indexing
+  keyHash: string; // Deterministic hash for indexing
   status: KeyStatus;
   createdAt: Date;
   updatedAt: Date;
@@ -19,9 +19,9 @@ const analyticsKeySchema = new Schema<IAnalyticsKeyDocument>(
   {
     userId: { type: String, required: true, index: true },
     name: { type: String, required: true },
-    hashedKey: { 
-      type: String, 
-      required: true, 
+    hashedKey: {
+      type: String,
+      required: true,
       unique: true,
       get: (v: string) => {
         try {
@@ -39,7 +39,7 @@ const analyticsKeySchema = new Schema<IAnalyticsKeyDocument>(
     },
     keyHash: {
       type: String,
-      required: true,
+      required: false,
       index: true,
       unique: true,
     },

@@ -14,6 +14,7 @@ import AnalyticsRoutes from "./routes/analytics.routes.js";
 import logger from "./lib/logger.js";
 
 const server = new App([
+  new AnalyticsRoutes(),
   new HealthRoutes(),
   new AuthRoutes(),
   new TaskRoutes(),
@@ -25,7 +26,6 @@ const server = new App([
   new ChatRoutes(),
   new ActivityHistoryRoutes(),
   new CommentRoutes(),
-  new AnalyticsRoutes(),
 ]);
 
 void server.listen().catch((error) => {

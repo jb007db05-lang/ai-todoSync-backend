@@ -115,7 +115,6 @@ const authMiddleware = async (
   res: Response,
   next: NextFunction,
 ): Promise<void> => {
-  console.log("auth middleware")
   const authorizationHeader = getHeaderValue(req.headers.authorization);
   const bearerToken = getBearerToken(authorizationHeader);
   let user = bearerToken ? await resolveUserFromJwt(bearerToken) : null;
