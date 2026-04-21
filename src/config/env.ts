@@ -32,8 +32,8 @@ const {
   GOOGLE_REDIRECT_URI,
   FRONTEND_BASE_URL,
   GPT_OAUTH_REDIRECT_URI,
-  BACKEND_URL,
   ENCRYPTION_KEY,
+  BACKEND_URL,
 } = process.env;
 
 if (!MONGODB_URI || !JWT_SECRET || !JWT_EXPIRES_IN) {
@@ -46,7 +46,8 @@ if (
   !GOOGLE_REDIRECT_URI ||
   !FRONTEND_BASE_URL ||
   !GPT_OAUTH_REDIRECT_URI ||
-  !BACKEND_URL
+  !BACKEND_URL ||
+  !ENCRYPTION_KEY
 ) {
   throw new Error(
     "Missing required Google OAuth environment variables for backend startup",
@@ -69,7 +70,7 @@ const env: EnvConfig = {
   FRONTEND_BASE_URL: FRONTEND_BASE_URL.trim(),
   GPT_OAUTH_REDIRECT_URI: GPT_OAUTH_REDIRECT_URI.trim(),
   BACKEND_URL: BACKEND_URL.trim(),
-  ENCRYPTION_KEY: ENCRYPTION_KEY || "",
+  ENCRYPTION_KEY: ENCRYPTION_KEY.trim(),
 };
 
 export default env;
