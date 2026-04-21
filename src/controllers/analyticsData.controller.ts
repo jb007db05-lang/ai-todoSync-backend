@@ -20,33 +20,39 @@ class AnalyticsDataController {
   public getEvents = async (req: Request, res: Response) => {
     try {
       const { apiKeyId, eventName, startDate, endDate } = req.query;
-      
-      if (!apiKeyId) return res.status(400).json({ error: "apiKeyId is required" });
-      if (!await this.verifyKeyOwnership(req, apiKeyId as string)) {
-        return res.status(403).json({ error: "Unauthorized access to this API key's data" });
+
+      if (!apiKeyId)
+        return res.status(400).json({ error: "apiKeyId is required" });
+      if (!(await this.verifyKeyOwnership(req, apiKeyId as string))) {
+        return res
+          .status(403)
+          .json({ error: "Unauthorized access to this API key's data" });
       }
 
       const query: any = { apiKeyId };
       if (eventName) query.eventName = new RegExp(eventName as string, "i");
 
       const events = await AnalyticsEventRegistryModel.find(query);
-      
+
       // Enrich with counts
-      const enrichedEvents = await Promise.all(events.map(async (event) => {
-        const logQuery: any = { eventId: event._id, apiKeyId };
-        if (startDate || endDate) {
-          logQuery.createdAt = {};
-          if (startDate) logQuery.createdAt.$gte = new Date(startDate as string);
-          if (endDate) logQuery.createdAt.$lte = new Date(endDate as string);
-        }
-        const count = await AnalyticsLogModel.countDocuments(logQuery);
-        return {
-          id: event._id,
-          eventName: event.eventName,
-          count,
-          createdAt: event.createdAt,
-        };
-      }));
+      const enrichedEvents = await Promise.all(
+        events.map(async (event) => {
+          const logQuery: any = { eventId: event._id, apiKeyId };
+          if (startDate || endDate) {
+            logQuery.createdAt = {};
+            if (startDate)
+              logQuery.createdAt.$gte = new Date(startDate as string);
+            if (endDate) logQuery.createdAt.$lte = new Date(endDate as string);
+          }
+          const count = await AnalyticsLogModel.countDocuments(logQuery);
+          return {
+            id: event._id,
+            eventName: event.eventName,
+            count,
+            createdAt: event.createdAt,
+          };
+        }),
+      );
 
       res.status(200).json(enrichedEvents);
     } catch (error) {
@@ -63,8 +69,9 @@ class AnalyticsDataController {
       const { eventId } = req.params;
       const { apiKeyId } = req.query;
 
-      if (!apiKeyId) return res.status(400).json({ error: "apiKeyId is required" });
-      if (!await this.verifyKeyOwnership(req, apiKeyId as string)) {
+      if (!apiKeyId)
+        return res.status(400).json({ error: "apiKeyId is required" });
+      if (!(await this.verifyKeyOwnership(req, apiKeyId as string))) {
         return res.status(403).json({ error: "Unauthorized access" });
       }
 
@@ -86,12 +93,15 @@ class AnalyticsDataController {
     try {
       const { apiKeyId } = req.query;
 
-      if (!apiKeyId) return res.status(400).json({ error: "apiKeyId is required" });
-      if (!await this.verifyKeyOwnership(req, apiKeyId as string)) {
+      if (!apiKeyId)
+        return res.status(400).json({ error: "apiKeyId is required" });
+      if (!(await this.verifyKeyOwnership(req, apiKeyId as string))) {
         return res.status(403).json({ error: "Unauthorized access" });
       }
 
-      const users = await AnalyticsUserModel.find({ apiKeyId }).sort({ createdAt: -1 });
+      const users = await AnalyticsUserModel.find({ apiKeyId }).sort({
+        createdAt: -1,
+      });
       res.status(200).json(users);
     } catch (error) {
       console.error("Get users error:", error);
@@ -107,27 +117,84 @@ class AnalyticsDataController {
       const { identifier } = req.params;
       const { apiKeyId } = req.query;
 
-      if (!apiKeyId) return res.status(400).json({ error: "apiKeyId is required" });
-      if (!await this.verifyKeyOwnership(req, apiKeyId as string)) {
+      if (!apiKeyId)
+        return res.status(400).json({ error: "apiKeyId is required" });
+      if (!(await this.verifyKeyOwnership(req, apiKeyId as string))) {
         return res.status(403).json({ error: "Unauthorized access" });
       }
 
-      const logs = await AnalyticsLogModel.find({ userIdentifier: identifier, apiKeyId })
-        .sort({ createdAt: -1 });
+      const logs = await AnalyticsLogModel.find({
+        userIdentifier: identifier,
+        apiKeyId,
+      }).sort({ createdAt: -1 });
 
       // Enrich logs with event names
-      const enrichedLogs = await Promise.all(logs.map(async (log) => {
-        const event = await AnalyticsEventRegistryModel.findById(log.eventId);
-        return {
-          ...log.toObject(),
-          eventName: event?.eventName || "Unknown",
-        };
-      }));
+      const enrichedLogs = await Promise.all(
+        logs.map(async (log) => {
+          const event = await AnalyticsEventRegistryModel.findById(log.eventId);
+          return {
+            ...log.toObject(),
+            eventName: event?.eventName || "Unknown",
+          };
+        }),
+      );
 
       res.status(200).json(enrichedLogs);
     } catch (error) {
       console.error("Get user events error:", error);
       res.status(500).json({ error: "Failed to fetch user events" });
+    }
+  };
+
+  /**
+   * GET /api/analytics/all-logs?apiKeyId=&limit=&offset=
+   */
+  public getAllLogs = async (req: Request, res: Response) => {
+    try {
+      const { apiKeyId, limit = "30", offset = "0", eventName } = req.query;
+
+      if (!apiKeyId)
+        return res.status(400).json({ error: "apiKeyId is required" });
+      if (!(await this.verifyKeyOwnership(req, apiKeyId as string))) {
+        return res.status(403).json({ error: "Unauthorized access" });
+      }
+
+      const query: any = { apiKeyId };
+      const skip = parseInt(offset as string);
+      const take = parseInt(limit as string);
+
+      // Fetch logs
+      const logs = await AnalyticsLogModel.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(take);
+
+      const total = await AnalyticsLogModel.countDocuments(query);
+
+      // Enrich logs with event names from registry
+      const enrichedLogs = await Promise.all(
+        logs.map(async (log) => {
+          const event = await AnalyticsEventRegistryModel.findById(log.eventId);
+          return {
+            _id: log._id,
+            userId: log.userIdentifier || "-",
+            eventName: event?.eventName || "Unknown",
+            timestamp: log.createdAt,
+            payload: log.payload,
+            context: (log.payload as any)?.context || {},
+          };
+        }),
+      );
+
+      res.status(200).json({
+        data: {
+          events: enrichedLogs,
+          total,
+        },
+      });
+    } catch (error) {
+      console.error("Get all logs error:", error);
+      res.status(500).json({ error: "Failed to fetch raw logs" });
     }
   };
 }

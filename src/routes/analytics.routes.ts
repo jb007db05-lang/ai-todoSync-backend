@@ -40,6 +40,11 @@ class AnalyticsRoutes implements Routes {
       analyticsDataController.getEventLogs,
     );
     this.router.get(
+      "/analytics/all-logs",
+      authMiddleware,
+      analyticsDataController.getAllLogs,
+    );
+    this.router.get(
       "/analytics/users",
       authMiddleware,
       analyticsDataController.getUsers,
