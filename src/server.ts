@@ -8,11 +8,13 @@ import NoteRoutes from "./routes/note.routes.js";
 import EpicRoutes from "./routes/epic.routes.js";
 import UserRoutes from "./routes/users.routes.js";
 import ChatRoutes from "./routes/chat.routes.js";
-import ActivityLogRoutes from "./routes/activity-log.routes.js";
+import ActivityHistoryRoutes from "./routes/activity-log.routes.js";
 import CommentRoutes from "./routes/comment.routes.js";
+import AnalyticsRoutes from "./routes/analytics.routes.js";
 import logger from "./lib/logger.js";
 
 const server = new App([
+  new AnalyticsRoutes(),
   new HealthRoutes(),
   new AuthRoutes(),
   new TaskRoutes(),
@@ -22,7 +24,7 @@ const server = new App([
   new NoteRoutes(),
   new SyncRoutes(),
   new ChatRoutes(),
-  new ActivityLogRoutes(),
+  new ActivityHistoryRoutes(),
   new CommentRoutes(),
 ]);
 
