@@ -25,6 +25,7 @@ import {
   getProjectMembershipsByUser,
 } from "../repositories/project-member.repository.js";
 import { clearTaskAssignmentsForUser } from "../repositories/task.repository.js";
+import { runInTransaction } from "../utils/transaction.js";
 
 interface ProjectDto {
   id: string;
@@ -108,21 +109,24 @@ class ProjectService {
       typeof payload.description === "string"
         ? payload.description.trim()
         : undefined;
-    const session = await mongoose.startSession();
 
     try {
-      let project: IProjectDocument | null = null;
+      const project = await runInTransaction(async (session) => {
+        const newProject = await createProject(
+          { userId, name, description },
+          session,
+        );
 
-      await session.withTransaction(async () => {
-        project = await createProject({ userId, name, description }, session);
         await createProjectMember(
           {
-            projectId: project._id.toString(),
+            projectId: newProject._id.toString(),
             userId,
             role: "ADMIN",
           },
           session,
         );
+
+        return newProject;
       });
 
       if (project == null) {
@@ -132,8 +136,6 @@ class ProjectService {
       return this.toDto(project, "ADMIN");
     } catch (error) {
       throw this.mapPersistenceError(error);
-    } finally {
-      await session.endSession();
     }
   }
 
@@ -335,15 +337,13 @@ class ProjectService {
       );
     }
 
-    const session = await mongoose.startSession();
-
     try {
-      await session.withTransaction(async () => {
+      await runInTransaction(async (session) => {
         await deleteProjectMembership(projectId, targetUserId, session);
         await clearTaskAssignmentsForUser(projectId, targetUserId, session);
       });
-    } finally {
-      await session.endSession();
+    } catch (error) {
+      throw this.mapPersistenceError(error);
     }
   }
 
@@ -361,15 +361,13 @@ class ProjectService {
       );
     }
 
-    const session = await mongoose.startSession();
-
     try {
-      await session.withTransaction(async () => {
+      await runInTransaction(async (session) => {
         await deleteProjectMembership(projectId, userId, session);
         await clearTaskAssignmentsForUser(projectId, userId, session);
       });
-    } finally {
-      await session.endSession();
+    } catch (error) {
+      throw this.mapPersistenceError(error);
     }
   }
 
@@ -497,30 +495,24 @@ class ProjectService {
     }
 
     try {
-      const session = await mongoose.startSession();
-      let project: IProjectDocument | null = null;
-
-      try {
-        await session.withTransaction(async () => {
-          project = await createProject(
-            {
-              userId,
-              name,
-            },
-            session,
-          );
-          await createProjectMember(
-            {
-              projectId: project._id.toString(),
-              userId,
-              role: "ADMIN",
-            },
-            session,
-          );
-        });
-      } finally {
-        await session.endSession();
-      }
+      const project = await runInTransaction(async (session) => {
+        const newProject = await createProject(
+          {
+            userId,
+            name,
+          },
+          session,
+        );
+        await createProjectMember(
+          {
+            projectId: newProject._id.toString(),
+            userId,
+            role: "ADMIN",
+          },
+          session,
+        );
+        return newProject;
+      });
 
       if (project == null) {
         throw new HttpError(500, "Project not created");

@@ -12,6 +12,7 @@ import {
   buildRefInMatch,
   buildRefMatch,
 } from "../utils/mongo-ref.js";
+import { runInTransaction } from "../utils/transaction.js";
 
 export const projectPopulateOptions = [
   { path: "userId", select: "email name firstName lastName" },
@@ -30,7 +31,7 @@ export interface UpdateProjectPayload {
 
 export const createProject = async (
   payload: CreateProjectPayload,
-  session?: ClientSession,
+  session?: ClientSession | null,
 ): Promise<IProjectDocument> =>
   ProjectModel.create([{ ...payload }], { session }).then(
     ([project]) => project,
@@ -161,74 +162,59 @@ export const deleteTasksByProject = async (
 export const deleteProjectWithRelations = async (
   projectId: string,
 ): Promise<IProjectDocument | null> => {
-  const session = await mongoose.startSession();
+  return runInTransaction(async (session) => {
+    const deletedProject = await ProjectModel.findByIdAndDelete(projectId, {
+      session: session as any,
+    }).exec();
 
-  try {
-    let deletedProject: IProjectDocument | null = null;
+    if (deletedProject == null) {
+      return null;
+    }
 
-    await session.withTransaction(async () => {
-      deletedProject = await ProjectModel.findByIdAndDelete(projectId, {
-        session,
-      }).exec();
-
-      if (deletedProject == null) {
-        return;
-      }
-
-      await TaskModel.deleteMany(buildRefMatch("projectId", projectId), {
-        session,
-      }).exec();
-      await EpicModel.deleteMany(buildRefMatch("projectId", projectId), {
-        session,
-      }).exec();
-      await NoteModel.deleteMany(buildRefMatch("projectId", projectId), {
-        session,
-      }).exec();
-      await deleteProjectMembershipsByProject(projectId, session);
-    });
+    await TaskModel.deleteMany(buildRefMatch("projectId", projectId), {
+      session: session as any,
+    }).exec();
+    await EpicModel.deleteMany(buildRefMatch("projectId", projectId), {
+      session: session as any,
+    }).exec();
+    await NoteModel.deleteMany(buildRefMatch("projectId", projectId), {
+      session: session as any,
+    }).exec();
+    await deleteProjectMembershipsByProject(projectId, session as any);
 
     return deletedProject;
-  } finally {
-    await session.endSession();
-  }
+  });
 };
 
 export const deleteProjectsWithRelations = async (
   projectIds: string[],
 ): Promise<number> => {
-  const session = await mongoose.startSession();
-  let deletedCount = 0;
+  return runInTransaction(async (session) => {
+    const result = await ProjectModel.deleteMany(
+      { _id: { $in: projectIds } },
+      { session: session as any },
+    ).exec();
 
-  try {
-    await session.withTransaction(async () => {
-      const result = await ProjectModel.deleteMany(
-        { _id: { $in: projectIds } },
-        { session },
-      ).exec();
+    const deletedCount = result.deletedCount;
 
-      deletedCount = result.deletedCount;
+    if (deletedCount === 0) {
+      return 0;
+    }
 
-      if (deletedCount === 0) {
-        return;
-      }
-
-      await TaskModel.deleteMany(buildRefInMatch("projectId", projectIds), {
-        session,
-      }).exec();
-      await EpicModel.deleteMany(buildRefInMatch("projectId", projectIds), {
-        session,
-      }).exec();
-      await NoteModel.deleteMany(buildRefInMatch("projectId", projectIds), {
-        session,
-      }).exec();
-      await ProjectMemberModel.deleteMany(
-        buildRefInMatch("projectId", projectIds),
-        { session },
-      ).exec();
-    });
+    await TaskModel.deleteMany(buildRefInMatch("projectId", projectIds), {
+      session: session as any,
+    }).exec();
+    await EpicModel.deleteMany(buildRefInMatch("projectId", projectIds), {
+      session: session as any,
+    }).exec();
+    await NoteModel.deleteMany(buildRefInMatch("projectId", projectIds), {
+      session: session as any,
+    }).exec();
+    await ProjectMemberModel.deleteMany(
+      buildRefInMatch("projectId", projectIds),
+      { session: session as any },
+    ).exec();
 
     return deletedCount;
-  } finally {
-    await session.endSession();
-  }
+  });
 };
