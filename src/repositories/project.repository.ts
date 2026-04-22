@@ -8,8 +8,8 @@ import ProjectMemberModel from "../models/project-member.model.js";
 import { deleteProjectMembershipsByProject } from "./project-member.repository.js";
 import {
   andRefMatches,
-  buildRefInMatch,
-  buildRefMatch,
+  buildSafeRefInMatch,
+  buildSafeRefMatch,
 } from "../utils/mongo-ref.js";
 import { runInTransaction } from "../utils/transaction.js";
 
@@ -47,7 +47,7 @@ export const getProjectsByUser = async (
   params: ProjectQueryParams,
 ): Promise<IProjectDocument[]> => {
   const memberships = await ProjectMemberModel.find(
-    buildRefMatch("userId", params.userId),
+    buildSafeRefMatch("userId", params.userId),
   )
     .select({ projectId: 1 })
     .lean()
@@ -60,7 +60,7 @@ export const getProjectsByUser = async (
     return [];
   }
 
-  const query: Record<string, unknown> = buildRefInMatch("_id", projectIds);
+  const query: Record<string, unknown> = buildSafeRefInMatch("_id", projectIds);
 
   if (params.search) {
     query.name = { $regex: params.search, $options: "i" };
@@ -79,7 +79,7 @@ export const countProjectsByUser = async (
   search?: string,
 ): Promise<number> => {
   const memberships = await ProjectMemberModel.find(
-    buildRefMatch("userId", userId),
+    buildSafeRefMatch("userId", userId),
   )
     .select({ projectId: 1 })
     .lean()
@@ -92,7 +92,7 @@ export const countProjectsByUser = async (
     return 0;
   }
 
-  const query: Record<string, unknown> = buildRefInMatch("_id", projectIds);
+  const query: Record<string, unknown> = buildSafeRefInMatch("_id", projectIds);
 
   if (search) {
     query.name = { $regex: search, $options: "i" };
@@ -112,8 +112,8 @@ export const getProjectByIdAndUser = async (
 ): Promise<IProjectDocument | null> =>
   ProjectMemberModel.exists({
     ...andRefMatches(
-      buildRefMatch("projectId", projectId),
-      buildRefMatch("userId", userId),
+      buildSafeRefMatch("projectId", projectId),
+      buildSafeRefMatch("userId", userId),
     ),
   }).then((membership) => {
     if (membership == null) {
@@ -130,7 +130,7 @@ export const getProjectByName = async (
   name: string,
 ): Promise<IProjectDocument | null> =>
   ProjectModel.findOne(
-    andRefMatches({ name }, buildRefMatch("userId", userId)),
+    andRefMatches({ name }, buildSafeRefMatch("userId", userId)),
   ).exec();
 
 export const updateProject = async (
@@ -152,8 +152,8 @@ export const deleteTasksByProject = async (
 ): Promise<void> => {
   await TaskModel.deleteMany(
     andRefMatches(
-      buildRefMatch("userId", userId),
-      buildRefMatch("projectId", projectId),
+      buildSafeRefMatch("userId", userId),
+      buildSafeRefMatch("projectId", projectId),
     ),
   ).exec();
 };
@@ -170,13 +170,13 @@ export const deleteProjectWithRelations = async (
       return null;
     }
 
-    await TaskModel.deleteMany(buildRefMatch("projectId", projectId), {
+    await TaskModel.deleteMany(buildSafeRefMatch("projectId", projectId), {
       session: session as any,
     }).exec();
-    await EpicModel.deleteMany(buildRefMatch("projectId", projectId), {
+    await EpicModel.deleteMany(buildSafeRefMatch("projectId", projectId), {
       session: session as any,
     }).exec();
-    await NoteModel.deleteMany(buildRefMatch("projectId", projectId), {
+    await NoteModel.deleteMany(buildSafeRefMatch("projectId", projectId), {
       session: session as any,
     }).exec();
     await deleteProjectMembershipsByProject(projectId, session as any);
@@ -200,17 +200,17 @@ export const deleteProjectsWithRelations = async (
       return 0;
     }
 
-    await TaskModel.deleteMany(buildRefInMatch("projectId", projectIds), {
+    await TaskModel.deleteMany(buildSafeRefInMatch("projectId", projectIds), {
       session: session as any,
     }).exec();
-    await EpicModel.deleteMany(buildRefInMatch("projectId", projectIds), {
+    await EpicModel.deleteMany(buildSafeRefInMatch("projectId", projectIds), {
       session: session as any,
     }).exec();
-    await NoteModel.deleteMany(buildRefInMatch("projectId", projectIds), {
+    await NoteModel.deleteMany(buildSafeRefInMatch("projectId", projectIds), {
       session: session as any,
     }).exec();
     await ProjectMemberModel.deleteMany(
-      buildRefInMatch("projectId", projectIds),
+      buildSafeRefInMatch("projectId", projectIds),
       { session: session as any },
     ).exec();
 

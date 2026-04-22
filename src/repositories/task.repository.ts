@@ -10,6 +10,7 @@ import {
   andRefMatches,
   buildRefInMatch,
   buildRefMatch,
+  buildSafeRefMatch,
 } from "../utils/mongo-ref.js";
 
 export type TaskDocumentWithAssignee = ITaskDocument;
@@ -90,8 +91,8 @@ export const getTasksByUser = async (
     filter.$and = [
       {
         $or: [
-          buildRefMatch("assignedTo", aid),
-          buildRefMatch("subtasks.assignedToUserId", aid),
+          buildSafeRefMatch("assignedTo", aid),
+          buildSafeRefMatch("subtasks.assignedToUserId", aid),
         ],
       },
     ];
@@ -170,8 +171,8 @@ export const getTasksByDate = async (
     filter.$and = [
       {
         $or: [
-          buildRefMatch("assignedTo", aid),
-          buildRefMatch("subtasks.assignedToUserId", aid),
+          buildSafeRefMatch("assignedTo", aid),
+          buildSafeRefMatch("subtasks.assignedToUserId", aid),
         ],
       },
     ];
