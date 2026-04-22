@@ -13,13 +13,23 @@ export const validateSdkApiKey = async (
   res: Response,
   next: NextFunction,
 ) => {
+  const authorizationHeader = req.headers.authorization;
+  const bearerToken =
+    typeof authorizationHeader === "string" &&
+    authorizationHeader.startsWith("Bearer ")
+      ? authorizationHeader.slice("Bearer ".length).trim()
+      : undefined;
   const apiKey =
-    (req.headers["x-api-key"] as string) || (req.body && req.body.apiKey);
+    bearerToken ||
+    (req.headers["x-api-key"] as string) ||
+    (req.body && req.body.apiKey);
 
   if (!apiKey || typeof apiKey !== "string") {
     return res
       .status(401)
-      .json({ error: "API key is required in X-API-KEY header" });
+      .json({
+        error: "API key is required in Authorization or X-API-KEY header",
+      });
   }
 
   try {
@@ -53,9 +63,9 @@ export const validateSdkApiKey = async (
     }
 
     // Attach identity to request
-    (req as any).user = user;
-    (req as any).analyticsKey = keyDoc;
-    (req as any).apiKeyId = keyDoc._id;
+    req.user = user;
+    req.analyticsKey = keyDoc;
+    req.apiKeyId = keyDoc._id.toString();
 
     next();
   } catch (error) {

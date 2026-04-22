@@ -26,7 +26,7 @@ const analyticsKeySchema = new Schema<IAnalyticsKeyDocument>(
       get: (v: string) => {
         try {
           return decrypt(v);
-        } catch (e) {
+        } catch {
           return v;
         }
       },

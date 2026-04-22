@@ -15,28 +15,46 @@ class HttpError extends Error {
   }
 }
 
+interface CommentUserDto {
+  id: string;
+  email: string;
+  name: string | null;
+}
+
+export interface CommentDto {
+  id: string;
+  taskId: string;
+  userId: string;
+  content: string;
+  createdAt: string;
+  user: CommentUserDto;
+}
+
 class CommentService {
   public async addComment(
     taskId: string,
     userId: string,
     content: string,
-  ): Promise<ICommentDocument> {
+  ): Promise<CommentDto> {
     if (!content || content.trim() === "") {
       throw new HttpError(400, "Comment content is required");
     }
 
     const mentions = await this.parseMentions(content);
 
-    return createComment({
+    const comment = await createComment({
       taskId,
       userId,
       content,
       mentions,
     });
+
+    return this.toDto(comment);
   }
 
-  public async getComments(taskId: string): Promise<ICommentDocument[]> {
-    return getCommentsByTaskId(taskId);
+  public async getComments(taskId: string): Promise<CommentDto[]> {
+    const comments = await getCommentsByTaskId(taskId);
+    return comments.map((comment) => this.toDto(comment));
   }
 
   private async parseMentions(content: string): Promise<string[]> {
@@ -63,6 +81,40 @@ class CommentService {
     }
 
     return Array.from(new Set(mentions));
+  }
+
+  private toDto(comment: ICommentDocument): CommentDto {
+    const populatedUser = comment.userId as unknown as {
+      _id?: { toString(): string };
+      email?: string;
+      name?: string | null;
+      firstName?: string | null;
+      lastName?: string | null;
+    };
+
+    const userName =
+      populatedUser?.name ||
+      [populatedUser?.firstName, populatedUser?.lastName]
+        .filter(Boolean)
+        .join(" ") ||
+      null;
+
+    return {
+      id: comment._id.toString(),
+      taskId: comment.taskId.toString(),
+      userId:
+        populatedUser?._id?.toString?.() ??
+        (typeof comment.userId === "string" ? comment.userId : ""),
+      content: comment.content,
+      createdAt: comment.createdAt?.toISOString() ?? new Date().toISOString(),
+      user: {
+        id:
+          populatedUser?._id?.toString?.() ??
+          (typeof comment.userId === "string" ? comment.userId : ""),
+        email: populatedUser?.email ?? "",
+        name: userName,
+      },
+    };
   }
 }
 

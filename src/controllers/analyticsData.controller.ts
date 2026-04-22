@@ -3,14 +3,68 @@ import AnalyticsKeyModel from "../models/analytics-key.model.js";
 import AnalyticsEventRegistryModel from "../models/analytics-event-registry.model.js";
 import AnalyticsLogModel from "../models/analytics-log.model.js";
 import AnalyticsUserModel from "../models/analytics-user.model.js";
+import logger from "../lib/logger.js";
 
 class AnalyticsDataController {
+  private parsePagination(req: Request) {
+    const page = Math.max(
+      1,
+      parseInt((req.query.page as string) || "1", 10) || 1,
+    );
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt((req.query.limit as string) || "30", 10) || 30),
+    );
+
+    return {
+      page,
+      limit,
+      skip: (page - 1) * limit,
+    };
+  }
+
+  private parseEventNames(value: unknown): string[] {
+    if (Array.isArray(value)) {
+      return value
+        .flatMap((item) => this.parseEventNames(item))
+        .filter((item, index, items) => items.indexOf(item) === index);
+    }
+
+    if (typeof value !== "string") {
+      return [];
+    }
+
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  private buildEventRefQuery(apiKeyId: string, eventRef: string) {
+    return {
+      apiKeyId,
+      $or: [
+        { eventRef },
+        {
+          eventRef: { $exists: false },
+          eventId: eventRef,
+        },
+      ],
+    };
+  }
+
+  private resolveEventRef(log: { eventRef?: string; eventId: string }) {
+    return log.eventRef || log.eventId;
+  }
+
   /**
    * Helper to verify if the requesting user owns the API key ID.
    */
   private verifyKeyOwnership = async (req: Request, apiKeyId: string) => {
-    const userId = (req as any).user?.id;
-    const key = await AnalyticsKeyModel.findOne({ _id: apiKeyId, userId });
+    const userId = req.user?._id?.toString();
+    const key = await AnalyticsKeyModel.findOne({ _id: apiKeyId, userId })
+      .lean()
+      .exec();
     return !!key;
   };
 
@@ -29,20 +83,35 @@ class AnalyticsDataController {
           .json({ error: "Unauthorized access to this API key's data" });
       }
 
-      const query: any = { apiKeyId };
-      if (eventName) query.eventName = new RegExp(eventName as string, "i");
+      const query: Record<string, unknown> = { apiKeyId };
+      const eventNames = this.parseEventNames(req.query.eventNames);
+      if (eventNames.length > 0) {
+        query.eventName = { $in: eventNames };
+      } else if (eventName) {
+        query.eventName = new RegExp(eventName as string, "i");
+      }
 
-      const events = await AnalyticsEventRegistryModel.find(query);
+      const events = await AnalyticsEventRegistryModel.find(query)
+        .lean()
+        .exec();
 
       // Enrich with counts
       const enrichedEvents = await Promise.all(
         events.map(async (event) => {
-          const logQuery: any = { eventId: event._id, apiKeyId };
+          const logQuery: Record<string, unknown> = this.buildEventRefQuery(
+            apiKeyId as string,
+            event._id.toString(),
+          );
           if (startDate || endDate) {
             logQuery.createdAt = {};
             if (startDate)
-              logQuery.createdAt.$gte = new Date(startDate as string);
-            if (endDate) logQuery.createdAt.$lte = new Date(endDate as string);
+              (logQuery.createdAt as Record<string, Date>).$gte = new Date(
+                startDate as string,
+              );
+            if (endDate)
+              (logQuery.createdAt as Record<string, Date>).$lte = new Date(
+                endDate as string,
+              );
           }
           const count = await AnalyticsLogModel.countDocuments(logQuery);
           return {
@@ -56,7 +125,10 @@ class AnalyticsDataController {
 
       res.status(200).json(enrichedEvents);
     } catch (error) {
-      console.error("Get events error:", error);
+      logger.error(
+        "Get events error",
+        error instanceof Error ? error : undefined,
+      );
       res.status(500).json({ error: "Failed to fetch events" });
     }
   };
@@ -75,13 +147,20 @@ class AnalyticsDataController {
         return res.status(403).json({ error: "Unauthorized access" });
       }
 
-      const logs = await AnalyticsLogModel.find({ eventId, apiKeyId })
+      const logs = await AnalyticsLogModel.find(
+        this.buildEventRefQuery(apiKeyId as string, eventId as string),
+      )
         .sort({ createdAt: -1 })
-        .limit(100);
+        .limit(100)
+        .lean()
+        .exec();
 
       res.status(200).json(logs);
     } catch (error) {
-      console.error("Get logs error:", error);
+      logger.error(
+        "Get logs error",
+        error instanceof Error ? error : undefined,
+      );
       res.status(500).json({ error: "Failed to fetch logs" });
     }
   };
@@ -99,12 +178,18 @@ class AnalyticsDataController {
         return res.status(403).json({ error: "Unauthorized access" });
       }
 
-      const users = await AnalyticsUserModel.find({ apiKeyId }).sort({
-        createdAt: -1,
-      });
+      const users = await AnalyticsUserModel.find({ apiKeyId })
+        .sort({
+          createdAt: -1,
+        })
+        .lean()
+        .exec();
       res.status(200).json(users);
     } catch (error) {
-      console.error("Get users error:", error);
+      logger.error(
+        "Get users error",
+        error instanceof Error ? error : undefined,
+      );
       res.status(500).json({ error: "Failed to fetch users" });
     }
   };
@@ -126,14 +211,22 @@ class AnalyticsDataController {
       const logs = await AnalyticsLogModel.find({
         userIdentifier: identifier,
         apiKeyId,
-      }).sort({ createdAt: -1 });
+      })
+        .sort({ createdAt: -1 })
+        .lean()
+        .exec();
 
       // Enrich logs with event names
       const enrichedLogs = await Promise.all(
         logs.map(async (log) => {
-          const event = await AnalyticsEventRegistryModel.findById(log.eventId);
+          const event = await AnalyticsEventRegistryModel.findById(
+            this.resolveEventRef(log),
+          )
+            .lean()
+            .exec();
           return {
-            ...log.toObject(),
+            ...log,
+            eventId: this.resolveEventRef(log),
             eventName: event?.eventName || "Unknown",
           };
         }),
@@ -141,7 +234,10 @@ class AnalyticsDataController {
 
       res.status(200).json(enrichedLogs);
     } catch (error) {
-      console.error("Get user events error:", error);
+      logger.error(
+        "Get user events error",
+        error instanceof Error ? error : undefined,
+      );
       res.status(500).json({ error: "Failed to fetch user events" });
     }
   };
@@ -151,7 +247,13 @@ class AnalyticsDataController {
    */
   public getAllLogs = async (req: Request, res: Response) => {
     try {
-      const { apiKeyId, limit = "30", offset = "0", eventName } = req.query;
+      const {
+        apiKeyId,
+        eventName,
+        startDate,
+        endDate,
+        offset = "0",
+      } = req.query;
 
       if (!apiKeyId)
         return res.status(400).json({ error: "apiKeyId is required" });
@@ -159,29 +261,89 @@ class AnalyticsDataController {
         return res.status(403).json({ error: "Unauthorized access" });
       }
 
-      const query: any = { apiKeyId };
-      const skip = parseInt(offset as string);
-      const take = parseInt(limit as string);
+      const query: Record<string, unknown> = { apiKeyId };
+      const { page, limit, skip } = this.parsePagination(req);
+      const legacyOffset = parseInt(offset as string, 10);
+      const effectiveSkip =
+        Number.isFinite(legacyOffset) && legacyOffset > 0 ? legacyOffset : skip;
+
+      const eventNames = this.parseEventNames(req.query.eventNames);
+      if (eventNames.length > 0) {
+        const matchingEvents = await AnalyticsEventRegistryModel.find({
+          apiKeyId,
+          eventName: { $in: eventNames },
+        })
+          .select({ _id: 1 })
+          .lean()
+          .exec();
+
+        const eventRefs = matchingEvents.map((event) => event._id.toString());
+        query.$or = [
+          { eventRef: { $in: eventRefs } },
+          { eventRef: { $exists: false }, eventId: { $in: eventRefs } },
+        ];
+      } else if (eventName) {
+        const matchingEvents = await AnalyticsEventRegistryModel.find({
+          apiKeyId,
+          eventName: new RegExp(eventName as string, "i"),
+        })
+          .select({ _id: 1 })
+          .lean()
+          .exec();
+
+        const eventRefs = matchingEvents.map((event) => event._id.toString());
+        query.$or = [
+          { eventRef: { $in: eventRefs } },
+          { eventRef: { $exists: false }, eventId: { $in: eventRefs } },
+        ];
+      }
+
+      if (startDate || endDate) {
+        query.createdAt = {};
+        if (startDate) {
+          (query.createdAt as Record<string, Date>).$gte = new Date(
+            startDate as string,
+          );
+        }
+        if (endDate) {
+          const end = new Date(endDate as string);
+          end.setHours(23, 59, 59, 999);
+          (query.createdAt as Record<string, Date>).$lte = end;
+        }
+      }
 
       // Fetch logs
       const logs = await AnalyticsLogModel.find(query)
         .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(take);
+        .skip(effectiveSkip)
+        .limit(limit)
+        .lean()
+        .exec();
 
       const total = await AnalyticsLogModel.countDocuments(query);
 
       // Enrich logs with event names from registry
       const enrichedLogs = await Promise.all(
         logs.map(async (log) => {
-          const event = await AnalyticsEventRegistryModel.findById(log.eventId);
+          const event = await AnalyticsEventRegistryModel.findById(
+            this.resolveEventRef(log),
+          )
+            .lean()
+            .exec();
           return {
             _id: log._id,
             userId: log.userIdentifier || "-",
             eventName: event?.eventName || "Unknown",
             timestamp: log.createdAt,
             payload: log.payload,
-            context: (log.payload as any)?.context || {},
+            eventId: this.resolveEventRef(log),
+            sessionId: log.sessionId,
+            context:
+              log.payload &&
+              typeof log.payload === "object" &&
+              "context" in log.payload
+                ? (log.payload.context as Record<string, unknown>)
+                : {},
           };
         }),
       );
@@ -190,10 +352,15 @@ class AnalyticsDataController {
         data: {
           events: enrichedLogs,
           total,
+          page,
+          totalPages: Math.max(1, Math.ceil(total / limit)),
         },
       });
     } catch (error) {
-      console.error("Get all logs error:", error);
+      logger.error(
+        "Get all logs error",
+        error instanceof Error ? error : undefined,
+      );
       res.status(500).json({ error: "Failed to fetch raw logs" });
     }
   };

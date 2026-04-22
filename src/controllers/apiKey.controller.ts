@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import AnalyticsKeyModel from "../models/analytics-key.model.js";
-import { generateApiKey, hashApiKey } from "../utils/crypto.js";
+import { generateApiKey } from "../utils/crypto.js";
 
 class ApiKeyController {
   /**
@@ -46,7 +46,9 @@ class ApiKeyController {
   public listKeys = async (req: Request, res: Response) => {
     try {
       const userId = (req as any).user?.id;
-      const keys = await AnalyticsKeyModel.find({ userId }).sort({ createdAt: -1 });
+      const keys = await AnalyticsKeyModel.find({ userId }).sort({
+        createdAt: -1,
+      });
 
       // Mask keys before returning
       const maskedKeys = keys.map((k) => ({
@@ -73,7 +75,10 @@ class ApiKeyController {
       const { id } = req.params;
       const userId = (req as any).user?.id;
 
-      const result = await AnalyticsKeyModel.findOneAndDelete({ _id: id, userId });
+      const result = await AnalyticsKeyModel.findOneAndDelete({
+        _id: id,
+        userId,
+      });
 
       if (!result) {
         return res.status(404).json({ error: "Key not found or unauthorized" });

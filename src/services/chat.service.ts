@@ -6,7 +6,6 @@ import * as chatRepository from "../repositories/chat.repository.js";
 import * as projectMemberRepository from "../repositories/project-member.repository.js";
 import type {
   CreateMessagePayload,
-  UpdateMessagePayload,
   PaginationOptions,
 } from "../repositories/chat.repository.js";
 

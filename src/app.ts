@@ -11,6 +11,8 @@ import env from "./config/env.js";
 import { connectDatabase } from "./config/db.config.js";
 import { scheduleRolloverJob } from "./utils/rollover.js";
 import chatSocketServer from "./socket/chat.socket.js";
+import { errorMiddleware } from "./middleware/error.middleware.js";
+import { AppError } from "./utils/app-error.js";
 
 class App {
   public app: Application;
@@ -66,6 +68,11 @@ class App {
 
       this.app.use(route.router);
     });
+
+    this.app.use((_req, _res, next) => {
+      next(new AppError(404, "Route not found", "NOT_FOUND"));
+    });
+    this.app.use(errorMiddleware);
   }
 
   private initializeCronJobs(): void {

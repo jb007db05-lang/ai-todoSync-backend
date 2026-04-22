@@ -22,11 +22,20 @@ class AnalyticsRoutes implements Routes {
 
     // 2. EVENT TRACKING (Protected by Dedicated SDK API Key validation)
     this.router.post("/track", validateSdkApiKey, trackingController.track);
+    this.router.post("/batch", validateSdkApiKey, trackingController.batch);
+    this.router.post(
+      "/identify",
+      validateSdkApiKey,
+      trackingController.identify,
+    );
+    this.router.post("/alias", validateSdkApiKey, trackingController.alias);
+    this.router.post("/page", validateSdkApiKey, trackingController.page);
     this.router.post(
       "/identify-track",
       validateSdkApiKey,
       trackingController.identifyTrack,
     );
+    this.router.get("/config", validateSdkApiKey, trackingController.config);
 
     // 3. DATA FETCHING (Protected by JWT)
     this.router.get(

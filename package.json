@@ -16,6 +16,8 @@
     "check:branch": "tsx src/scripts/checks/branchCheck.ts",
     "check:all": "node dist/scripts/checks/allCustomChecks.js",
     "migrate:project-team": "tsx src/scripts/migrations/backfillProjectMembers.ts",
+    "migrate:legacy-refs": "tsx src/scripts/migrations/backfillLegacyReferenceIds.ts",
+    "migrate:polymorphic-notes": "tsx src/scripts/migrations/backfillPolymorphicNotes.ts",
     "type-check": "tsc --noEmit",
     "depcheck": "depcheck",
     "jscpd": "jscpd",
