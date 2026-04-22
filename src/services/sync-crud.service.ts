@@ -18,12 +18,7 @@ import noteService from "./note.service.js";
 import projectService from "./project.service.js";
 import taskService from "./task.service.js";
 import { AppError } from "../utils/app-error.js";
-import {
-  buildRefInMatch,
-  buildRefMatch,
-  buildSafeRefInMatch,
-  buildSafeRefMatch,
-} from "../utils/mongo-ref.js";
+import { buildSafeRefInMatch, buildSafeRefMatch } from "../utils/mongo-ref.js";
 
 interface PaginationParams {
   page?: unknown;

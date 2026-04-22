@@ -10,7 +10,6 @@ import {
   andRefMatches,
   buildRefInMatch,
   buildRefMatch,
-  buildSafeRefInMatch,
   buildSafeRefMatch,
 } from "../utils/mongo-ref.js";
 
