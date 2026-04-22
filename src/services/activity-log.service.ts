@@ -1,5 +1,4 @@
 import ActivityLogModel, {
-  type IActivityLog,
   type EntityType,
   type ActionType,
   type IFieldChange,

@@ -4,6 +4,7 @@ import {
   deleteNote,
   getNoteById,
   getNotesByEpic,
+  getNotesByParent,
   getNotesByProject,
   updateNote,
 } from "../repositories/note.repository.js";
@@ -17,6 +18,8 @@ import epicService from "./epic.service.js";
 interface NoteDto {
   id: string;
   entityType: "project" | "epic";
+  parentType: "project" | "epic" | "task" | "subtask";
+  parentId: string;
   projectId: string;
   epicId: string | null;
   title: string;
@@ -51,6 +54,8 @@ class NoteService {
 
     const createPayload: CreateNoteRepositoryPayload = {
       entityType: "project",
+      parentType: "project",
+      parentId: projectId,
       projectId,
       epicId: null,
       title: this.normalizeTitle(payload.title),
@@ -94,6 +99,8 @@ class NoteService {
 
     const createPayload: CreateNoteRepositoryPayload = {
       entityType: "epic",
+      parentType: "epic",
+      parentId: epicId,
       projectId,
       epicId,
       title: this.normalizeTitle(payload.title),
@@ -128,6 +135,26 @@ class NoteService {
     return notes.map((note) => this.toDto(note));
   }
 
+  public async fetchNotesByParent(
+    userId: string,
+    parentType: "project" | "epic" | "task" | "subtask",
+    parentId: string,
+  ): Promise<NoteDto[]> {
+    const notes = await getNotesByParent(parentType, parentId);
+
+    if (notes.length === 0) {
+      return [];
+    }
+
+    const note = notes[0];
+    await projectService.assertProjectMembership(
+      userId,
+      note.projectId?.toString() ?? "",
+    );
+
+    return notes.map((currentNote) => this.toDto(currentNote));
+  }
+
   public async fetchNote(userId: string, noteId: string): Promise<NoteDto> {
     const note = await this.getAccessibleNote(userId, noteId);
     return this.toDto(note);
@@ -147,9 +174,13 @@ class NoteService {
 
       // Issue #10: Check for unique title if it changed
       if (newTitle.toLowerCase() !== existingNote.title.toLowerCase()) {
-        const projectNotes = await getNotesByProject(
-          existingNote.projectId.toString(),
-        );
+        const projectId = existingNote.projectId?.toString();
+
+        if (!projectId) {
+          throw new HttpError(400, "Note is missing project context");
+        }
+
+        const projectNotes = await getNotesByProject(projectId);
         if (
           projectNotes.some(
             (n) => n.title.toLowerCase() === newTitle.toLowerCase(),
@@ -205,15 +236,21 @@ class NoteService {
     }
 
     if (requireAdmin) {
-      await projectService.assertProjectOwnership(
-        userId,
-        note.projectId.toString(),
-      );
+      const projectId = note.projectId?.toString();
+
+      if (!projectId) {
+        throw new HttpError(400, "Note is missing project context");
+      }
+
+      await projectService.assertProjectOwnership(userId, projectId);
     } else {
-      await projectService.assertProjectMembership(
-        userId,
-        note.projectId.toString(),
-      );
+      const projectId = note.projectId?.toString();
+
+      if (!projectId) {
+        throw new HttpError(400, "Note is missing project context");
+      }
+
+      await projectService.assertProjectMembership(userId, projectId);
     }
     return note;
   }
@@ -221,8 +258,11 @@ class NoteService {
   private toDto(note: INoteDocument): NoteDto {
     return {
       id: note._id.toString(),
-      entityType: note.entityType,
-      projectId: note.projectId.toString(),
+      entityType:
+        note.entityType ?? (note.parentType === "project" ? "project" : "epic"),
+      parentType: note.parentType,
+      parentId: note.parentId.toString(),
+      projectId: note.projectId?.toString() ?? "",
       epicId: note.epicId?.toString() ?? null,
       title: note.title,
       content: note.content,

@@ -1,7 +1,6 @@
 import {
   createTask,
   deleteTask,
-  getTaskById,
   getTaskByIdAndUser,
   getTasksByDate,
   getTasksByUser,
@@ -27,6 +26,7 @@ import chatSocketServer from "../socket/chat.socket.js";
 import TaskModel from "../models/task.model.js";
 import UserModel from "../models/user.model.js";
 import ProjectMemberModel from "../models/project-member.model.js";
+import { buildRefInMatch, buildRefMatch } from "../utils/mongo-ref.js";
 
 interface TaskUserDto {
   id: string;
@@ -196,8 +196,8 @@ class TaskService {
     const roleMap = this.buildRoleMap(memberships);
 
     const tasks = await TaskModel.find({
-      assignedTo: userId,
-      projectId: { $in: projectIds },
+      ...buildRefMatch("assignedTo", userId),
+      ...buildRefInMatch("projectId", projectIds),
     })
       .populate(taskPopulateOptions)
       .exec();
@@ -383,8 +383,8 @@ class TaskService {
 
     if (currentTask.projectId) {
       const targetMembership = await ProjectMemberModel.findOne({
-        projectId: currentTask.projectId,
-        userId: targetUserId,
+        ...buildRefMatch("projectId", currentTask.projectId.toString()),
+        ...buildRefMatch("userId", targetUserId),
       });
       if (!targetMembership) {
         throw new HttpError(400, "Target user is not a member of the project");
@@ -510,8 +510,8 @@ class TaskService {
 
       if (task.projectId) {
         const isMember = await ProjectMemberModel.exists({
-          projectId: task.projectId,
-          userId: targetUserId,
+          ...buildRefMatch("projectId", task.projectId.toString()),
+          ...buildRefMatch("userId", targetUserId),
         });
         if (!isMember) {
           continue;

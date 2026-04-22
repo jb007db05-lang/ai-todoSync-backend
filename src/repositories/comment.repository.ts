@@ -1,4 +1,5 @@
 import CommentModel, { ICommentDocument } from "../models/comment.model.js";
+import { buildRefMatch } from "../utils/mongo-ref.js";
 
 export interface CreateCommentPayload {
   taskId: string;
@@ -22,7 +23,7 @@ export const createComment = async (
 export const getCommentsByTaskId = async (
   taskId: string,
 ): Promise<ICommentDocument[]> =>
-  CommentModel.find({ taskId })
+  CommentModel.find(buildRefMatch("taskId", taskId))
     .populate(commentPopulateOptions)
     .sort({ createdAt: 1 })
     .exec();

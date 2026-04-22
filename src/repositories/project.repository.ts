@@ -7,7 +7,11 @@ import EpicModel from "../models/epic.model.js";
 import NoteModel from "../models/note.model.js";
 import ProjectMemberModel from "../models/project-member.model.js";
 import { deleteProjectMembershipsByProject } from "./project-member.repository.js";
-import UserModel from "../models/user.model.js";
+import {
+  andRefMatches,
+  buildRefInMatch,
+  buildRefMatch,
+} from "../utils/mongo-ref.js";
 
 export const projectPopulateOptions = [
   { path: "userId", select: "email name firstName lastName" },
@@ -42,17 +46,21 @@ export interface ProjectQueryParams {
 export const getProjectsByUser = async (
   params: ProjectQueryParams,
 ): Promise<IProjectDocument[]> => {
-  const memberships = await ProjectMemberModel.find({ userId: params.userId })
+  const memberships = await ProjectMemberModel.find(
+    buildRefMatch("userId", params.userId),
+  )
     .select({ projectId: 1 })
     .lean()
     .exec();
-  const projectIds = memberships.map((membership) => membership.projectId);
+  const projectIds = memberships.map((membership) =>
+    membership.projectId.toString(),
+  );
 
   if (projectIds.length === 0) {
     return [];
   }
 
-  const query: any = { _id: { $in: projectIds } };
+  const query: Record<string, unknown> = buildRefInMatch("_id", projectIds);
 
   if (params.search) {
     query.name = { $regex: params.search, $options: "i" };
@@ -70,17 +78,21 @@ export const countProjectsByUser = async (
   userId: string,
   search?: string,
 ): Promise<number> => {
-  const memberships = await ProjectMemberModel.find({ userId })
+  const memberships = await ProjectMemberModel.find(
+    buildRefMatch("userId", userId),
+  )
     .select({ projectId: 1 })
     .lean()
     .exec();
-  const projectIds = memberships.map((membership) => membership.projectId);
+  const projectIds = memberships.map((membership) =>
+    membership.projectId.toString(),
+  );
 
   if (projectIds.length === 0) {
     return 0;
   }
 
-  const query: any = { _id: { $in: projectIds } };
+  const query: Record<string, unknown> = buildRefInMatch("_id", projectIds);
 
   if (search) {
     query.name = { $regex: search, $options: "i" };
@@ -98,7 +110,12 @@ export const getProjectByIdAndUser = async (
   projectId: string,
   userId: string,
 ): Promise<IProjectDocument | null> =>
-  ProjectMemberModel.exists({ projectId, userId }).then((membership) => {
+  ProjectMemberModel.exists({
+    ...andRefMatches(
+      buildRefMatch("projectId", projectId),
+      buildRefMatch("userId", userId),
+    ),
+  }).then((membership) => {
     if (membership == null) {
       return null;
     }
@@ -112,7 +129,9 @@ export const getProjectByName = async (
   userId: string,
   name: string,
 ): Promise<IProjectDocument | null> =>
-  ProjectModel.findOne({ userId, name }).exec();
+  ProjectModel.findOne(
+    andRefMatches({ name }, buildRefMatch("userId", userId)),
+  ).exec();
 
 export const updateProject = async (
   projectId: string,
@@ -131,7 +150,12 @@ export const deleteTasksByProject = async (
   userId: string,
   projectId: string,
 ): Promise<void> => {
-  await TaskModel.deleteMany({ userId, projectId }).exec();
+  await TaskModel.deleteMany(
+    andRefMatches(
+      buildRefMatch("userId", userId),
+      buildRefMatch("projectId", projectId),
+    ),
+  ).exec();
 };
 
 export const deleteProjectWithRelations = async (
@@ -151,9 +175,15 @@ export const deleteProjectWithRelations = async (
         return;
       }
 
-      await TaskModel.deleteMany({ projectId }, { session }).exec();
-      await EpicModel.deleteMany({ projectId }, { session }).exec();
-      await NoteModel.deleteMany({ projectId }, { session }).exec();
+      await TaskModel.deleteMany(buildRefMatch("projectId", projectId), {
+        session,
+      }).exec();
+      await EpicModel.deleteMany(buildRefMatch("projectId", projectId), {
+        session,
+      }).exec();
+      await NoteModel.deleteMany(buildRefMatch("projectId", projectId), {
+        session,
+      }).exec();
       await deleteProjectMembershipsByProject(projectId, session);
     });
 
@@ -182,20 +212,17 @@ export const deleteProjectsWithRelations = async (
         return;
       }
 
-      await TaskModel.deleteMany(
-        { projectId: { $in: projectIds } },
-        { session },
-      ).exec();
-      await EpicModel.deleteMany(
-        { projectId: { $in: projectIds } },
-        { session },
-      ).exec();
-      await NoteModel.deleteMany(
-        { projectId: { $in: projectIds } },
-        { session },
-      ).exec();
+      await TaskModel.deleteMany(buildRefInMatch("projectId", projectIds), {
+        session,
+      }).exec();
+      await EpicModel.deleteMany(buildRefInMatch("projectId", projectIds), {
+        session,
+      }).exec();
+      await NoteModel.deleteMany(buildRefInMatch("projectId", projectIds), {
+        session,
+      }).exec();
       await ProjectMemberModel.deleteMany(
-        { projectId: { $in: projectIds } },
+        buildRefInMatch("projectId", projectIds),
         { session },
       ).exec();
     });

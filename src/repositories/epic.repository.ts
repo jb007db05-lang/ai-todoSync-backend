@@ -7,6 +7,7 @@ import EpicModel, {
 } from "../models/epic.model.js";
 import NoteModel from "../models/note.model.js";
 import TaskModel from "../models/task.model.js";
+import { andRefMatches, buildRefMatch } from "../utils/mongo-ref.js";
 
 export interface CreateEpicPayload {
   projectId: string;
@@ -34,7 +35,9 @@ export const createEpic = async (
 export const getEpicsByProject = async (
   projectId: string,
 ): Promise<IEpicDocument[]> =>
-  EpicModel.find({ projectId }).sort({ order: 1, _id: 1 }).exec();
+  EpicModel.find(buildRefMatch("projectId", projectId))
+    .sort({ order: 1, _id: 1 })
+    .exec();
 
 export const getEpicById = async (
   epicId: string,
@@ -44,19 +47,27 @@ export const getEpicByIdAndProject = async (
   epicId: string,
   projectId: string,
 ): Promise<IEpicDocument | null> =>
-  EpicModel.findOne({ _id: epicId, projectId }).exec();
+  EpicModel.findOne(
+    andRefMatches({ _id: epicId }, buildRefMatch("projectId", projectId)),
+  ).exec();
 
 export const updateEpic = async (
   epicId: string,
   projectId: string,
   updates: UpdateEpicPayload,
 ): Promise<IEpicDocument | null> =>
-  EpicModel.findOneAndUpdate({ _id: epicId, projectId }, updates, {
-    new: true,
-  }).exec();
+  EpicModel.findOneAndUpdate(
+    andRefMatches({ _id: epicId }, buildRefMatch("projectId", projectId)),
+    updates,
+    {
+      new: true,
+    },
+  ).exec();
 
 export const getNextEpicOrder = async (projectId: string): Promise<number> => {
-  const latestEpic = await EpicModel.findOne({ projectId })
+  const latestEpic = await EpicModel.findOne(
+    buildRefMatch("projectId", projectId),
+  )
     .sort({ order: -1, _id: -1 })
     .select({ order: 1 })
     .lean()
@@ -89,14 +100,19 @@ export const deleteEpic = async (
 ): Promise<IEpicDocument | null> =>
   withSession(async (session) => {
     await TaskModel.updateMany(
-      { projectId, epicId },
+      andRefMatches(
+        buildRefMatch("projectId", projectId),
+        buildRefMatch("epicId", epicId),
+      ),
       { $set: { epicId: null } },
       { session },
     ).exec();
-    await NoteModel.deleteMany({ epicId }, { session }).exec();
+    await NoteModel.deleteMany(buildRefMatch("epicId", epicId), {
+      session,
+    }).exec();
 
     const deletedEpic = await EpicModel.findOneAndDelete(
-      { _id: epicId, projectId },
+      andRefMatches({ _id: epicId }, buildRefMatch("projectId", projectId)),
       { session },
     ).exec();
 
@@ -104,7 +120,9 @@ export const deleteEpic = async (
       return null;
     }
 
-    const remainingEpics = await EpicModel.find({ projectId })
+    const remainingEpics = await EpicModel.find(
+      buildRefMatch("projectId", projectId),
+    )
       .sort({ order: 1, _id: 1 })
       .session(session)
       .exec();
@@ -128,7 +146,7 @@ export const reorderEpics = async (
 
     for (const item of payload) {
       await EpicModel.updateOne(
-        { _id: item.id, projectId },
+        andRefMatches({ _id: item.id }, buildRefMatch("projectId", projectId)),
         { $set: { order: item.order + orderOffset } },
         { session },
       ).exec();
@@ -136,13 +154,13 @@ export const reorderEpics = async (
 
     for (const item of payload) {
       await EpicModel.updateOne(
-        { _id: item.id, projectId },
+        andRefMatches({ _id: item.id }, buildRefMatch("projectId", projectId)),
         { $set: { order: item.order } },
         { session },
       ).exec();
     }
 
-    return EpicModel.find({ projectId })
+    return EpicModel.find(buildRefMatch("projectId", projectId))
       .sort({ order: 1, _id: 1 })
       .session(session)
       .exec();
@@ -151,5 +169,5 @@ export const reorderEpics = async (
 export const deleteEpicsByProject = async (
   projectId: string,
 ): Promise<void> => {
-  await EpicModel.deleteMany({ projectId }).exec();
+  await EpicModel.deleteMany(buildRefMatch("projectId", projectId)).exec();
 };
