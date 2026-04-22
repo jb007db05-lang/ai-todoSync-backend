@@ -18,7 +18,7 @@ import noteService from "./note.service.js";
 import projectService from "./project.service.js";
 import taskService from "./task.service.js";
 import { AppError } from "../utils/app-error.js";
-import { buildRefInMatch, buildRefMatch } from "../utils/mongo-ref.js";
+import { buildSafeRefInMatch, buildSafeRefMatch } from "../utils/mongo-ref.js";
 
 interface PaginationParams {
   page?: unknown;
@@ -85,14 +85,16 @@ class SyncCrudService {
 
     const { page, limit, skip } = this.normalizePagination(pagination);
     const [data, total] = await Promise.all([
-      ProjectModel.find(buildRefInMatch("_id", projectIds))
+      ProjectModel.find(buildSafeRefInMatch("_id", projectIds))
         .populate(projectPopulateOptions)
         .sort({ updatedAt: -1, _id: -1 })
         .skip(skip)
         .limit(limit)
         .lean()
         .exec(),
-      ProjectModel.countDocuments(buildRefInMatch("_id", projectIds)).exec(),
+      ProjectModel.countDocuments(
+        buildSafeRefInMatch("_id", projectIds),
+      ).exec(),
     ]);
 
     const roleByProject = new Map(
@@ -183,8 +185,8 @@ class SyncCrudService {
     const { page, limit, skip } = this.normalizePagination(pagination);
     const query =
       projectId != null
-        ? buildRefMatch("projectId", projectId)
-        : buildRefInMatch("projectId", allowedProjectIds);
+        ? buildSafeRefMatch("projectId", projectId)
+        : buildSafeRefInMatch("projectId", allowedProjectIds);
 
     const [data, total] = await Promise.all([
       EpicModel.find(query)
@@ -371,9 +373,9 @@ class SyncCrudService {
     const query: Record<string, unknown> = {};
 
     if (projectId != null) {
-      Object.assign(query, buildRefMatch("projectId", projectId));
+      Object.assign(query, buildSafeRefMatch("projectId", projectId));
     } else if (allowedProjectIds.length > 0) {
-      Object.assign(query, buildRefInMatch("projectId", allowedProjectIds));
+      Object.assign(query, buildSafeRefInMatch("projectId", allowedProjectIds));
     } else {
       return { data: [], total: 0, page, limit };
     }
@@ -383,9 +385,7 @@ class SyncCrudService {
     }
 
     if (parentId != null) {
-      query.$expr = {
-        $eq: [{ $toString: "$parentId" }, parentId],
-      };
+      Object.assign(query, buildSafeRefMatch("parentId", parentId));
     }
 
     const [data, total] = await Promise.all([
