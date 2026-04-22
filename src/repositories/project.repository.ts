@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import type { ClientSession } from "mongoose";
 
 import ProjectModel, { IProjectDocument } from "../models/project.model.js";
