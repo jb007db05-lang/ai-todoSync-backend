@@ -13,6 +13,44 @@ class SyncRoutes implements Routes {
   }
 
   private initializeRoutes(): void {
+    const validateEntity = (req: any, _res: any, next: any) => {
+      if (["projects", "epics", "tasks", "notes"].includes(req.params.entity)) {
+        next();
+      } else {
+        next("route");
+      }
+    };
+
+    this.router.get(
+      "/:entity",
+      validateEntity,
+      syncKeyMiddleware,
+      syncController.listEntity,
+    );
+    this.router.post(
+      "/:entity",
+      validateEntity,
+      syncKeyMiddleware,
+      syncController.createEntity,
+    );
+    this.router.get(
+      "/:entity/:id",
+      validateEntity,
+      syncKeyMiddleware,
+      syncController.getEntity,
+    );
+    this.router.put(
+      "/:entity/:id",
+      validateEntity,
+      syncKeyMiddleware,
+      syncController.updateEntity,
+    );
+    this.router.delete(
+      "/:entity/:id",
+      validateEntity,
+      syncKeyMiddleware,
+      syncController.deleteEntity,
+    );
     this.router.get("/tasks", syncKeyMiddleware, syncController.fetchTasks);
     this.router.get(
       "/projects",

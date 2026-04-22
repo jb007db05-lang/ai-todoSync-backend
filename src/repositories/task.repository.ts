@@ -6,6 +6,11 @@ import TaskModel, {
   TaskPriority,
 } from "../models/task.model.js";
 import type { TaskStatus } from "../models/task.model.js";
+import {
+  andRefMatches,
+  buildRefInMatch,
+  buildRefMatch,
+} from "../utils/mongo-ref.js";
 
 export type TaskDocumentWithAssignee = ITaskDocument;
 
@@ -74,14 +79,20 @@ export const getTasksByUser = async (
   search?: string,
 ): Promise<TaskDocumentWithAssignee[]> => {
   const filter: any = {
-    $or: [{ userId }, { projectId: { $in: projectIds } }],
+    $or: [
+      buildRefMatch("userId", userId),
+      buildRefInMatch("projectId", projectIds),
+    ],
   };
 
   if (assigneeId) {
     const aid = assigneeId.toString();
     filter.$and = [
       {
-        $or: [{ assignedTo: aid }, { "subtasks.assignedToUserId": aid }],
+        $or: [
+          buildRefMatch("assignedTo", aid),
+          buildRefMatch("subtasks.assignedToUserId", aid),
+        ],
       },
     ];
   }
@@ -121,7 +132,10 @@ export const getTaskByIdAndUser = async (
 ): Promise<TaskDocumentWithAssignee | null> =>
   TaskModel.findOne({
     _id: taskId,
-    $or: [{ userId }, { projectId: { $in: projectIds } }],
+    $or: [
+      buildRefMatch("userId", userId),
+      buildRefInMatch("projectId", projectIds),
+    ],
   })
     .populate(taskPopulateOptions)
     .exec();
@@ -145,14 +159,20 @@ export const getTasksByDate = async (
 ): Promise<TaskDocumentWithAssignee[]> => {
   const filter: any = {
     date,
-    $or: [{ userId }, { projectId: { $in: projectIds } }],
+    $or: [
+      buildRefMatch("userId", userId),
+      buildRefInMatch("projectId", projectIds),
+    ],
   };
 
   if (assigneeId) {
     const aid = assigneeId.toString();
     filter.$and = [
       {
-        $or: [{ assignedTo: aid }, { "subtasks.assignedToUserId": aid }],
+        $or: [
+          buildRefMatch("assignedTo", aid),
+          buildRefMatch("subtasks.assignedToUserId", aid),
+        ],
       },
     ];
   }
@@ -197,7 +217,10 @@ export const clearTaskAssignmentsForUser = async (
   session?: ClientSession,
 ): Promise<void> => {
   await TaskModel.updateMany(
-    { projectId, assignedToUserId: userId },
+    andRefMatches(
+      buildRefMatch("projectId", projectId),
+      buildRefMatch("assignedToUserId", userId),
+    ),
     { $set: { assignedToUserId: null } },
     { session },
   ).exec();

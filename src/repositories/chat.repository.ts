@@ -1,9 +1,8 @@
-import type { ClientSession, Types } from "mongoose";
+import type { ClientSession } from "mongoose";
 
 import ChatMessageModel, {
   type IChatMessageDocument,
   type IMessageMetadata,
-  type IMessageReaction,
   MessageType,
 } from "../models/chat-message.model.js";
 

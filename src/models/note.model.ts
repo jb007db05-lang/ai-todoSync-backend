@@ -1,9 +1,13 @@
 import type { Document, Types } from "mongoose";
 import { Schema, model } from "mongoose";
 
+export type NoteParentType = "project" | "epic" | "task" | "subtask";
+
 export interface INote {
   entityType: "project" | "epic";
-  projectId: Types.ObjectId | string;
+  parentType: NoteParentType;
+  parentId: Types.ObjectId | string;
+  projectId?: Types.ObjectId | string | null;
   epicId?: Types.ObjectId | string | null;
   title: string;
   content: string;
@@ -17,13 +21,22 @@ const noteSchema = new Schema<INoteDocument>(
   {
     entityType: {
       type: String,
-      required: true,
       enum: ["project", "epic"],
+      default: undefined,
+    },
+    parentType: {
+      type: String,
+      required: true,
+      enum: ["project", "epic", "task", "subtask"],
+    },
+    parentId: {
+      type: Schema.Types.Mixed,
+      required: true,
     },
     projectId: {
       type: Schema.Types.ObjectId,
-      required: true,
       ref: "Project",
+      default: null,
     },
     epicId: {
       type: Schema.Types.ObjectId,
@@ -43,6 +56,7 @@ const noteSchema = new Schema<INoteDocument>(
   { timestamps: true },
 );
 
+noteSchema.index({ parentType: 1, parentId: 1, updatedAt: -1, _id: -1 });
 noteSchema.index({ projectId: 1, updatedAt: -1, _id: -1 });
 noteSchema.index({
   entityType: 1,
