@@ -1,6 +1,10 @@
 import type { INoteDocument } from "../models/note.model.js";
 import NoteModel from "../models/note.model.js";
-import { andRefMatches, buildRefMatch } from "../utils/mongo-ref.js";
+import {
+  andRefMatches,
+  buildRefMatch,
+  buildSafeRefMatch,
+} from "../utils/mongo-ref.js";
 
 export interface CreateNotePayload {
   entityType?: "project" | "epic";
@@ -26,14 +30,7 @@ export const getNotesByParent = async (
   parentId: string,
 ): Promise<INoteDocument[]> =>
   NoteModel.find(
-    andRefMatches(
-      { parentType },
-      {
-        $expr: {
-          $eq: [{ $toString: "$parentId" }, parentId],
-        },
-      },
-    ),
+    andRefMatches({ parentType }, buildSafeRefMatch("parentId", parentId)),
   )
     .sort({ updatedAt: -1, _id: -1 })
     .exec();
@@ -45,11 +42,7 @@ export const getNotesByProject = async (
     $or: [
       andRefMatches(
         { parentType: "project" },
-        {
-          $expr: {
-            $eq: [{ $toString: "$parentId" }, projectId],
-          },
-        },
+        buildSafeRefMatch("parentId", projectId),
       ),
       andRefMatches(
         { entityType: "project" },
@@ -68,12 +61,8 @@ export const getNotesByEpic = async (
     $or: [
       andRefMatches(
         { parentType: "epic" },
-        buildRefMatch("projectId", projectId),
-        {
-          $expr: {
-            $eq: [{ $toString: "$parentId" }, epicId],
-          },
-        },
+        buildSafeRefMatch("projectId", projectId),
+        buildSafeRefMatch("parentId", epicId),
       ),
       andRefMatches(
         { entityType: "epic" },
@@ -102,9 +91,9 @@ export const deleteNote = async (
 export const deleteNotesByProject = async (
   projectId: string,
 ): Promise<void> => {
-  await NoteModel.deleteMany(buildRefMatch("projectId", projectId)).exec();
+  await NoteModel.deleteMany(buildSafeRefMatch("projectId", projectId)).exec();
 };
 
 export const deleteNotesByEpic = async (epicId: string): Promise<void> => {
-  await NoteModel.deleteMany(buildRefMatch("epicId", epicId)).exec();
+  await NoteModel.deleteMany(buildSafeRefMatch("epicId", epicId)).exec();
 };

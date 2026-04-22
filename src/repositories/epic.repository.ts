@@ -6,7 +6,11 @@ import EpicModel, {
 } from "../models/epic.model.js";
 import NoteModel from "../models/note.model.js";
 import TaskModel from "../models/task.model.js";
-import { andRefMatches, buildRefMatch } from "../utils/mongo-ref.js";
+import {
+  andRefMatches,
+  buildRefMatch,
+  buildSafeRefMatch,
+} from "../utils/mongo-ref.js";
 import { runInTransaction } from "../utils/transaction.js";
 
 export interface CreateEpicPayload {
@@ -35,7 +39,7 @@ export const createEpic = async (
 export const getEpicsByProject = async (
   projectId: string,
 ): Promise<IEpicDocument[]> =>
-  EpicModel.find(buildRefMatch("projectId", projectId))
+  EpicModel.find(buildSafeRefMatch("projectId", projectId))
     .sort({ order: 1, _id: 1 })
     .exec();
 
@@ -48,7 +52,7 @@ export const getEpicByIdAndProject = async (
   projectId: string,
 ): Promise<IEpicDocument | null> =>
   EpicModel.findOne(
-    andRefMatches({ _id: epicId }, buildRefMatch("projectId", projectId)),
+    andRefMatches({ _id: epicId }, buildSafeRefMatch("projectId", projectId)),
   ).exec();
 
 export const updateEpic = async (
@@ -57,7 +61,7 @@ export const updateEpic = async (
   updates: UpdateEpicPayload,
 ): Promise<IEpicDocument | null> =>
   EpicModel.findOneAndUpdate(
-    andRefMatches({ _id: epicId }, buildRefMatch("projectId", projectId)),
+    andRefMatches({ _id: epicId }, buildSafeRefMatch("projectId", projectId)),
     updates,
     {
       new: true,
@@ -66,7 +70,7 @@ export const updateEpic = async (
 
 export const getNextEpicOrder = async (projectId: string): Promise<number> => {
   const latestEpic = await EpicModel.findOne(
-    buildRefMatch("projectId", projectId),
+    buildSafeRefMatch("projectId", projectId),
   )
     .sort({ order: -1, _id: -1 })
     .select({ order: 1 })
@@ -87,18 +91,18 @@ export const deleteEpic = async (
   withSession(async (session) => {
     await TaskModel.updateMany(
       andRefMatches(
-        buildRefMatch("projectId", projectId),
-        buildRefMatch("epicId", epicId),
+        buildSafeRefMatch("projectId", projectId),
+        buildSafeRefMatch("epicId", epicId),
       ),
       { $set: { epicId: null } },
       { session: session as any },
     ).exec();
-    await NoteModel.deleteMany(buildRefMatch("epicId", epicId), {
+    await NoteModel.deleteMany(buildSafeRefMatch("epicId", epicId), {
       session: session as any,
     }).exec();
 
     const deletedEpic = await EpicModel.findOneAndDelete(
-      andRefMatches({ _id: epicId }, buildRefMatch("projectId", projectId)),
+      andRefMatches({ _id: epicId }, buildSafeRefMatch("projectId", projectId)),
       { session: session as any },
     ).exec();
 
@@ -107,7 +111,7 @@ export const deleteEpic = async (
     }
 
     const remainingEpics = await EpicModel.find(
-      buildRefMatch("projectId", projectId),
+      buildSafeRefMatch("projectId", projectId),
     )
       .sort({ order: 1, _id: 1 })
       .session(session as any)
@@ -132,7 +136,10 @@ export const reorderEpics = async (
 
     for (const item of payload) {
       await EpicModel.updateOne(
-        andRefMatches({ _id: item.id }, buildRefMatch("projectId", projectId)),
+        andRefMatches(
+          { _id: item.id },
+          buildSafeRefMatch("projectId", projectId),
+        ),
         { $set: { order: item.order + orderOffset } },
         { session: session as any },
       ).exec();
@@ -140,13 +147,16 @@ export const reorderEpics = async (
 
     for (const item of payload) {
       await EpicModel.updateOne(
-        andRefMatches({ _id: item.id }, buildRefMatch("projectId", projectId)),
+        andRefMatches(
+          { _id: item.id },
+          buildSafeRefMatch("projectId", projectId),
+        ),
         { $set: { order: item.order } },
         { session: session as any },
       ).exec();
     }
 
-    return EpicModel.find(buildRefMatch("projectId", projectId))
+    return EpicModel.find(buildSafeRefMatch("projectId", projectId))
       .sort({ order: 1, _id: 1 })
       .session(session as any)
       .exec();
@@ -155,5 +165,5 @@ export const reorderEpics = async (
 export const deleteEpicsByProject = async (
   projectId: string,
 ): Promise<void> => {
-  await EpicModel.deleteMany(buildRefMatch("projectId", projectId)).exec();
+  await EpicModel.deleteMany(buildSafeRefMatch("projectId", projectId)).exec();
 };

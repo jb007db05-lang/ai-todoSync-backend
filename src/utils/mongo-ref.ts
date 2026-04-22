@@ -18,6 +18,20 @@ export const buildRefInMatch = (field: string, values: string[]) => ({
   },
 });
 
+/**
+ * Standard MongoDB query match that works correctly with arrays and allows index usage.
+ * Use this instead of buildRefMatch for fields that might be arrays (like subtask assignees).
+ */
+export const buildSafeRefMatch = (field: string, value: string) => {
+  const oid = toObjectId(value);
+  return { [field]: oid || value };
+};
+
+export const buildSafeRefInMatch = (field: string, values: string[]) => {
+  const oids = values.map((v) => toObjectId(v) || v);
+  return { [field]: { $in: oids } };
+};
+
 export const andRefMatches = (...matches: Array<Record<string, unknown>>) => ({
   $and: matches,
 });
