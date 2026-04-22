@@ -8,6 +8,7 @@ import EpicModel, {
 import NoteModel from "../models/note.model.js";
 import TaskModel from "../models/task.model.js";
 import { andRefMatches, buildRefMatch } from "../utils/mongo-ref.js";
+import { runInTransaction } from "../utils/transaction.js";
 
 export interface CreateEpicPayload {
   projectId: string;
@@ -76,23 +77,9 @@ export const getNextEpicOrder = async (projectId: string): Promise<number> => {
   return latestEpic == null ? 0 : latestEpic.order + 1;
 };
 
-const withSession = async <T>(
-  callback: (session: ClientSession) => Promise<T>,
-): Promise<T> => {
-  const session = await mongoose.startSession();
-
-  try {
-    let result: T | undefined;
-
-    await session.withTransaction(async () => {
-      result = await callback(session);
-    });
-
-    return result as T;
-  } finally {
-    await session.endSession();
-  }
-};
+const withSession = <T>(
+  callback: (session: ClientSession | undefined) => Promise<T>,
+): Promise<T> => runInTransaction(callback);
 
 export const deleteEpic = async (
   epicId: string,
@@ -105,15 +92,15 @@ export const deleteEpic = async (
         buildRefMatch("epicId", epicId),
       ),
       { $set: { epicId: null } },
-      { session },
+      { session: session as any },
     ).exec();
     await NoteModel.deleteMany(buildRefMatch("epicId", epicId), {
-      session,
+      session: session as any,
     }).exec();
 
     const deletedEpic = await EpicModel.findOneAndDelete(
       andRefMatches({ _id: epicId }, buildRefMatch("projectId", projectId)),
-      { session },
+      { session: session as any },
     ).exec();
 
     if (deletedEpic == null) {
@@ -124,13 +111,13 @@ export const deleteEpic = async (
       buildRefMatch("projectId", projectId),
     )
       .sort({ order: 1, _id: 1 })
-      .session(session)
+      .session(session as any)
       .exec();
 
     for (const [index, epic] of remainingEpics.entries()) {
       if (epic.order !== index) {
         epic.order = index;
-        await epic.save({ session });
+        await epic.save({ session: session as any });
       }
     }
 
@@ -148,7 +135,7 @@ export const reorderEpics = async (
       await EpicModel.updateOne(
         andRefMatches({ _id: item.id }, buildRefMatch("projectId", projectId)),
         { $set: { order: item.order + orderOffset } },
-        { session },
+        { session: session as any },
       ).exec();
     }
 
@@ -156,13 +143,13 @@ export const reorderEpics = async (
       await EpicModel.updateOne(
         andRefMatches({ _id: item.id }, buildRefMatch("projectId", projectId)),
         { $set: { order: item.order } },
-        { session },
+        { session: session as any },
       ).exec();
     }
 
     return EpicModel.find(buildRefMatch("projectId", projectId))
       .sort({ order: 1, _id: 1 })
-      .session(session)
+      .session(session as any)
       .exec();
   });
 

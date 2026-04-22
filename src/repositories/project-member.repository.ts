@@ -30,7 +30,7 @@ const memberUserProjection = "email name";
 
 export const createProjectMember = async (
   payload: CreateProjectMemberPayload,
-  session?: ClientSession,
+  session?: ClientSession | null,
 ): Promise<IProjectMemberDocument> =>
   ProjectMemberModel.create([{ ...payload }], { session }).then(
     ([member]) => member,
@@ -38,7 +38,7 @@ export const createProjectMember = async (
 
 export const createProjectMembers = async (
   payloads: CreateProjectMemberPayload[],
-  session?: ClientSession,
+  session?: ClientSession | null,
 ): Promise<IProjectMemberDocument[]> => {
   if (payloads.length === 0) {
     return [];
@@ -111,29 +111,29 @@ export const countProjectAdmins = async (projectId: string): Promise<number> =>
 export const deleteProjectMembership = async (
   projectId: string,
   userId: string,
-  session?: ClientSession,
+  session?: ClientSession | null,
 ): Promise<IProjectMemberDocument | null> =>
   ProjectMemberModel.findOneAndDelete(
     andRefMatches(
       buildRefMatch("projectId", projectId),
       buildRefMatch("userId", userId),
     ),
-    { session },
+    { session: session as any },
   ).exec();
 
 export const deleteProjectMembershipsByProject = async (
   projectId: string,
-  session?: ClientSession,
+  session?: ClientSession | null,
 ): Promise<void> => {
   await ProjectMemberModel.deleteMany(buildRefMatch("projectId", projectId), {
-    session,
+    session: session as any,
   }).exec();
 };
 
 export const ensureProjectAdminMembership = async (
   projectId: string,
   userId: string,
-  session?: ClientSession,
+  session?: ClientSession | null,
 ): Promise<void> => {
   await ProjectMemberModel.updateOne(
     andRefMatches(
@@ -141,6 +141,6 @@ export const ensureProjectAdminMembership = async (
       buildRefMatch("userId", userId),
     ),
     { $setOnInsert: { role: "ADMIN" } },
-    { upsert: true, session },
+    { upsert: true, session: session as any },
   ).exec();
 };
