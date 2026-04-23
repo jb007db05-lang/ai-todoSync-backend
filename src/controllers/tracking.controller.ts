@@ -30,6 +30,8 @@ class TrackingController {
         return res.status(401).json({ error: "API key is required" });
       }
 
+      logger.info("Tracking single event", { apiKeyId, eventName, sessionId });
+
       const log = await trackingService.trackSingle({
         apiKeyId,
         eventName: eventName ?? "",
@@ -63,6 +65,12 @@ class TrackingController {
         return res.status(401).json({ error: "API key is required" });
       }
 
+      logger.info("Identifying and tracking event", {
+        apiKeyId,
+        userIdentifier,
+        eventName,
+      });
+
       if (!userIdentifier || !eventName) {
         return res
           .status(400)
@@ -91,6 +99,11 @@ class TrackingController {
         return res.status(401).json({ error: "API key is required" });
       }
 
+      logger.info("Ingesting event batch", {
+        apiKeyId,
+        count: Array.isArray(req.body) ? req.body.length : "unknown",
+      });
+
       const result = await trackingService.ingestBatch(apiKeyId, req.body);
       return res.status(200).json({ success: true, ...result });
     } catch (error) {
@@ -109,6 +122,8 @@ class TrackingController {
       if (!apiKeyId) {
         return res.status(401).json({ error: "API key is required" });
       }
+
+      logger.info("Identifying user", { apiKeyId, userId });
 
       if (!userId) {
         return res.status(400).json({ error: "userId is required" });
@@ -139,6 +154,8 @@ class TrackingController {
         return res.status(401).json({ error: "API key is required" });
       }
 
+      logger.info("Aliasing user", { apiKeyId, previousId, userId });
+
       if (!previousId || !userId) {
         return res
           .status(400)
@@ -167,6 +184,8 @@ class TrackingController {
       if (!apiKeyId) {
         return res.status(401).json({ error: "API key is required" });
       }
+
+      logger.info("Tracking page view", { apiKeyId, url, userId });
 
       if (!url) {
         return res.status(400).json({ error: "url is required" });
