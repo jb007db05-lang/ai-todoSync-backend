@@ -22,7 +22,7 @@ const analyticsKeySchema = new Schema<IAnalyticsKeyDocument>(
     hashedKey: {
       type: String,
       required: true,
-      unique: true,
+      index: true,
       get: (v: string) => {
         try {
           return decrypt(v);
