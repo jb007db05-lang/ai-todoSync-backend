@@ -199,7 +199,10 @@ export const getTasksByDate = async (
 export const getPendingTasksByDate = async (
   date: string,
 ): Promise<ITaskDocument[]> =>
-  TaskModel.find({ date, status: "pending" }).exec();
+  TaskModel.find({
+    date,
+    status: { $in: ["BACKLOG", "TODO", "IN_PROGRESS", "IN_REVIEW", "BLOCKED"] },
+  }).exec();
 
 export const markTasksRolledOver = async (taskIds: string[]): Promise<void> => {
   if (!taskIds.length) {
