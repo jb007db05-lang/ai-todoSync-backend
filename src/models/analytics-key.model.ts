@@ -42,6 +42,7 @@ const analyticsKeySchema = new Schema<IAnalyticsKeyDocument>(
       required: false,
       index: true,
       unique: true,
+      sparse: true,
     },
     status: {
       type: String,
@@ -60,6 +61,20 @@ analyticsKeySchema.pre<IAnalyticsKeyDocument>("save", async function () {
     this.keyHash = deterministicHash(rawKey);
   }
 });
+
+// Drop stale legacy indexes that cause E11000 null conflicts.
+// Safe to call repeatedly — it's a no-op if the index doesn't exist.
+analyticsKeySchema.statics.dropLegacyIndexes = async function () {
+  const collection = this.collection;
+  const indexesToDrop = ["key_1", "keyHash_1"];
+  for (const indexName of indexesToDrop) {
+    try {
+      await collection.dropIndex(indexName);
+    } catch {
+      // Index doesn't exist — that's fine, ignore the error
+    }
+  }
+};
 
 const AnalyticsKeyModel = model<IAnalyticsKeyDocument>(
   "AnalyticsKey",
