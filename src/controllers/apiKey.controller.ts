@@ -18,6 +18,17 @@ class ApiKeyController {
 
       const rawKey = generateApiKey();
 
+      // Drop stale legacy indexes to prevent E11000 conflicts
+      try {
+        if (
+          typeof (AnalyticsKeyModel as any).dropLegacyIndexes === "function"
+        ) {
+          await (AnalyticsKeyModel as any).dropLegacyIndexes();
+        }
+      } catch (err) {
+        // Ignore errors if index doesn't exist
+      }
+
       const newKey = await AnalyticsKeyModel.create({
         userId,
         name,
