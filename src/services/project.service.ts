@@ -24,6 +24,7 @@ import {
 } from "../repositories/project-member.repository.js";
 import { clearTaskAssignmentsForUser } from "../repositories/task.repository.js";
 import { runInTransaction } from "../utils/transaction.js";
+import operationalAnalyticsService from "./operational-analytics.service.js";
 
 interface ProjectDto {
   id: string;
@@ -130,6 +131,15 @@ class ProjectService {
       if (project == null) {
         throw new HttpError(500, "Project could not be created");
       }
+
+      operationalAnalyticsService.recordEventSafely({
+        eventName: "project_created",
+        entityType: "project",
+        entityId: project._id.toString(),
+        userId,
+        projectId: project._id.toString(),
+        metadata: { name: project.name },
+      });
 
       return this.toDto(project, "ADMIN");
     } catch (error) {
