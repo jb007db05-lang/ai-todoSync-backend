@@ -27,6 +27,7 @@ import TaskModel from "../models/task.model.js";
 import UserModel from "../models/user.model.js";
 import ProjectMemberModel from "../models/project-member.model.js";
 import { buildRefInMatch, buildRefMatch } from "../utils/mongo-ref.js";
+import operationalAnalyticsService from "./operational-analytics.service.js";
 
 interface TaskUserDto {
   id: string;
@@ -155,6 +156,20 @@ class TaskService {
       assignedTo: payload.assignedTo || payload.userId,
       assignedBy: payload.userId,
       assignedAt: new Date(),
+    });
+
+    operationalAnalyticsService.recordEventSafely({
+      eventName: "task_created",
+      entityType: "task",
+      entityId: task._id.toString(),
+      userId: payload.userId,
+      projectId: task.projectId?.toString() ?? null,
+      metadata: {
+        status: task.status,
+        priority: task.priority,
+        assignedTo: task.assignedTo?.toString(),
+        source: task.source,
+      },
     });
 
     return this.toDto(
@@ -338,6 +353,8 @@ class TaskService {
       throw new HttpError(404, "Task not found");
     }
 
+    this.recordTaskUpdateEvents(userId, currentTask, updated);
+
     return this.toDto(userId, updated, roleMap);
   }
 
@@ -402,6 +419,22 @@ class TaskService {
     }
 
     const dto = this.toDto(actorUserId, updated, roleMap);
+    operationalAnalyticsService.recordEventSafely({
+      eventName: "task_assigned",
+      entityType: "task",
+      entityId: updated._id.toString(),
+      userId: actorUserId,
+      projectId: updated.projectId?.toString() ?? null,
+      metadata: {
+        previousAssigneeId: currentTask.assignedTo?.toString() ?? null,
+        nextAssigneeId: targetUserId,
+        assignedBy: actorUserId,
+        transition: {
+          before: { assignedTo: currentTask.assignedTo?.toString() ?? null },
+          after: { assignedTo: targetUserId },
+        },
+      },
+    });
 
     if (targetUserId !== actorUserId) {
       chatSocketServer.notifyUser(targetUserId, "task:assigned", {
@@ -445,6 +478,20 @@ class TaskService {
 
     if (!updated) throw new HttpError(404, "Task not found");
 
+    operationalAnalyticsService.recordEventSafely({
+      eventName: "task_blocked",
+      entityType: "task",
+      entityId: updated._id.toString(),
+      userId,
+      projectId: updated.projectId?.toString() ?? null,
+      metadata: {
+        action: "blocked",
+        previousStatus: task.status,
+        nextStatus: updated.status,
+        blockedByTaskId: blockedByTaskId ?? null,
+      },
+    });
+
     return this.toDto(userId, updated, roleMap);
   }
 
@@ -468,6 +515,19 @@ class TaskService {
     });
 
     if (!updated) throw new HttpError(404, "Task not found");
+
+    operationalAnalyticsService.recordEventSafely({
+      eventName: "task_unblocked",
+      entityType: "task",
+      entityId: updated._id.toString(),
+      userId,
+      projectId: updated.projectId?.toString() ?? null,
+      metadata: {
+        action: "unblocked",
+        previousStatus: task.status,
+        nextStatus: updated.status,
+      },
+    });
 
     return this.toDto(userId, updated, roleMap);
   }
@@ -877,6 +937,152 @@ class TaskService {
     }
 
     return "TODO";
+  }
+
+  private recordTaskUpdateEvents(
+    userId: string,
+    previousTask: TaskDocumentWithAssignee,
+    updatedTask: TaskDocumentWithAssignee,
+  ): void {
+    const previousStatus = this.normalizeStoredTaskStatus(previousTask.status);
+    const nextStatus = this.normalizeStoredTaskStatus(updatedTask.status);
+    const common = {
+      entityType: "task" as const,
+      entityId: updatedTask._id.toString(),
+      userId,
+      projectId: updatedTask.projectId?.toString() ?? null,
+    };
+
+    operationalAnalyticsService.recordEventSafely({
+      ...common,
+      eventName: "task_updated",
+      metadata: {
+        previousStatus,
+        nextStatus,
+        assignedTo: updatedTask.assignedTo?.toString(),
+        priority: updatedTask.priority,
+      },
+    });
+
+    if (previousStatus !== "IN_PROGRESS" && nextStatus === "IN_PROGRESS") {
+      operationalAnalyticsService.recordEventSafely({
+        ...common,
+        eventName: "task_started",
+        metadata: { previousStatus, nextStatus },
+      });
+    }
+
+    if (previousStatus !== nextStatus) {
+      operationalAnalyticsService.recordEventSafely({
+        ...common,
+        eventName: "task_status_changed",
+        metadata: {
+          previousStatus,
+          nextStatus,
+          transition: {
+            before: { status: previousStatus },
+            after: { status: nextStatus },
+          },
+        },
+      });
+
+      operationalAnalyticsService.recordEventSafely({
+        ...common,
+        eventName: "workflow_stage_changed",
+        entityType: "workflow",
+        metadata: {
+          taskId: updatedTask._id.toString(),
+          previousStage: previousStatus,
+          nextStage: nextStatus,
+        },
+      });
+    }
+
+    if (previousTask.priority !== updatedTask.priority) {
+      operationalAnalyticsService.recordEventSafely({
+        ...common,
+        eventName: "task_priority_changed",
+        metadata: {
+          previousPriority: previousTask.priority,
+          nextPriority: updatedTask.priority,
+        },
+      });
+    }
+
+    if (previousTask.date !== updatedTask.date) {
+      operationalAnalyticsService.recordEventSafely({
+        ...common,
+        eventName: "task_due_date_changed",
+        metadata: {
+          previousDueDate: previousTask.date,
+          nextDueDate: updatedTask.date,
+        },
+      });
+    }
+
+    if (previousStatus !== "DONE" && nextStatus === "DONE") {
+      operationalAnalyticsService.recordEventSafely({
+        ...common,
+        eventName: "task_completed",
+        metadata: { previousStatus, nextStatus },
+      });
+    }
+
+    if (previousStatus === "DONE" && nextStatus !== "DONE") {
+      operationalAnalyticsService.recordEventSafely({
+        ...common,
+        eventName: "task_reopened",
+        metadata: { previousStatus, nextStatus },
+      });
+    }
+
+    // Review lifecycle tracking — feeds review_latency and workflow_bottlenecks metrics
+    if (previousStatus !== "IN_REVIEW" && nextStatus === "IN_REVIEW") {
+      operationalAnalyticsService.recordEventSafely({
+        ...common,
+        eventName: "review_requested",
+        metadata: {
+          previousStatus,
+          nextStatus,
+          transition: {
+            before: { status: previousStatus },
+            after: { status: "IN_REVIEW" },
+          },
+        },
+      });
+    }
+
+    if (previousStatus === "IN_REVIEW" && nextStatus === "DONE") {
+      operationalAnalyticsService.recordEventSafely({
+        ...common,
+        eventName: "review_completed",
+        metadata: {
+          previousStatus: "IN_REVIEW",
+          nextStatus: "DONE",
+          transition: {
+            before: { status: "IN_REVIEW" },
+            after: { status: "DONE" },
+          },
+        },
+      });
+    }
+
+    // Escalation tracking — feeds escalation_frequency metric
+    if (
+      previousTask.priority !== updatedTask.priority &&
+      updatedTask.priority === "HIGH" &&
+      previousTask.priority !== "HIGH"
+    ) {
+      operationalAnalyticsService.recordEventSafely({
+        ...common,
+        eventName: "task_escalated",
+        metadata: {
+          previousPriority: previousTask.priority,
+          nextPriority: updatedTask.priority,
+          escalationTrigger: "priority_escalation",
+        },
+      });
+    }
   }
 
   private normalizeWorkflowStatus(value: unknown): TaskWorkflowStatus {

@@ -36,24 +36,26 @@ class App {
     logger.info(`Allowed Origins : ${env.ALLOWED_ORIGINS}`);
     this.app.set("trust proxy", 1);
 
-    // Global rate limiter: 25 requests per second per IP
-    const limiter = rateLimit({
-      windowMs: 1000,
-      max: 25,
-      message:
-        "Too many requests from this IP, please try again after a second.",
-      standardHeaders: true,
-      legacyHeaders: false,
-    });
-    this.app.use(limiter);
-
-    this.app.use(helmet());
     this.app.use(
       cors({
         origin: env.ALLOWED_ORIGINS,
         credentials: true,
       }),
     );
+
+    // Global rate limiter: 25 non-preflight requests per second per IP.
+    const limiter = rateLimit({
+      windowMs: 1000,
+      max: 100,
+      message:
+        "Too many requests from this IP, please try again after a second.",
+      standardHeaders: true,
+      legacyHeaders: false,
+      skip: (req) => req.method === "OPTIONS",
+    });
+    this.app.use(limiter);
+
+    this.app.use(helmet());
     this.app.use(hpp());
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
