@@ -11,20 +11,26 @@ import logger from "../lib/logger.js";
 export async function runInTransaction<T>(
   callback: (session: ClientSession | undefined) => Promise<T>,
 ): Promise<T> {
-  const client = mongoose.connection.getClient();
+  let supportsTransactions = false;
+  let topologyType = "unknown";
 
-  // Topology types: 'Single', 'ReplicaSetWithPrimary', 'Sharded', etc.
-  // Sessions/Transactions are NOT supported on 'Single' (standalone).
-  const topologyType = (client as any).topology?.description?.type;
-  const supportsTransactions =
-    topologyType === "ReplicaSetWithPrimary" ||
-    topologyType === "Sharded" ||
-    topologyType === "ReplicaSetNoPrimary";
+  try {
+    const client = mongoose.connection.getClient();
+    topologyType = (client as any).topology?.description?.type || "unknown";
+    supportsTransactions =
+      topologyType === "ReplicaSetWithPrimary" ||
+      topologyType === "Sharded" ||
+      topologyType === "ReplicaSetNoPrimary";
+  } catch (err) {
+    logger.warn(
+      "Could not determine MongoDB topology, defaulting to non-transactional mode",
+    );
+  }
 
   if (!supportsTransactions) {
-    if (process.env.NODE_ENV !== "production") {
-      logger.info(
-        `MongoDB transactions not supported (topology: ${topologyType}). Falling back to non-transactional execution.`,
+    if (process.env.NODE_ENV === "development") {
+      logger.debug(
+        `MongoDB transactions not supported (topology: ${topologyType}). Using fallback.`,
       );
     }
     return callback(undefined);

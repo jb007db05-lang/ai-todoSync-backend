@@ -28,6 +28,18 @@ const server = new App([
   new CommentRoutes(),
 ]);
 
+process.on("uncaughtException", (error) => {
+  logger.error("FATAL: Uncaught Exception", error);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  logger.error(
+    "FATAL: Unhandled Rejection",
+    reason instanceof Error ? reason : new Error(String(reason)),
+  );
+});
+
 void server.listen().catch((error) => {
   logger.error(
     "Backend process exiting because startup failed",
