@@ -122,7 +122,7 @@ class TaskService {
       await projectService.assertProjectRole(
         payload.userId,
         payload.projectId,
-        "ADMIN",
+        "MEMBER",
       );
     }
 

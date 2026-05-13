@@ -113,7 +113,7 @@ class EpicService {
     userId: string,
     projectId: string,
     epicId: string,
-  ): Promise<void> {
+  ): Promise<IEpicDocument> {
     await projectService.assertProjectOwnership(userId, projectId);
 
     const deletedEpic = await deleteEpic(epicId, projectId);
@@ -121,6 +121,8 @@ class EpicService {
     if (deletedEpic == null) {
       throw new HttpError(404, "Epic not found");
     }
+
+    return deletedEpic;
   }
 
   public async reorderProjectEpics(
