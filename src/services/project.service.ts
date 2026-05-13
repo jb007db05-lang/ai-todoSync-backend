@@ -232,13 +232,18 @@ class ProjectService {
     }
   }
 
-  public async deleteProject(projectId: string, userId: string): Promise<void> {
-    await this.assertProjectRole(userId, projectId, "ADMIN");
+  public async deleteProject(
+    projectId: string,
+    userId: string,
+  ): Promise<IProjectDocument> {
+    await this.assertProjectOwnership(userId, projectId);
     const project = await deleteProjectWithRelations(projectId);
 
     if (project == null) {
       throw new HttpError(404, "Project not found");
     }
+
+    return project;
   }
 
   public async bulkDeleteProjects(

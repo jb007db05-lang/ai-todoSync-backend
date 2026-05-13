@@ -159,8 +159,7 @@ class SyncCrudService {
   }
 
   public async deleteProject(userId: string, projectId: string) {
-    await projectService.deleteProject(projectId, userId);
-    return { id: projectId };
+    return projectService.deleteProject(projectId, userId);
   }
 
   public async listEpics(
@@ -455,8 +454,7 @@ class SyncCrudService {
   }
 
   public async deleteNote(userId: string, noteId: string) {
-    await noteService.deleteNote(userId, noteId);
-    return { id: noteId };
+    return noteService.deleteNote(userId, noteId);
   }
 
   public isSupportedEntity(value: string): value is SyncListEntity {

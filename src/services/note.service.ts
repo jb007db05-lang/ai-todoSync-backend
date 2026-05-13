@@ -213,7 +213,7 @@ class NoteService {
     return this.toDto(updatedNote);
   }
 
-  public async deleteNote(userId: string, noteId: string): Promise<string> {
+  public async deleteNote(userId: string, noteId: string): Promise<NoteDto> {
     const note = await this.getAccessibleNote(userId, noteId, true);
     const deleted = await deleteNote(note._id.toString());
 
@@ -221,7 +221,7 @@ class NoteService {
       throw new HttpError(404, "Note not found");
     }
 
-    return deleted._id.toString();
+    return this.toDto(deleted);
   }
 
   private async getAccessibleNote(

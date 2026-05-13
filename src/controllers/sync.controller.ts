@@ -6,9 +6,11 @@ import projectService from "../services/project.service.js";
 import epicService from "../services/epic.service.js";
 import noteService from "../services/note.service.js";
 import syncCrudService from "../services/sync-crud.service.js";
+import activityLogService from "../services/activity-log.service.js";
 import type { IUserDocument } from "../models/user.model.js";
 import { formatLocalDate } from "../utils/date.js";
 import { AppError } from "../utils/app-error.js";
+import logger from "../lib/logger.js";
 
 type SyncRequest = Request & { user?: IUserDocument };
 
@@ -176,6 +178,19 @@ class SyncController {
         message: "Note created",
         note,
       });
+
+      // Log activity
+      const userName = user.name || user.firstName || user.email;
+      void activityLogService.logActivity({
+        userId: user._id.toString(),
+        userName,
+        projectId: note.projectId,
+        entityId: note.id,
+        entityType: "note",
+        entityName: note.title,
+        action: "created",
+        description: `created note via sync`,
+      });
     } catch (error) {
       const status = (error as any).status || 500;
       res.status(status).json({ error: (error as Error).message });
@@ -227,6 +242,19 @@ class SyncController {
         message: "Note updated",
         note,
       });
+
+      // Log activity
+      const userName = user.name || user.firstName || user.email;
+      void activityLogService.logActivity({
+        userId: user._id.toString(),
+        userName,
+        projectId: note.projectId,
+        entityId: note.id,
+        entityType: "note",
+        entityName: note.title,
+        action: "updated",
+        description: `updated note via sync`,
+      });
     } catch (error) {
       const status = (error as any).status || 500;
       res.status(status).json({ error: (error as Error).message });
@@ -243,6 +271,21 @@ class SyncController {
       }
       const tasks = await syncService.syncTasks(user._id.toString(), req.body);
       const date = this.normalizeDate(req.body?.date);
+
+      // Log activity for each created task
+      const userName = user.name || user.firstName || user.email;
+      tasks.forEach((task) => {
+        void activityLogService.logActivity({
+          userId: user._id.toString(),
+          userName,
+          projectId: task.projectId!,
+          entityId: task.id,
+          entityType: "task",
+          entityName: task.title,
+          action: "created",
+          description: `created task via ${task.source || "sync"}`,
+        });
+      });
 
       res.status(201).json({
         message: `${tasks.length} task(s) synced successfully`,
@@ -273,6 +316,19 @@ class SyncController {
         req.body,
       );
       const date = this.normalizeDate(req.body?.date);
+
+      // Log activity
+      const userName = user.name || user.firstName || user.email;
+      void activityLogService.logActivity({
+        userId: user._id.toString(),
+        userName,
+        projectId: task.projectId!,
+        entityId: task.id,
+        entityType: "task",
+        entityName: task.title,
+        action: "created",
+        description: `created task via ${task.source || "sync"}`,
+      });
 
       res.status(201).json({
         message: "Task synced successfully",
@@ -385,6 +441,55 @@ class SyncController {
         data = await syncCrudService.createNote(user._id.toString(), req.body);
       }
 
+      // Log activity
+      const userName = user.name || user.firstName || user.email;
+      const entityData = data as any;
+      if (entity === "tasks" && entityData) {
+        void activityLogService.logActivity({
+          userId: user._id.toString(),
+          userName,
+          projectId: entityData.projectId,
+          entityId: entityData.id,
+          entityType: "task",
+          entityName: entityData.title,
+          action: "created",
+          description: `created task via sync`,
+        });
+      } else if (entity === "projects" && entityData) {
+        void activityLogService.logActivity({
+          userId: user._id.toString(),
+          userName,
+          projectId: entityData.id,
+          entityId: entityData.id,
+          entityType: "project",
+          entityName: entityData.name,
+          action: "created",
+          description: `created project via sync`,
+        });
+      } else if (entity === "epics" && entityData) {
+        void activityLogService.logActivity({
+          userId: user._id.toString(),
+          userName,
+          projectId: entityData.projectId,
+          entityId: entityData.id,
+          entityType: "epic",
+          entityName: entityData.name,
+          action: "created",
+          description: `created epic via sync`,
+        });
+      } else if (entity === "notes" && entityData) {
+        void activityLogService.logActivity({
+          userId: user._id.toString(),
+          userName,
+          projectId: entityData.projectId,
+          entityId: entityData.id,
+          entityType: "note",
+          entityName: entityData.title,
+          action: "created",
+          description: `created note via sync`,
+        });
+      }
+
       res.status(201).json({ success: true, data });
     } catch (error) {
       next(error);
@@ -474,6 +579,55 @@ class SyncController {
       }
 
       res.status(200).json({ success: true, data });
+
+      // Log activity
+      const userName = user.name || user.firstName || user.email;
+      const entityData = data as any;
+      if (entity === "tasks" && entityData) {
+        void activityLogService.logActivity({
+          userId: user._id.toString(),
+          userName,
+          projectId: entityData.projectId,
+          entityId: entityData.id,
+          entityType: "task",
+          entityName: entityData.title,
+          action: "updated",
+          description: `updated task via sync`,
+        });
+      } else if (entity === "projects" && entityData) {
+        void activityLogService.logActivity({
+          userId: user._id.toString(),
+          userName,
+          projectId: entityData.id,
+          entityId: entityData.id,
+          entityType: "project",
+          entityName: entityData.name,
+          action: "updated",
+          description: `updated project via sync`,
+        });
+      } else if (entity === "epics" && entityData) {
+        void activityLogService.logActivity({
+          userId: user._id.toString(),
+          userName,
+          projectId: entityData.projectId,
+          entityId: entityData.id,
+          entityType: "epic",
+          entityName: entityData.name,
+          action: "updated",
+          description: `updated epic via sync`,
+        });
+      } else if (entity === "notes" && entityData) {
+        void activityLogService.logActivity({
+          userId: user._id.toString(),
+          userName,
+          projectId: entityData.projectId,
+          entityId: entityData.id,
+          entityType: "note",
+          entityName: entityData.title,
+          action: "updated",
+          description: `updated note via sync`,
+        });
+      }
     } catch (error) {
       next(error);
     }
@@ -507,6 +661,57 @@ class SyncController {
         data = await syncCrudService.deleteTask(user._id.toString(), id);
       } else {
         data = await syncCrudService.deleteNote(user._id.toString(), id);
+      }
+
+      // Log activity
+      const userName = user.name || user.firstName || user.email;
+      const entityData = data as any;
+      if (entityData) {
+        if (entity === "tasks") {
+          void activityLogService.logActivity({
+            userId: user._id.toString(),
+            userName,
+            projectId: entityData.projectId,
+            entityId: entityData.id,
+            entityType: "task",
+            entityName: entityData.title,
+            action: "deleted",
+            description: `deleted task via sync`,
+          });
+        } else if (entity === "projects") {
+          void activityLogService.logActivity({
+            userId: user._id.toString(),
+            userName,
+            projectId: entityData.id,
+            entityId: entityData.id,
+            entityType: "project",
+            entityName: entityData.name,
+            action: "deleted",
+            description: `deleted project via sync`,
+          });
+        } else if (entity === "epics") {
+          void activityLogService.logActivity({
+            userId: user._id.toString(),
+            userName,
+            projectId: entityData.projectId,
+            entityId: entityData.id,
+            entityType: "epic",
+            entityName: entityData.name,
+            action: "deleted",
+            description: `deleted epic via sync`,
+          });
+        } else if (entity === "notes") {
+          void activityLogService.logActivity({
+            userId: user._id.toString(),
+            userName,
+            projectId: entityData.projectId,
+            entityId: entityData.id,
+            entityType: "note",
+            entityName: entityData.title,
+            action: "deleted",
+            description: `deleted note via sync`,
+          });
+        }
       }
 
       res.status(200).json({ success: true, data });
