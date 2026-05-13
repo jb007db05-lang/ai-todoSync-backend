@@ -20,6 +20,7 @@ class SyncController {
   public fetchTasks = async (
     req: SyncRequest,
     res: Response,
+    next: NextFunction,
   ): Promise<void> => {
     try {
       const user = req.user;
@@ -41,14 +42,17 @@ class SyncController {
         tasks,
       });
     } catch (error) {
-      const status = (error as any).status || 500;
-      res.status(status).json({ error: (error as Error).message });
+      logger.error("Sync API: fetchTasks failure", {
+        error: error instanceof Error ? error.message : error,
+      });
+      next(error);
     }
   };
 
   public fetchProjects = async (
     req: SyncRequest,
     res: Response,
+    next: NextFunction,
   ): Promise<void> => {
     try {
       const user = req.user;
@@ -65,14 +69,18 @@ class SyncController {
         projects,
       });
     } catch (error) {
-      const status = (error as any).status || 500;
-      res.status(status).json({ error: (error as Error).message });
+      logger.error("Sync API: operation failure", {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      next(error);
     }
   };
 
   public fetchSummary = async (
     req: SyncRequest,
     res: Response,
+    next: NextFunction,
   ): Promise<void> => {
     try {
       const user = req.user;
@@ -94,14 +102,18 @@ class SyncController {
         summary,
       });
     } catch (error) {
-      const status = (error as any).status || 500;
-      res.status(status).json({ error: (error as Error).message });
+      logger.error("Sync API: operation failure", {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      next(error);
     }
   };
 
   public fetchProjectEpics = async (
     req: SyncRequest,
     res: Response,
+    next: NextFunction,
   ): Promise<void> => {
     try {
       const user = req.user;
@@ -122,14 +134,18 @@ class SyncController {
         epics,
       });
     } catch (error) {
-      const status = (error as any).status || 500;
-      res.status(status).json({ error: (error as Error).message });
+      logger.error("Sync API: operation failure", {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      next(error);
     }
   };
 
   public fetchProjectNotes = async (
     req: SyncRequest,
     res: Response,
+    next: NextFunction,
   ): Promise<void> => {
     try {
       const user = req.user;
@@ -150,14 +166,18 @@ class SyncController {
         notes,
       });
     } catch (error) {
-      const status = (error as any).status || 500;
-      res.status(status).json({ error: (error as Error).message });
+      logger.error("Sync API: operation failure", {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      next(error);
     }
   };
 
   public createProjectNote = async (
     req: SyncRequest,
     res: Response,
+    next: NextFunction,
   ): Promise<void> => {
     try {
       const user = req.user;
@@ -192,12 +212,19 @@ class SyncController {
         description: `created note via sync`,
       });
     } catch (error) {
-      const status = (error as any).status || 500;
-      res.status(status).json({ error: (error as Error).message });
+      logger.error("Sync API: operation failure", {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      next(error);
     }
   };
 
-  public fetchNote = async (req: SyncRequest, res: Response): Promise<void> => {
+  public fetchNote = async (
+    req: SyncRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const user = req.user;
 
@@ -214,14 +241,18 @@ class SyncController {
         note,
       });
     } catch (error) {
-      const status = (error as any).status || 500;
-      res.status(status).json({ error: (error as Error).message });
+      logger.error("Sync API: operation failure", {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      next(error);
     }
   };
 
   public updateNote = async (
     req: SyncRequest,
     res: Response,
+    next: NextFunction,
   ): Promise<void> => {
     try {
       const user = req.user;
@@ -256,12 +287,19 @@ class SyncController {
         description: `updated note via sync`,
       });
     } catch (error) {
-      const status = (error as any).status || 500;
-      res.status(status).json({ error: (error as Error).message });
+      logger.error("Sync API: operation failure", {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      next(error);
     }
   };
 
-  public syncTasks = async (req: SyncRequest, res: Response): Promise<void> => {
+  public syncTasks = async (
+    req: SyncRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const user = req.user;
 
@@ -294,14 +332,18 @@ class SyncController {
         tasks,
       });
     } catch (error) {
-      const status = (error as any).status || 500;
-      res.status(status).json({ error: (error as Error).message });
+      logger.error("Sync API: operation failure", {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      next(error);
     }
   };
 
   public syncSingleTask = async (
     req: SyncRequest,
     res: Response,
+    next: NextFunction,
   ): Promise<void> => {
     try {
       const user = req.user;
@@ -336,8 +378,11 @@ class SyncController {
         task,
       });
     } catch (error) {
-      const status = (error as any).status || 500;
-      res.status(status).json({ error: (error as Error).message });
+      logger.error("Sync API: operation failure", {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      next(error);
     }
   };
 
@@ -418,27 +463,56 @@ class SyncController {
       const user = this.requireUser(req.user);
       const entity = this.getRouteParam(req.params.entity);
 
+      logger.info(
+        `Sync API: Creating entity '${entity}' for user ${user.email}`,
+        {
+          entity,
+          userId: user._id,
+          body: req.body,
+        },
+      );
+
       if (!syncCrudService.isSupportedEntity(entity)) {
+        logger.warn(`Sync API: Unsupported entity type attempted: ${entity}`);
         throw new AppError(
           404,
-          "Sync entity not found",
+          `Sync entity type '${entity}' not found`,
           "SYNC_ENTITY_NOT_FOUND",
         );
       }
 
       let data;
 
-      if (entity === "projects") {
-        data = await syncCrudService.createProject(
-          user._id.toString(),
-          req.body,
-        );
-      } else if (entity === "epics") {
-        data = await syncCrudService.createEpic(user._id.toString(), req.body);
-      } else if (entity === "tasks") {
-        data = await syncCrudService.createTask(user._id.toString(), req.body);
-      } else {
-        data = await syncCrudService.createNote(user._id.toString(), req.body);
+      try {
+        if (entity === "projects") {
+          data = await syncCrudService.createProject(
+            user._id.toString(),
+            req.body,
+          );
+        } else if (entity === "epics") {
+          data = await syncCrudService.createEpic(
+            user._id.toString(),
+            req.body,
+          );
+        } else if (entity === "tasks") {
+          data = await syncCrudService.createTask(
+            user._id.toString(),
+            req.body,
+          );
+        } else {
+          data = await syncCrudService.createNote(
+            user._id.toString(),
+            req.body,
+          );
+        }
+      } catch (error) {
+        logger.error(`Sync API: Logic failure during ${entity} creation`, {
+          error: error instanceof Error ? error.message : error,
+          stack: error instanceof Error ? error.stack : undefined,
+          entity,
+          body: req.body,
+        });
+        throw error;
       }
 
       // Log activity
@@ -448,7 +522,7 @@ class SyncController {
         void activityLogService.logActivity({
           userId: user._id.toString(),
           userName,
-          projectId: entityData.projectId,
+          projectId: entityData.projectId || "GLOBAL",
           entityId: entityData.id,
           entityType: "task",
           entityName: entityData.title,
@@ -470,7 +544,7 @@ class SyncController {
         void activityLogService.logActivity({
           userId: user._id.toString(),
           userName,
-          projectId: entityData.projectId,
+          projectId: entityData.projectId || "GLOBAL",
           entityId: entityData.id,
           entityType: "epic",
           entityName: entityData.name,
@@ -481,7 +555,7 @@ class SyncController {
         void activityLogService.logActivity({
           userId: user._id.toString(),
           userName,
-          projectId: entityData.projectId,
+          projectId: entityData.projectId || "GLOBAL",
           entityId: entityData.id,
           entityType: "note",
           entityName: entityData.title,
@@ -587,7 +661,7 @@ class SyncController {
         void activityLogService.logActivity({
           userId: user._id.toString(),
           userName,
-          projectId: entityData.projectId,
+          projectId: entityData.projectId || "GLOBAL",
           entityId: entityData.id,
           entityType: "task",
           entityName: entityData.title,
@@ -609,7 +683,7 @@ class SyncController {
         void activityLogService.logActivity({
           userId: user._id.toString(),
           userName,
-          projectId: entityData.projectId,
+          projectId: entityData.projectId || "GLOBAL",
           entityId: entityData.id,
           entityType: "epic",
           entityName: entityData.name,
@@ -620,7 +694,7 @@ class SyncController {
         void activityLogService.logActivity({
           userId: user._id.toString(),
           userName,
-          projectId: entityData.projectId,
+          projectId: entityData.projectId || "GLOBAL",
           entityId: entityData.id,
           entityType: "note",
           entityName: entityData.title,
@@ -671,7 +745,7 @@ class SyncController {
           void activityLogService.logActivity({
             userId: user._id.toString(),
             userName,
-            projectId: entityData.projectId,
+            projectId: entityData.projectId || "GLOBAL",
             entityId: entityData.id,
             entityType: "task",
             entityName: entityData.title,
@@ -693,7 +767,7 @@ class SyncController {
           void activityLogService.logActivity({
             userId: user._id.toString(),
             userName,
-            projectId: entityData.projectId,
+            projectId: entityData.projectId || "GLOBAL",
             entityId: entityData.id,
             entityType: "epic",
             entityName: entityData.name,
@@ -704,7 +778,7 @@ class SyncController {
           void activityLogService.logActivity({
             userId: user._id.toString(),
             userName,
-            projectId: entityData.projectId,
+            projectId: entityData.projectId || "GLOBAL",
             entityId: entityData.id,
             entityType: "note",
             entityName: entityData.title,
