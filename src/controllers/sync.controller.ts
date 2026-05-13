@@ -395,6 +395,11 @@ class SyncController {
       const user = this.requireUser(req.user);
       const entity = this.getRouteParam(req.params.entity);
 
+      logger.info(`Sync API: Listing entities for '${entity}'`, {
+        userId: user._id,
+        query: req.query,
+      });
+
       if (!syncCrudService.isSupportedEntity(entity)) {
         throw new AppError(
           404,
@@ -446,6 +451,7 @@ class SyncController {
       }
 
       res.status(200).json({
+        success: true,
         ...result,
         ...aliases,
       });
