@@ -1,4 +1,4 @@
-type LogLevel = 'info' | 'warn' | 'error';
+type LogLevel = "info" | "warn" | "error";
 
 type Meta = Record<string, unknown> | Error | undefined;
 
@@ -9,16 +9,16 @@ class Logger {
         ? {
             name: meta.name,
             message: meta.message,
-            stack: meta.stack
+            stack: meta.stack,
           }
         : meta
-        ? meta
-        : null;
+          ? meta
+          : null;
     return {
       timestamp: new Date().toISOString(),
       level,
       message,
-      meta: normalizedMeta
+      meta: normalizedMeta,
     };
   }
 
@@ -28,15 +28,20 @@ class Logger {
   }
 
   public info(message: string, meta?: Meta) {
-    this.log('info', message, meta);
+    this.log("info", message, meta);
+  }
+
+  public debug(message: string, meta?: Meta) {
+    // For now, treat debug as info but we can filter it later
+    this.log("info", message, meta);
   }
 
   public warn(message: string, meta?: Meta) {
-    this.log('warn', message, meta);
+    this.log("warn", message, meta);
   }
 
   public error(message: string, meta?: Meta) {
-    this.log('error', message, meta);
+    this.log("error", message, meta);
   }
 }
 

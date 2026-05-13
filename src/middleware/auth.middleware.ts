@@ -120,7 +120,15 @@ const authMiddleware = async (
   let user = bearerToken ? await resolveUserFromJwt(bearerToken) : null;
 
   if (user == null) {
+    logger.debug("Attempting to resolve user from Sync API Key");
     user = await resolveUserFromSyncKey(req);
+    if (user) {
+      logger.debug(
+        `Successfully resolved user: ${user.email} (ID: ${user._id})`,
+      );
+    } else {
+      logger.warn("Failed to resolve user from Sync API Key - unauthorized");
+    }
   }
 
   if (user == null) {
