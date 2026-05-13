@@ -36,6 +36,16 @@ class App {
     logger.info(`Allowed Origins : ${env.ALLOWED_ORIGINS}`);
     this.app.set("trust proxy", 1);
 
+    this.app.use((req, _res, next) => {
+      logger.info(`Incoming Request: ${req.method} ${req.url}`, {
+        headers: {
+          "x-sync-api-key": req.headers["x-sync-api-key"] ? "***" : "missing",
+          "user-agent": req.headers["user-agent"],
+        },
+      });
+      next();
+    });
+
     this.app.use(
       cors({
         origin: env.ALLOWED_ORIGINS,
