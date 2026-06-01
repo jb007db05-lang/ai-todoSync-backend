@@ -5,7 +5,7 @@ import TaskModel, {
   ITaskDocument,
   TaskPriority,
 } from "../models/task.model.js";
-import type { TaskStatus } from "../models/task.model.js";
+import type { TaskSlaState, TaskStatus } from "../models/task.model.js";
 import {
   andRefMatches,
   buildRefInMatch,
@@ -23,6 +23,14 @@ export interface CreateTaskPayload {
   date: string;
   status?: TaskStatus;
   priority?: TaskPriority;
+  basePriority?: TaskPriority;
+  dynamicPriority?: TaskPriority;
+  urgencyScore?: number;
+  impactScore?: number;
+  dependencyWeight?: number;
+  dynamicPriorityScore?: number;
+  priorityEscalatedAt?: Date | null;
+  priorityEscalationReason?: string;
   isBlocked?: boolean;
   blockedByTaskId?: string | null;
   order?: number;
@@ -33,6 +41,15 @@ export interface CreateTaskPayload {
   assignedBy?: string | null;
   assignedAt?: Date;
   subtasks?: ISubtask[];
+  slaResponseDueAt?: Date | null;
+  slaResolutionDueAt?: Date | null;
+  responseBreached?: boolean;
+  resolutionBreached?: boolean;
+  firstResponseAt?: Date | null;
+  completedAt?: Date | null;
+  slaPausedAt?: Date | null;
+  totalPausedDuration?: number;
+  currentSlaState?: TaskSlaState;
 }
 
 export interface UpdateTaskPayload {
@@ -42,6 +59,14 @@ export interface UpdateTaskPayload {
   date?: string;
   status?: TaskStatus;
   priority?: TaskPriority;
+  basePriority?: TaskPriority;
+  dynamicPriority?: TaskPriority;
+  urgencyScore?: number;
+  impactScore?: number;
+  dependencyWeight?: number;
+  dynamicPriorityScore?: number;
+  priorityEscalatedAt?: Date | null;
+  priorityEscalationReason?: string;
   isBlocked?: boolean;
   blockedByTaskId?: string | null;
   order?: number;
@@ -51,6 +76,15 @@ export interface UpdateTaskPayload {
   assignedBy?: string | null;
   assignedAt?: Date;
   subtasks?: ISubtask[];
+  slaResponseDueAt?: Date | null;
+  slaResolutionDueAt?: Date | null;
+  responseBreached?: boolean;
+  resolutionBreached?: boolean;
+  firstResponseAt?: Date | null;
+  completedAt?: Date | null;
+  slaPausedAt?: Date | null;
+  totalPausedDuration?: number;
+  currentSlaState?: TaskSlaState;
 }
 
 export interface BulkAssignTasksPayload {

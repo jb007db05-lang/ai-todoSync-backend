@@ -3,7 +3,11 @@ import ActivityLogModel, {
   type ActionType,
   type IFieldChange,
 } from "../models/activity-log.model.js";
+import AuditRetentionPolicyModel from "../models/audit-retention-policy.model.js";
 import logger from "../lib/logger.js";
+import { createHash } from "crypto";
+import { buildRefMatch, buildSafeRefMatch } from "../utils/mongo-ref.js";
+import projectService from "./project.service.js";
 
 interface LogActivityParams {
   projectId: string;
@@ -15,6 +19,8 @@ interface LogActivityParams {
   userName: string;
   changes?: IFieldChange[];
   description: string;
+  metadata?: Record<string, unknown>;
+  approvalId?: string | null;
 }
 
 interface GetActivitiesOptions {
@@ -26,6 +32,28 @@ interface GetActivitiesOptions {
 class ActivityLogService {
   async logActivity(params: LogActivityParams): Promise<void> {
     try {
+      const [lastLog, policy] = await Promise.all([
+        ActivityLogModel.findOne({ projectId: params.projectId })
+          .sort({ sequence: -1 })
+          .lean(),
+        this.getRetentionPolicy(params.projectId),
+      ]);
+      const sequence = (lastLog?.sequence ?? 0) + 1;
+      const retentionUntil = policy.legalHold
+        ? null
+        : new Date(Date.now() + policy.retentionDays * 24 * 60 * 60 * 1000);
+      const previousHash = lastLog?.immutableHash ?? null;
+      const immutableHash = this.hashActivity({
+        projectId: params.projectId,
+        entityType: params.entityType,
+        entityId: params.entityId,
+        action: params.action,
+        userId: params.userId,
+        description: params.description,
+        sequence,
+        previousHash,
+      });
+
       await ActivityLogModel.create({
         projectId: params.projectId,
         entityType: params.entityType,
@@ -36,11 +64,119 @@ class ActivityLogService {
         userName: params.userName,
         changes: params.changes ?? [],
         description: params.description,
+        metadata: params.metadata ?? {},
+        approvalId: params.approvalId ?? null,
+        sequence,
+        previousHash,
+        immutableHash,
+        retentionUntil,
+        legalHold: policy.legalHold,
       });
     } catch (error) {
       // Don't throw — activity logging should never break the main flow
       logger.error("Failed to log activity", error as Error);
     }
+  }
+
+  async getRetentionPolicy(projectId: string) {
+    const policy = await AuditRetentionPolicyModel.findOne({
+      ...buildRefMatch("projectId", projectId),
+    }).lean();
+
+    return {
+      projectId,
+      retentionDays: policy?.retentionDays ?? 2555,
+      legalHold: policy?.legalHold ?? false,
+      updatedBy: policy?.updatedBy?.toString() ?? null,
+      updatedAt: policy?.updatedAt?.toISOString() ?? null,
+    };
+  }
+
+  async updateRetentionPolicy(
+    projectId: string,
+    updatedBy: string,
+    payload: { retentionDays?: unknown; legalHold?: unknown },
+  ) {
+    await projectService.assertProjectRole(updatedBy, projectId, "ADMIN");
+
+    const retentionDays = Number(payload.retentionDays ?? 2555);
+    if (
+      !Number.isInteger(retentionDays) ||
+      retentionDays < 30 ||
+      retentionDays > 3650
+    ) {
+      throw Object.assign(
+        new Error("retentionDays must be between 30 and 3650"),
+        {
+          status: 400,
+        },
+      );
+    }
+
+    const legalHold =
+      typeof payload.legalHold === "boolean" ? payload.legalHold : false;
+
+    const policy = await AuditRetentionPolicyModel.findOneAndUpdate(
+      { ...buildSafeRefMatch("projectId", projectId) },
+      { projectId, retentionDays, legalHold, updatedBy },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    ).lean();
+
+    return {
+      projectId,
+      retentionDays: policy?.retentionDays ?? retentionDays,
+      legalHold: policy?.legalHold ?? legalHold,
+      updatedBy,
+      updatedAt: policy?.updatedAt?.toISOString() ?? new Date().toISOString(),
+    };
+  }
+
+  async verifyAuditChain(projectId: string) {
+    const logs = await ActivityLogModel.find({ projectId })
+      .sort({ sequence: 1 })
+      .lean();
+
+    let previousHash: string | null = null;
+    for (const log of logs) {
+      if (!log.immutableHash || !log.sequence) {
+        return {
+          valid: false,
+          checked: logs.length,
+          failedSequence: log.sequence ?? null,
+          reason:
+            "Audit log missing immutable hash or sequence. Run audit migration.",
+        };
+      }
+
+      const expected = this.hashActivity({
+        projectId: log.projectId,
+        entityType: log.entityType,
+        entityId: log.entityId,
+        action: log.action,
+        userId: log.userId,
+        description: log.description,
+        sequence: log.sequence,
+        previousHash,
+      });
+
+      if (log.previousHash !== previousHash || log.immutableHash !== expected) {
+        return {
+          valid: false,
+          checked: logs.length,
+          failedSequence: log.sequence,
+          reason: "Audit chain hash mismatch",
+        };
+      }
+
+      previousHash = log.immutableHash;
+    }
+
+    return {
+      valid: true,
+      checked: logs.length,
+      failedSequence: null,
+      reason: null,
+    };
   }
 
   async getProjectActivities(
@@ -76,12 +212,23 @@ class ActivityLogService {
         userName: a.userName,
         changes: a.changes,
         description: a.description,
+        metadata: a.metadata ?? {},
+        immutableHash: a.immutableHash ?? "",
+        previousHash: a.previousHash ?? null,
+        sequence: a.sequence ?? 0,
+        retentionUntil: a.retentionUntil?.toISOString() ?? null,
+        legalHold: a.legalHold,
+        approvalId: a.approvalId ?? null,
         createdAt: a.createdAt.toISOString(),
       })),
       total,
       page,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  private hashActivity(input: Record<string, unknown>): string {
+    return createHash("sha256").update(JSON.stringify(input)).digest("hex");
   }
 }
 
