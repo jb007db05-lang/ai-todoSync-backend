@@ -28,6 +28,8 @@ import UserModel from "../models/user.model.js";
 import ProjectMemberModel from "../models/project-member.model.js";
 import { buildRefInMatch, buildRefMatch } from "../utils/mongo-ref.js";
 import operationalAnalyticsService from "./operational-analytics.service.js";
+import slaService from "./sla.service.js";
+import priorityEngineService from "./priority-engine.service.js";
 
 interface TaskUserDto {
   id: string;
@@ -63,6 +65,14 @@ interface TaskDto {
   date: string;
   status: TaskStatus;
   priority: TaskPriority;
+  basePriority: TaskPriority;
+  dynamicPriority: TaskPriority;
+  urgencyScore: number;
+  impactScore: number;
+  dependencyWeight: number;
+  dynamicPriorityScore: number;
+  priorityEscalatedAt: string | null;
+  priorityEscalationReason: string;
   isBlocked: boolean;
   blockedByTaskId: string | null;
   order: number;
@@ -75,6 +85,15 @@ interface TaskDto {
   assignedBy: TaskUserDto | null;
   assignedAt: string;
   subtasks: SubtaskDto[];
+  slaResponseDueAt: string | null;
+  slaResolutionDueAt: string | null;
+  responseBreached: boolean;
+  resolutionBreached: boolean;
+  firstResponseAt: string | null;
+  completedAt: string | null;
+  slaPausedAt: string | null;
+  totalPausedDuration: number;
+  currentSlaState: string;
   permissions: TaskPermissionsDto;
 }
 
@@ -151,11 +170,23 @@ class TaskService {
       payload.subtasks,
     );
 
+    const now = new Date();
+    const slaFields = await slaService.buildInitialSlaFields(
+      payload.userId,
+      payload.priority,
+      payload.status,
+      now,
+    );
+
+    const basePriority = payload.priority ?? "MEDIUM";
     const task = await createTask({
       ...payload,
+      basePriority,
+      dynamicPriority: basePriority,
       assignedTo: payload.assignedTo || payload.userId,
       assignedBy: payload.userId,
-      assignedAt: new Date(),
+      assignedAt: now,
+      ...slaFields,
     });
 
     operationalAnalyticsService.recordEventSafely({
@@ -171,6 +202,8 @@ class TaskService {
         source: task.source,
       },
     });
+
+    await priorityEngineService.evaluateAndPersist(task, payload.userId);
 
     return this.toDto(
       payload.userId,
@@ -318,6 +351,14 @@ class TaskService {
       updates.note = this.normalizeOptionalText(updates.note);
     }
 
+    if (
+      Object.prototype.hasOwnProperty.call(updates, "priority") &&
+      updates.priority
+    ) {
+      updates.basePriority = updates.priority;
+      updates.dynamicPriority = updates.priority;
+    }
+
     if (Object.prototype.hasOwnProperty.call(updates, "subtasks")) {
       updates.subtasks = this.normalizeSubtasks(updates.subtasks);
     }
@@ -347,6 +388,13 @@ class TaskService {
       );
     }
 
+    updates = await slaService.applyPriorityChange(
+      userId,
+      currentTask,
+      updates,
+    );
+    updates = slaService.applyStatusTransition(currentTask, updates);
+
     const updated = await updateTask(taskId, updates);
 
     if (updated == null) {
@@ -354,6 +402,7 @@ class TaskService {
     }
 
     this.recordTaskUpdateEvents(userId, currentTask, updated);
+    await priorityEngineService.evaluateAndPersist(updated, userId);
 
     return this.toDto(userId, updated, roleMap);
   }
@@ -470,11 +519,14 @@ class TaskService {
       }
     }
 
-    const updated = await updateTask(taskId, {
-      isBlocked: true,
-      blockedByTaskId: blockedByTaskId || null,
-      status: "BLOCKED",
-    });
+    const updated = await updateTask(
+      taskId,
+      slaService.applyStatusTransition(task, {
+        isBlocked: true,
+        blockedByTaskId: blockedByTaskId || null,
+        status: "BLOCKED",
+      }),
+    );
 
     if (!updated) throw new HttpError(404, "Task not found");
 
@@ -492,6 +544,8 @@ class TaskService {
       },
     });
 
+    await priorityEngineService.evaluateAndPersist(updated, userId);
+
     return this.toDto(userId, updated, roleMap);
   }
 
@@ -508,11 +562,14 @@ class TaskService {
       throw new HttpError(404, "Task not found");
     }
 
-    const updated = await updateTask(taskId, {
-      isBlocked: false,
-      blockedByTaskId: null,
-      status: "TODO",
-    });
+    const updated = await updateTask(
+      taskId,
+      slaService.applyStatusTransition(task, {
+        isBlocked: false,
+        blockedByTaskId: null,
+        status: "TODO",
+      }),
+    );
 
     if (!updated) throw new HttpError(404, "Task not found");
 
@@ -528,6 +585,8 @@ class TaskService {
         nextStatus: updated.status,
       },
     });
+
+    await priorityEngineService.evaluateAndPersist(updated, userId);
 
     return this.toDto(userId, updated, roleMap);
   }
@@ -681,6 +740,14 @@ class TaskService {
       date: task.date,
       status: this.normalizeStoredTaskStatus(task.status),
       priority: task.priority || "MEDIUM",
+      basePriority: task.basePriority || task.priority || "MEDIUM",
+      dynamicPriority: task.dynamicPriority || task.priority || "MEDIUM",
+      urgencyScore: task.urgencyScore ?? 0,
+      impactScore: task.impactScore ?? 0,
+      dependencyWeight: task.dependencyWeight ?? 0,
+      dynamicPriorityScore: task.dynamicPriorityScore ?? 0,
+      priorityEscalatedAt: task.priorityEscalatedAt?.toISOString() ?? null,
+      priorityEscalationReason: task.priorityEscalationReason ?? "",
       isBlocked: task.isBlocked || false,
       blockedByTaskId: task.blockedByTaskId?.toString() ?? null,
       order: task.order || 0,
@@ -692,6 +759,15 @@ class TaskService {
       assignedBy: this.toTaskUser(task.assignedBy),
       assignedAt: (task.assignedAt || new Date()).toISOString(),
       subtasks: this.toSubtaskDtos(task.subtasks),
+      slaResponseDueAt: task.slaResponseDueAt?.toISOString() ?? null,
+      slaResolutionDueAt: task.slaResolutionDueAt?.toISOString() ?? null,
+      responseBreached: task.responseBreached ?? false,
+      resolutionBreached: task.resolutionBreached ?? false,
+      firstResponseAt: task.firstResponseAt?.toISOString() ?? null,
+      completedAt: task.completedAt?.toISOString() ?? null,
+      slaPausedAt: task.slaPausedAt?.toISOString() ?? null,
+      totalPausedDuration: task.totalPausedDuration ?? 0,
+      currentSlaState: task.currentSlaState ?? "HEALTHY",
       permissions,
     };
   }

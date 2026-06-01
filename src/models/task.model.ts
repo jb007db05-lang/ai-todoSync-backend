@@ -10,7 +10,13 @@ export type TaskWorkflowStatus =
   | "DONE";
 export type TaskStatus = TaskWorkflowStatus | "rolled_over";
 
-export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
+export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type TaskSlaState =
+  | "HEALTHY"
+  | "NEAR_BREACH"
+  | "BREACHED"
+  | "PAUSED"
+  | "COMPLETED";
 
 export interface ISubtask {
   _id?: any;
@@ -31,6 +37,14 @@ export interface ITask {
   date: string;
   status: TaskStatus;
   priority: TaskPriority;
+  basePriority: TaskPriority;
+  dynamicPriority: TaskPriority;
+  urgencyScore: number;
+  impactScore: number;
+  dependencyWeight: number;
+  dynamicPriorityScore: number;
+  priorityEscalatedAt?: Date | null;
+  priorityEscalationReason?: string;
   isBlocked: boolean;
   blockedByTaskId?: Types.ObjectId | string | null;
   order: number;
@@ -43,6 +57,15 @@ export interface ITask {
   assignedBy?: Types.ObjectId | string | null;
   assignedAt?: Date;
   subtasks?: ISubtask[];
+  slaResponseDueAt?: Date | null;
+  slaResolutionDueAt?: Date | null;
+  responseBreached: boolean;
+  resolutionBreached: boolean;
+  firstResponseAt?: Date | null;
+  completedAt?: Date | null;
+  slaPausedAt?: Date | null;
+  totalPausedDuration: number;
+  currentSlaState: TaskSlaState;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -126,8 +149,49 @@ const taskSchema = new Schema<ITaskDocument>(
     },
     priority: {
       type: String,
-      enum: ["LOW", "MEDIUM", "HIGH"],
+      enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
       default: "MEDIUM",
+    },
+    basePriority: {
+      type: String,
+      enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+      default: "MEDIUM",
+    },
+    dynamicPriority: {
+      type: String,
+      enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+      default: "MEDIUM",
+    },
+    urgencyScore: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
+    },
+    impactScore: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
+    },
+    dependencyWeight: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    dynamicPriorityScore: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
+    },
+    priorityEscalatedAt: {
+      type: Date,
+      default: null,
+    },
+    priorityEscalationReason: {
+      type: String,
+      default: "",
     },
     isBlocked: {
       type: Boolean,
@@ -182,9 +246,52 @@ const taskSchema = new Schema<ITaskDocument>(
       type: [subtaskSchema],
       default: [],
     },
+    slaResponseDueAt: {
+      type: Date,
+      default: null,
+    },
+    slaResolutionDueAt: {
+      type: Date,
+      default: null,
+    },
+    responseBreached: {
+      type: Boolean,
+      default: false,
+    },
+    resolutionBreached: {
+      type: Boolean,
+      default: false,
+    },
+    firstResponseAt: {
+      type: Date,
+      default: null,
+    },
+    completedAt: {
+      type: Date,
+      default: null,
+    },
+    slaPausedAt: {
+      type: Date,
+      default: null,
+    },
+    totalPausedDuration: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    currentSlaState: {
+      type: String,
+      enum: ["HEALTHY", "NEAR_BREACH", "BREACHED", "PAUSED", "COMPLETED"],
+      default: "HEALTHY",
+    },
   },
   { timestamps: true },
 );
+
+taskSchema.index({ responseBreached: 1, resolutionBreached: 1, priority: 1 });
+taskSchema.index({ slaResponseDueAt: 1, slaResolutionDueAt: 1, status: 1 });
+taskSchema.index({ blockedByTaskId: 1, status: 1 });
+taskSchema.index({ dynamicPriorityScore: -1, dynamicPriority: 1 });
 
 const TaskModel = model<ITaskDocument>("Task", taskSchema);
 

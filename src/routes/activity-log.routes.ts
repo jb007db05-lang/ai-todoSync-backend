@@ -16,6 +16,21 @@ class ActivityLogRoutes implements Routes {
   private initializeRoutes(): void {
     this.router.use(authMiddleware);
     this.router.get("/", isProjectMember, activityLogController.getActivities);
+    this.router.get(
+      "/retention-policy",
+      isProjectMember,
+      activityLogController.getRetentionPolicy,
+    );
+    this.router.patch(
+      "/retention-policy",
+      isProjectMember,
+      activityLogController.updateRetentionPolicy,
+    );
+    this.router.get(
+      "/verify-chain",
+      isProjectMember,
+      activityLogController.verifyAuditChain,
+    );
   }
 }
 

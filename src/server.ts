@@ -11,10 +11,28 @@ import ChatRoutes from "./routes/chat.routes.js";
 import ActivityHistoryRoutes from "./routes/activity-log.routes.js";
 import CommentRoutes from "./routes/comment.routes.js";
 import AnalyticsRoutes from "./routes/analytics.routes.js";
+import SlaRoutes from "./routes/sla.routes.js";
+import ApprovalWorkflowRoutes from "./routes/approval-workflow.routes.js";
+import PriorityEngineRoutes from "./routes/priority-engine.routes.js";
+import ChecklistRoutes from "./modules/checklists/routes.js";
+import EngagementRoutes from "./modules/engagement/routes.js";
+import GuideAnalyticsRoutes from "./modules/guide-analytics/routes.js";
+import GuideRoutes from "./modules/guides/routes.js";
+import SurveyRoutes from "./modules/surveys/routes.js";
+import TargetingRoutes from "./modules/targeting/routes.js";
 import logger from "./lib/logger.js";
 
 const server = new App([
+  new GuideRoutes(),
+  new SurveyRoutes(),
+  new ChecklistRoutes(),
+  new TargetingRoutes(),
+  new EngagementRoutes(),
+  new GuideAnalyticsRoutes(),
   new AnalyticsRoutes(),
+  new SlaRoutes(),
+  new ApprovalWorkflowRoutes(),
+  new PriorityEngineRoutes(),
   new HealthRoutes(),
   new AuthRoutes(),
   new TaskRoutes(),

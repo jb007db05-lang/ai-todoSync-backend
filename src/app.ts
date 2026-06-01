@@ -10,6 +10,8 @@ import logger from "./lib/logger.js";
 import env from "./config/env.js";
 import { connectDatabase } from "./config/db.config.js";
 import { scheduleRolloverJob } from "./utils/rollover.js";
+import { scheduleSlaJob } from "./utils/sla-scheduler.js";
+import { schedulePriorityEngineJob } from "./utils/priority-engine-scheduler.js";
 import chatSocketServer from "./socket/chat.socket.js";
 import { errorMiddleware } from "./middleware/error.middleware.js";
 import { AppError } from "./utils/app-error.js";
@@ -89,6 +91,8 @@ class App {
 
   private initializeCronJobs(): void {
     scheduleRolloverJob();
+    scheduleSlaJob();
+    schedulePriorityEngineJob();
   }
 
   private initializeSocketIO(): void {
