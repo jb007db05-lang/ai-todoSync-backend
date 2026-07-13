@@ -273,6 +273,16 @@ class TargetingService {
           matched: true,
           reason: `${condition.type} handled by frequency engine`,
         };
+      case "EXIT_INTENT":
+        return {
+          matched: context.eventName === "exit_intent",
+          reason: `Exit intent: ${context.eventName === "exit_intent" ? "matched" : "failed"}`,
+        };
+      case "IDLE_TIMEOUT":
+        return {
+          matched: context.eventName === "idle_timeout",
+          reason: `Idle timeout: ${context.eventName === "idle_timeout" ? "matched" : "failed"}`,
+        };
       default:
         return {
           matched: false,

@@ -76,12 +76,31 @@ class SurveyRepository {
     npsScore?: number | null;
     category: NpsCategory;
   }) {
+    const questionIds = new Set(input.survey.questions.map((q) => q.id));
+    const answersArray = input.survey.questions.map((q) => ({
+      questionId: q.id,
+      questionTitle: q.title,
+      questionType: q.type,
+      value: input.dto.answers[q.id] !== undefined ? input.dto.answers[q.id] : null,
+    }));
+
+    Object.entries(input.dto.answers).forEach(([key, val]) => {
+      if (!questionIds.has(key)) {
+        answersArray.push({
+          questionId: key,
+          questionTitle: key,
+          questionType: "TEXT",
+          value: val,
+        });
+      }
+    });
+
     return SurveyResponseModel.create({
       tenantId: input.tenantId,
       surveyId: input.survey._id.toString(),
       userId: input.dto.userId,
       sessionId: input.dto.sessionId,
-      answers: input.dto.answers,
+      answers: answersArray,
       npsScore: input.npsScore ?? null,
       category: input.category,
       metadata: input.dto.metadata ?? {},

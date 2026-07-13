@@ -20,6 +20,8 @@ import GuideAnalyticsRoutes from "./modules/guide-analytics/routes.js";
 import GuideRoutes from "./modules/guides/routes.js";
 import SurveyRoutes from "./modules/surveys/routes.js";
 import TargetingRoutes from "./modules/targeting/routes.js";
+import AiPlanningRoutes from "./routes/ai-planning.routes.js";
+import SdkIntegrationRoutes from "./modules/sdk-integrations/routes.js";
 import logger from "./lib/logger.js";
 
 const server = new App([
@@ -29,6 +31,7 @@ const server = new App([
   new TargetingRoutes(),
   new EngagementRoutes(),
   new GuideAnalyticsRoutes(),
+  new SdkIntegrationRoutes(),
   new AnalyticsRoutes(),
   new SlaRoutes(),
   new ApprovalWorkflowRoutes(),
@@ -42,6 +45,7 @@ const server = new App([
   new NoteRoutes(),
   new SyncRoutes(),
   new ChatRoutes(),
+  new AiPlanningRoutes(),
   new ActivityHistoryRoutes(),
   new CommentRoutes(),
 ]);

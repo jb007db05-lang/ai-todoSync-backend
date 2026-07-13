@@ -25,7 +25,13 @@ export type SurveyQuestionType =
   | "MULTI_CHOICE"
   | "RATING_SCALE"
   | "DROPDOWN"
-  | "YES_NO";
+  | "YES_NO"
+  | "CSAT"
+  | "CES"
+  | "EMOJI"
+  | "OPINION_SCALE"
+  | "FILE_UPLOAD"
+  | "CONTACT";
 
 export type NpsCategory = "PROMOTER" | "PASSIVE" | "DETRACTOR" | "NONE";
 
@@ -51,7 +57,9 @@ export type TargetingConditionType =
   | "SHOW_ONCE"
   | "SHOW_EVERY_X_DAYS"
   | "COOLDOWN"
-  | "TIME_WINDOW";
+  | "TIME_WINDOW"
+  | "EXIT_INTENT"
+  | "IDLE_TIMEOUT";
 
 export type TargetingOperator =
   | "EQUALS"
@@ -166,6 +174,8 @@ export interface TargetingRuntimeContext {
     completed?: string[];
   };
   now?: string | Date;
+  eventName?: string;
+  eventProperties?: Record<string, unknown>;
 }
 
 export type EngagementEventName =
@@ -224,6 +234,12 @@ export const SURVEY_QUESTION_TYPES: SurveyQuestionType[] = [
   "RATING_SCALE",
   "DROPDOWN",
   "YES_NO",
+  "CSAT",
+  "CES",
+  "EMOJI",
+  "OPINION_SCALE",
+  "FILE_UPLOAD",
+  "CONTACT",
 ];
 
 export const ENGAGEMENT_EVENT_NAMES: EngagementEventName[] = [

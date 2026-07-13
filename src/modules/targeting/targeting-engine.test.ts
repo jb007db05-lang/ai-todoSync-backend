@@ -86,3 +86,71 @@ test("targeting engine rejects failed AND condition", async () => {
   assert.equal(result.eligible, false);
   assert.ok(result.failedConditions.includes("score"));
 });
+
+test("targeting engine evaluates exit intent trigger correctly", async () => {
+  const rules: TargetingRuleGroup = {
+    id: "root",
+    operator: "AND",
+    conditions: [
+      { id: "exit", type: "EXIT_INTENT" }
+    ],
+  };
+
+  // Test when eventName matches
+  const matchResult = await targetingService.evaluate({
+    rules,
+    context: {
+      tenantId: "tenant-1",
+      eventName: "exit_intent",
+    },
+  });
+
+  assert.equal(matchResult.eligible, true);
+  assert.deepEqual(matchResult.matchedConditions, ["exit"]);
+
+  // Test when eventName does not match
+  const failResult = await targetingService.evaluate({
+    rules,
+    context: {
+      tenantId: "tenant-1",
+      eventName: "different_event",
+    },
+  });
+
+  assert.equal(failResult.eligible, false);
+  assert.deepEqual(failResult.failedConditions, ["exit"]);
+});
+
+test("targeting engine evaluates idle timeout trigger correctly", async () => {
+  const rules: TargetingRuleGroup = {
+    id: "root",
+    operator: "AND",
+    conditions: [
+      { id: "idle", type: "IDLE_TIMEOUT" }
+    ],
+  };
+
+  // Test when eventName matches
+  const matchResult = await targetingService.evaluate({
+    rules,
+    context: {
+      tenantId: "tenant-1",
+      eventName: "idle_timeout",
+    },
+  });
+
+  assert.equal(matchResult.eligible, true);
+  assert.deepEqual(matchResult.matchedConditions, ["idle"]);
+
+  // Test when eventName does not match
+  const failResult = await targetingService.evaluate({
+    rules,
+    context: {
+      tenantId: "tenant-1",
+      eventName: "different_event",
+    },
+  });
+
+  assert.equal(failResult.eligible, false);
+  assert.deepEqual(failResult.failedConditions, ["idle"]);
+});

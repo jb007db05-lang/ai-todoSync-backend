@@ -83,12 +83,19 @@ const surveySchema = new Schema<ISurveyDocument>(
 
 surveySchema.index({ tenantId: 1, status: 1, priority: 1 });
 
+export interface ISurveyAnswer {
+  questionId: string;
+  questionTitle: string;
+  questionType: string;
+  value: unknown;
+}
+
 export interface ISurveyResponse {
   surveyId: string;
   userId?: string;
   tenantId: string;
   sessionId?: string;
-  answers: Record<string, unknown>;
+  answers: ISurveyAnswer[] | Record<string, unknown>;
   npsScore?: number | null;
   category: NpsCategory;
   metadata: Record<string, unknown>;
@@ -99,13 +106,23 @@ export interface ISurveyResponse {
 
 export interface ISurveyResponseDocument extends ISurveyResponse, Document {}
 
+const surveyAnswerSchema = new Schema(
+  {
+    questionId: { type: String, required: true },
+    questionTitle: { type: String, required: true },
+    questionType: { type: String, required: true },
+    value: { type: Schema.Types.Mixed },
+  },
+  { _id: false },
+);
+
 const surveyResponseSchema = new Schema<ISurveyResponseDocument>(
   {
     surveyId: { type: String, required: true, index: true },
     userId: { type: String, index: true },
     tenantId: { type: String, required: true, index: true },
     sessionId: { type: String, index: true },
-    answers: { type: Schema.Types.Mixed, default: {} },
+    answers: { type: Schema.Types.Mixed, default: [] },
     npsScore: { type: Number, default: null },
     category: {
       type: String,

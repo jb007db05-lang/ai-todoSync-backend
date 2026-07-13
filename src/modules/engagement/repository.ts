@@ -69,16 +69,21 @@ class EngagementRepository {
       set.lastShownAt = now;
     }
 
+    const setOnInsert: Record<string, unknown> = {
+      tenantId: identity.tenantId,
+      guideId: identity.guideId,
+      userId: identity.userId,
+      sessionId: identity.sessionId,
+      stepState: {},
+    };
+
+    if (!patch.incrementDisplay) {
+      setOnInsert.displayCount = 0;
+    }
+
     const update: Record<string, unknown> = {
       $set: set,
-      $setOnInsert: {
-        tenantId: identity.tenantId,
-        guideId: identity.guideId,
-        userId: identity.userId,
-        sessionId: identity.sessionId,
-        stepState: {},
-        displayCount: 0,
-      },
+      $setOnInsert: setOnInsert,
     };
 
     if (patch.incrementDisplay) {

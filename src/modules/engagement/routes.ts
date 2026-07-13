@@ -1,7 +1,8 @@
 import { Router } from "express";
 import type { Routes } from "../../interfaces/routes.interface.js";
 import engagementController from "./controller.js";
-import { requireEngagementAdmin, requireEngagementSdk } from "./permissions.js";
+import { requireEngagementAdmin, requireEngagementSdk, optionalEngagementAuth } from "./permissions.js";
+import { sdkRateLimiter } from "../../middleware/sdkAuth.middleware.js";
 
 class EngagementRoutes implements Routes {
   public path = "/api/engagement";
@@ -14,12 +15,12 @@ class EngagementRoutes implements Routes {
   private initializeRoutes(): void {
     this.router.post(
       "/runtime",
-      requireEngagementAdmin,
+      optionalEngagementAuth,
       engagementController.runtime,
     );
     this.router.post(
       "/track",
-      requireEngagementAdmin,
+      optionalEngagementAuth,
       engagementController.track,
     );
     this.router.get("/mtu", requireEngagementAdmin, engagementController.mtu);
@@ -27,11 +28,13 @@ class EngagementRoutes implements Routes {
     this.router.post(
       "/sdk/runtime",
       requireEngagementSdk,
+      sdkRateLimiter,
       engagementController.runtime,
     );
     this.router.post(
       "/sdk/track",
       requireEngagementSdk,
+      sdkRateLimiter,
       engagementController.track,
     );
   }

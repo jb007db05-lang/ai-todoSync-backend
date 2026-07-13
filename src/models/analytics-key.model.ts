@@ -9,6 +9,7 @@ export interface IAnalyticsKey {
   hashedKey: string; // Reversible encrypted storage
   keyHash: string; // Deterministic hash for indexing
   status: KeyStatus;
+  allowedOrigins: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -49,6 +50,10 @@ const analyticsKeySchema = new Schema<IAnalyticsKeyDocument>(
       enum: ["active", "revoked"],
       default: "active",
       required: true,
+    },
+    allowedOrigins: {
+      type: [String],
+      default: [],
     },
   },
   { timestamps: true, toJSON: { getters: true }, toObject: { getters: true } },

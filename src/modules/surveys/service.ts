@@ -5,6 +5,7 @@ import type {
   NpsCategory,
   TargetingRuntimeContext,
 } from "../engagement/types.js";
+import { GuideExposureModel } from "../engagement/model.js";
 import targetingService from "../targeting/service.js";
 import type {
   CreateSurveyDto,
@@ -153,28 +154,122 @@ class SurveyService {
   }
 
   public async getSurveyAnalytics(tenantId: string, surveyId: string) {
-    await this.getSurvey(tenantId, surveyId);
+    const survey = await this.getSurvey(tenantId, surveyId);
     const responses = await surveyRepository.listResponses(tenantId, surveyId);
-    const promoters = responses.filter(
-      (response) => response.category === "PROMOTER",
-    ).length;
-    const passives = responses.filter(
-      (response) => response.category === "PASSIVE",
-    ).length;
-    const detractors = responses.filter(
-      (response) => response.category === "DETRACTOR",
-    ).length;
-    const total = responses.length;
-    const nps = total > 0 ? ((promoters - detractors) / total) * 100 : 0;
+    
+    const exposures = await GuideExposureModel.find({ tenantId, guideId: surveyId }).exec();
+
+    const totalImpressions = exposures.reduce((sum, exp) => sum + (exp.displayCount ?? 0), 0);
+    const uniqueUsersCount = new Set(exposures.map((exp) => exp.userId).filter(Boolean)).size;
+    const starts = exposures.filter((exp) => exp.status !== "shown").length;
+    const submissions = responses.length;
+    const dismissals = exposures.filter((exp) => exp.status === "dismissed" || exp.status === "abandoned").length;
+    
+    const completionRate = totalImpressions > 0 ? (submissions / totalImpressions) * 100 : 0;
+    const dropOffRate = starts > 0 ? ((starts - submissions) / starts) * 100 : 0;
+
+    let totalCompletionTime = 0;
+    let completionTimeCount = 0;
+    
+    exposures.forEach((exp) => {
+      if (exp.startedAt && exp.completedAt) {
+        totalCompletionTime += (exp.completedAt.getTime() - exp.startedAt.getTime()) / 1000;
+        completionTimeCount++;
+      }
+    });
+
+    if (completionTimeCount === 0) {
+      responses.forEach((res) => {
+        if (res.metadata && typeof res.metadata.startedAt === "string") {
+          const start = new Date(res.metadata.startedAt).getTime();
+          const end = new Date(res.submittedAt).getTime();
+          if (end > start) {
+            totalCompletionTime += (end - start) / 1000;
+            completionTimeCount++;
+          }
+        }
+      });
+    }
+    const averageCompletionTime = completionTimeCount > 0 ? totalCompletionTime / completionTimeCount : 0;
+
+    const promoters = responses.filter((r) => r.category === "PROMOTER").length;
+    const passives = responses.filter((r) => r.category === "PASSIVE").length;
+    const detractors = responses.filter((r) => r.category === "DETRACTOR").length;
+    const nps = submissions > 0 ? ((promoters - detractors) / submissions) * 100 : 0;
+
+    const questionAnalytics = survey.questions.map((q) => {
+      const qAnswers = responses.map((r) => {
+        if (Array.isArray(r.answers)) {
+          return r.answers.find((a: any) => a.questionId === q.id)?.value;
+        }
+        return (r.answers as Record<string, unknown>)[q.id];
+      }).filter((val) => val !== undefined && val !== null);
+
+      const answeredCount = qAnswers.length;
+      const skippedCount = submissions - answeredCount;
+
+      let averageScore = 0;
+      const distribution: Record<string, number> = {};
+
+      if (["NPS", "RATING_SCALE", "OPINION_SCALE", "CSAT", "CES"].includes(q.type)) {
+        const scores = qAnswers.map(Number).filter(Number.isFinite);
+        if (scores.length > 0) {
+          averageScore = scores.reduce((sum, s) => sum + s, 0) / scores.length;
+        }
+      }
+
+      qAnswers.forEach((ans) => {
+        const key = typeof ans === "object" && ans !== null ? JSON.stringify(ans) : String(ans);
+        distribution[key] = (distribution[key] ?? 0) + 1;
+      });
+
+      let mostSelectedOption: string | null = null;
+      let leastSelectedOption: string | null = null;
+      let maxCount = -1;
+      let minCount = Infinity;
+
+      Object.entries(distribution).forEach(([key, count]) => {
+        if (count > maxCount) {
+          maxCount = count;
+          mostSelectedOption = key;
+        }
+        if (count < minCount) {
+          minCount = count;
+          leastSelectedOption = key;
+        }
+      });
+
+      return {
+        questionId: q.id,
+        title: q.title,
+        type: q.type,
+        responseCount: answeredCount,
+        skippedCount,
+        averageScore,
+        distribution,
+        mostSelectedOption,
+        leastSelectedOption,
+      };
+    });
 
     return {
       surveyId,
-      responses: total,
+      responses: submissions,
       nps,
       promoters,
       passives,
       detractors,
-      responseRate: total,
+      responseRate: totalImpressions > 0 ? (submissions / totalImpressions) * 100 : 0,
+      impressions: totalImpressions,
+      eligibleUsers: uniqueUsersCount,
+      displays: totalImpressions,
+      starts,
+      submissions,
+      dismissals,
+      completionRate,
+      dropOffRate,
+      averageCompletionTime,
+      questionAnalytics,
       weeklyTrends: this.buildTrend(responses, "week"),
       monthlyTrends: this.buildTrend(responses, "month"),
     };
