@@ -1,6 +1,7 @@
 import { GuideExposureModel } from "./model.js";
 import type { RuntimeGuideDto } from "./dtos.js";
 import targetingService from "../targeting/service.js";
+import logger from "../../lib/logger.js";
 
 const INTRUSIVE_TYPES = ["MODAL", "SURVEY", "TOUR"];
 
@@ -19,15 +20,15 @@ export class ExperienceOrchestrator {
 
     if (experiences.length === 0) {
       if (process.env.DEBUG_ORCHESTRATION === "true") {
-        console.log(`[Orchestration Debug] Runtime Evaluation`);
-        console.log(`- Eligible Experiences: []`);
-        console.log(`- Active Lock: false`);
-        console.log(`- Cooldown: false`);
-        console.log(`- Critical Bypass: []`);
-        console.log(`- Selected Intrusive: none`);
-        console.log(`- Suppressed Experiences: []`);
-        console.log(`- Returned Experiences: []`);
-        console.log(`- Evaluation Time: ${Date.now() - startTime}ms`);
+        logger.info(`[Orchestration Debug] Runtime Evaluation`);
+        logger.info(`- Eligible Experiences: []`);
+        logger.info(`- Active Lock: false`);
+        logger.info(`- Cooldown: false`);
+        logger.info(`- Critical Bypass: []`);
+        logger.info(`- Selected Intrusive: none`);
+        logger.info(`- Suppressed Experiences: []`);
+        logger.info(`- Returned Experiences: []`);
+        logger.info(`- Evaluation Time: ${Date.now() - startTime}ms`);
       }
       return [];
     }
@@ -70,22 +71,25 @@ export class ExperienceOrchestrator {
       hasCooldown = !!recentExposure;
     }
 
-    const { result, suppressed, criticalBypass, selectedIntrusive } = this.selectExperiences(
-      experiences,
-      hasActiveLock,
-      hasCooldown,
-    );
+    const { result, suppressed, criticalBypass, selectedIntrusive } =
+      this.selectExperiences(experiences, hasActiveLock, hasCooldown);
 
     if (process.env.DEBUG_ORCHESTRATION === "true") {
-      console.log(`[Orchestration Debug] Runtime Evaluation`);
-      console.log(`- Eligible Experiences: [${experiences.map(e => `${e.type}:${e.priority}:${e.id}`).join(", ")}]`);
-      console.log(`- Active Lock: ${hasActiveLock}`);
-      console.log(`- Cooldown: ${hasCooldown}`);
-      console.log(`- Critical Bypass: [${criticalBypass.join(", ")}]`);
-      console.log(`- Selected Intrusive: ${selectedIntrusive ? `${selectedIntrusive.type}:${selectedIntrusive.priority}:${selectedIntrusive.id}` : "none"}`);
-      console.log(`- Suppressed Experiences: [${suppressed.join(", ")}]`);
-      console.log(`- Returned Experiences: [${result.map(e => `${e.type}:${e.priority}:${e.id}`).join(", ")}]`);
-      console.log(`- Evaluation Time: ${Date.now() - startTime}ms`);
+      logger.info(`[Orchestration Debug] Runtime Evaluation`);
+      logger.info(
+        `- Eligible Experiences: [${experiences.map((e) => `${e.type}:${e.priority}:${e.id}`).join(", ")}]`,
+      );
+      logger.info(`- Active Lock: ${hasActiveLock}`);
+      logger.info(`- Cooldown: ${hasCooldown}`);
+      logger.info(`- Critical Bypass: [${criticalBypass.join(", ")}]`);
+      logger.info(
+        `- Selected Intrusive: ${selectedIntrusive ? `${selectedIntrusive.type}:${selectedIntrusive.priority}:${selectedIntrusive.id}` : "none"}`,
+      );
+      logger.info(`- Suppressed Experiences: [${suppressed.join(", ")}]`);
+      logger.info(
+        `- Returned Experiences: [${result.map((e) => `${e.type}:${e.priority}:${e.id}`).join(", ")}]`,
+      );
+      logger.info(`- Evaluation Time: ${Date.now() - startTime}ms`);
     }
 
     return result;
@@ -110,14 +114,18 @@ export class ExperienceOrchestrator {
       const isIntrusive = INTRUSIVE_TYPES.includes(exp.type.toUpperCase());
       if (isIntrusive) {
         if (hasActiveLock) {
-          suppressed.push(`${exp.type}:${exp.priority}:${exp.id} (Blocked by active lock)`);
+          suppressed.push(
+            `${exp.type}:${exp.priority}:${exp.id} (Blocked by active lock)`,
+          );
           continue;
         }
         if (hasCooldown) {
           if (exp.priority.toUpperCase() === "CRITICAL") {
             criticalBypass.push(`${exp.type}:${exp.priority}:${exp.id}`);
           } else {
-            suppressed.push(`${exp.type}:${exp.priority}:${exp.id} (Blocked by cooldown)`);
+            suppressed.push(
+              `${exp.type}:${exp.priority}:${exp.id} (Blocked by cooldown)`,
+            );
             continue;
           }
         }
@@ -133,7 +141,7 @@ export class ExperienceOrchestrator {
       );
       for (let i = 1; i < intrusive.length; i++) {
         suppressed.push(
-          `${intrusive[i].type}:${intrusive[i].priority}:${intrusive[i].id} (Suppressed by higher priority ${intrusive[0].priority})`
+          `${intrusive[i].type}:${intrusive[i].priority}:${intrusive[i].id} (Suppressed by higher priority ${intrusive[0].priority})`,
         );
       }
     }

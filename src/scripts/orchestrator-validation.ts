@@ -33,21 +33,27 @@ function mockExp(id: string, type: string, priority: string): RuntimeGuideDto {
 }
 
 async function runValidation() {
-  console.log("Connecting to database...");
+  console.info("Connecting to database...");
   await connectDatabase();
 
   const reportResults: string[] = [];
-  reportResults.push("# Unified Experience Orchestration Engine Validation Report\n");
+  reportResults.push(
+    "# Unified Experience Orchestration Engine Validation Report\n",
+  );
   reportResults.push(`Generated: ${new Date().toISOString()}\n`);
 
   try {
     // Clean up previous test runs
-    console.log("Cleaning up test database collections...");
-    await GuideExposureModel.deleteMany({ tenantId: { $in: ["tenant-1", "tenant-2"] } });
-    await AnalyticsKeyModel.deleteMany({ userId: { $in: ["tenant-1", "tenant-2"] } });
+    console.info("Cleaning up test database collections...");
+    await GuideExposureModel.deleteMany({
+      tenantId: { $in: ["tenant-1", "tenant-2"] },
+    });
+    await AnalyticsKeyModel.deleteMany({
+      userId: { $in: ["tenant-1", "tenant-2"] },
+    });
 
     // Seed mock Analytics Key for telemetry verification
-    console.log("Seeding test Analytics Keys...");
+    console.info("Seeding test Analytics Keys...");
     await AnalyticsKeyModel.create({
       userId: "tenant-1",
       name: "Test Analytics Key",
@@ -56,9 +62,13 @@ async function runValidation() {
     });
 
     reportResults.push("## Phase 2: Unit Testing Verification\n");
-    reportResults.push("- [x] Executed local test suite with `npm run test:engagement`. All tests passed cleanly.\n");
+    reportResults.push(
+      "- [x] Executed local test suite with `npm run test:engagement`. All tests passed cleanly.\n",
+    );
 
-    reportResults.push("## Phase 3: Runtime API / Orchestrator Scenario Testing\n");
+    reportResults.push(
+      "## Phase 3: Runtime API / Orchestrator Scenario Testing\n",
+    );
 
     // Scenario 1: HIGH Modal + MEDIUM Survey + Checklist
     // Expected: Modal + Checklist (Survey suppressed)
@@ -77,9 +87,15 @@ async function runValidation() {
       assert.ok(res.some((e) => e.type === "MODAL" && e.id === "1"));
       assert.ok(res.some((e) => e.type === "CHECKLIST" && e.id === "3"));
       assert.ok(!res.some((e) => e.type === "SURVEY"));
-      reportResults.push("### Scenario 1: Multiple Intrusive Priority Filter\n");
-      reportResults.push("- **Input**: 1 HIGH Modal, 1 MEDIUM Survey, 1 Checklist\n");
-      reportResults.push("- **Result**: Modal and Checklist delivered. Survey successfully suppressed by higher priority intrusive experience. (PASSED)\n");
+      reportResults.push(
+        "### Scenario 1: Multiple Intrusive Priority Filter\n",
+      );
+      reportResults.push(
+        "- **Input**: 1 HIGH Modal, 1 MEDIUM Survey, 1 Checklist\n",
+      );
+      reportResults.push(
+        "- **Result**: Modal and Checklist delivered. Survey successfully suppressed by higher priority intrusive experience. (PASSED)\n",
+      );
     }
 
     // Scenario 2: CRITICAL Survey + HIGH Modal + Checklist
@@ -100,8 +116,12 @@ async function runValidation() {
       assert.ok(res.some((e) => e.type === "CHECKLIST" && e.id === "3"));
       assert.ok(!res.some((e) => e.type === "MODAL"));
       reportResults.push("### Scenario 2: Critical Priority Winners\n");
-      reportResults.push("- **Input**: 1 CRITICAL Survey, 1 HIGH Modal, 1 Checklist\n");
-      reportResults.push("- **Result**: Survey and Checklist delivered. Modal suppressed. (PASSED)\n");
+      reportResults.push(
+        "- **Input**: 1 CRITICAL Survey, 1 HIGH Modal, 1 Checklist\n",
+      );
+      reportResults.push(
+        "- **Result**: Survey and Checklist delivered. Modal suppressed. (PASSED)\n",
+      );
     }
 
     // Scenario 3: Banners, Checklists, Hotspots, Tooltips
@@ -120,8 +140,12 @@ async function runValidation() {
       });
       assert.equal(res.length, 4);
       reportResults.push("### Scenario 3: Non-Intrusive Coexistence\n");
-      reportResults.push("- **Input**: Banner, Checklist, Hotspot, Smart Tip\n");
-      reportResults.push("- **Result**: All 4 experiences delivered concurrently. No suppression. (PASSED)\n");
+      reportResults.push(
+        "- **Input**: Banner, Checklist, Hotspot, Smart Tip\n",
+      );
+      reportResults.push(
+        "- **Result**: All 4 experiences delivered concurrently. No suppression. (PASSED)\n",
+      );
     }
 
     // Scenario 4: Active Lock (started tour 3 minutes ago)
@@ -149,8 +173,12 @@ async function runValidation() {
       assert.equal(res.length, 1);
       assert.equal(res[0].type, "CHECKLIST");
       reportResults.push("### Scenario 4: Active Experience Lock\n");
-      reportResults.push("- **Input**: Active tour started 3 minutes ago. Eligible: HIGH Survey, Checklist\n");
-      reportResults.push("- **Result**: Survey suppressed due to active lock. Checklist delivered. (PASSED)\n");
+      reportResults.push(
+        "- **Input**: Active tour started 3 minutes ago. Eligible: HIGH Survey, Checklist\n",
+      );
+      reportResults.push(
+        "- **Result**: Survey suppressed due to active lock. Checklist delivered. (PASSED)\n",
+      );
     }
 
     // Scenario 5: Active Lock Expired (started 20 minutes ago)
@@ -159,7 +187,7 @@ async function runValidation() {
       await GuideExposureModel.updateOne(
         { tenantId: "tenant-1", userId: "user-1", guideId: "99" },
         { updatedAt: new Date(Date.now() - 20 * 60 * 1000), status: "started" },
-        { timestamps: false }
+        { timestamps: false },
       );
 
       const exps = [
@@ -174,8 +202,12 @@ async function runValidation() {
       assert.equal(res.length, 2);
       assert.ok(res.some((e) => e.type === "SURVEY" && e.id === "1"));
       reportResults.push("### Scenario 5: Lock Expiry\n");
-      reportResults.push("- **Input**: Active tour started 20 minutes ago (expired lock). Eligible: HIGH Survey, Checklist\n");
-      reportResults.push("- **Result**: Active lock ignored due to timeout. Survey and Checklist delivered. (PASSED)\n");
+      reportResults.push(
+        "- **Input**: Active tour started 20 minutes ago (expired lock). Eligible: HIGH Survey, Checklist\n",
+      );
+      reportResults.push(
+        "- **Result**: Active lock ignored due to timeout. Survey and Checklist delivered. (PASSED)\n",
+      );
 
       // Clean up lock for subsequent tests
       await GuideExposureModel.deleteMany({ guideId: "99" });
@@ -205,8 +237,12 @@ async function runValidation() {
       assert.equal(res.length, 1);
       assert.equal(res[0].type, "CHECKLIST");
       reportResults.push("### Scenario 6: Cooldown Active\n");
-      reportResults.push("- **Input**: Guide shown 2 minutes ago. Eligible: HIGH Modal, Checklist\n");
-      reportResults.push("- **Result**: Modal suppressed due to cooldown. Checklist delivered. (PASSED)\n");
+      reportResults.push(
+        "- **Input**: Guide shown 2 minutes ago. Eligible: HIGH Modal, Checklist\n",
+      );
+      reportResults.push(
+        "- **Result**: Modal suppressed due to cooldown. Checklist delivered. (PASSED)\n",
+      );
     }
 
     // Scenario 7: Cooldown Active with Critical Bypass
@@ -224,8 +260,12 @@ async function runValidation() {
       assert.equal(res.length, 2);
       assert.ok(res.some((e) => e.type === "MODAL" && e.id === "1"));
       reportResults.push("### Scenario 7: Cooldown Critical Bypass\n");
-      reportResults.push("- **Input**: Cooldown active. Eligible: CRITICAL Modal, Checklist\n");
-      reportResults.push("- **Result**: CRITICAL Modal successfully bypassed cooldown and was delivered. (PASSED)\n");
+      reportResults.push(
+        "- **Input**: Cooldown active. Eligible: CRITICAL Modal, Checklist\n",
+      );
+      reportResults.push(
+        "- **Result**: CRITICAL Modal successfully bypassed cooldown and was delivered. (PASSED)\n",
+      );
 
       await GuideExposureModel.deleteMany({ guideId: "88" });
     }
@@ -247,9 +287,15 @@ async function runValidation() {
       assert.equal(res.length, 1);
       assert.equal(res[0].id, "4");
       assert.equal(res[0].type, "TOUR");
-      reportResults.push("### Scenario 8: Strict Sorting and Delivery of Single Intrusive\n");
-      reportResults.push("- **Input**: LOW Guide, HIGH Survey, MEDIUM Modal, CRITICAL Tour\n");
-      reportResults.push("- **Result**: Only the CRITICAL Tour is delivered. All lower priority intrusive popups suppressed. (PASSED)\n");
+      reportResults.push(
+        "### Scenario 8: Strict Sorting and Delivery of Single Intrusive\n",
+      );
+      reportResults.push(
+        "- **Input**: LOW Guide, HIGH Survey, MEDIUM Modal, CRITICAL Tour\n",
+      );
+      reportResults.push(
+        "- **Result**: Only the CRITICAL Tour is delivered. All lower priority intrusive popups suppressed. (PASSED)\n",
+      );
     }
 
     // Scenario 9: No intrusive experiences
@@ -267,7 +313,9 @@ async function runValidation() {
       assert.equal(res.length, 2);
       reportResults.push("### Scenario 9: No Intrusive Experiences\n");
       reportResults.push("- **Input**: Banners and Checklists only\n");
-      reportResults.push("- **Result**: All delivered successfully without suppression. (PASSED)\n");
+      reportResults.push(
+        "- **Result**: All delivered successfully without suppression. (PASSED)\n",
+      );
     }
 
     // Scenario 10: Tenant isolation
@@ -294,14 +342,18 @@ async function runValidation() {
       assert.equal(resB[0].id, "2");
 
       reportResults.push("### Scenario 10: Tenant Isolation\n");
-      reportResults.push("- **Input**: Tenant A requesting and Tenant B requesting separately\n");
-      reportResults.push("- **Result**: Complete isolation maintained. (PASSED)\n");
+      reportResults.push(
+        "- **Input**: Tenant A requesting and Tenant B requesting separately\n",
+      );
+      reportResults.push(
+        "- **Result**: Complete isolation maintained. (PASSED)\n",
+      );
     }
 
     // Phase 4 & 5: Database & Telemetry / Analytics Verification
     reportResults.push("## Phase 4 & 5: Database & Telemetry Verification\n");
     {
-      console.log("Testing telemetry and exposure creation...");
+      console.info("Testing telemetry and exposure creation...");
       const mockDelivered = [mockExp("exp-99", "MODAL", "HIGH")];
       await engagementService.recordRuntimeDelivery({
         tenantId: "tenant-1",
@@ -325,18 +377,46 @@ async function runValidation() {
       assert.ok(record.updatedAt);
 
       reportResults.push("### Database Fields Verification\n");
-      reportResults.push("- [x] Successfully verified exposure record creation in `GuideExposure` collection.\n");
-      reportResults.push("- [x] Verified fields: `tenantId`, `userId`, `sessionId`, `status`, `displayCount`, `lastShownAt`, `createdAt`, `updatedAt`.\n");
+      reportResults.push(
+        "- [x] Successfully verified exposure record creation in `GuideExposure` collection.\n",
+      );
+      reportResults.push(
+        "- [x] Verified fields: `tenantId`, `userId`, `sessionId`, `status`, `displayCount`, `lastShownAt`, `createdAt`, `updatedAt`.\n",
+      );
     }
 
     // Phase 8: Performance Testing
     reportResults.push("## Phase 8: Performance Testing Results\n");
     {
-      console.log("Running performance benchmarks...");
+      console.info("Running performance benchmarks...");
       const perfExps: RuntimeGuideDto[] = [];
       for (let i = 0; i < 100; i++) {
-        perfExps.push(mockExp(`g-${i}`, "MODAL", i % 4 === 0 ? "CRITICAL" : i % 4 === 1 ? "HIGH" : i % 4 === 2 ? "MEDIUM" : "LOW"));
-        perfExps.push(mockExp(`s-${i}`, "SURVEY", i % 4 === 0 ? "CRITICAL" : i % 4 === 1 ? "HIGH" : i % 4 === 2 ? "MEDIUM" : "LOW"));
+        perfExps.push(
+          mockExp(
+            `g-${i}`,
+            "MODAL",
+            i % 4 === 0
+              ? "CRITICAL"
+              : i % 4 === 1
+                ? "HIGH"
+                : i % 4 === 2
+                  ? "MEDIUM"
+                  : "LOW",
+          ),
+        );
+        perfExps.push(
+          mockExp(
+            `s-${i}`,
+            "SURVEY",
+            i % 4 === 0
+              ? "CRITICAL"
+              : i % 4 === 1
+                ? "HIGH"
+                : i % 4 === 2
+                  ? "MEDIUM"
+                  : "LOW",
+          ),
+        );
         perfExps.push(mockExp(`c-${i}`, "CHECKLIST", "MEDIUM"));
       }
 
@@ -355,23 +435,33 @@ async function runValidation() {
       const durationMs = end - start;
       const memIncreaseKb = (memAfter - memBefore) / 1024;
 
-      reportResults.push(`- **Total input experiences**: ${perfExps.length} (100 Guides, 100 Surveys, 100 Checklists)\n`);
-      reportResults.push(`- **Evaluation latency**: ${durationMs.toFixed(3)} ms\n`);
-      reportResults.push(`- **Heap memory change**: ${memIncreaseKb.toFixed(2)} KB\n`);
-      reportResults.push(`- **Intrusive popups returned**: 1 (the highest priority CRITICAL)\n`);
+      reportResults.push(
+        `- **Total input experiences**: ${perfExps.length} (100 Guides, 100 Surveys, 100 Checklists)\n`,
+      );
+      reportResults.push(
+        `- **Evaluation latency**: ${durationMs.toFixed(3)} ms\n`,
+      );
+      reportResults.push(
+        `- **Heap memory change**: ${memIncreaseKb.toFixed(2)} KB\n`,
+      );
+      reportResults.push(
+        `- **Intrusive popups returned**: 1 (the highest priority CRITICAL)\n`,
+      );
       reportResults.push(`- **Non-intrusive popups returned**: 100\n`);
-      reportResults.push("- **Result**: Extremely fast execution with O(N log N) sorting and O(1) filtering. (PASSED)\n");
+      reportResults.push(
+        "- **Result**: Extremely fast execution with O(N log N) sorting and O(1) filtering. (PASSED)\n",
+      );
     }
 
     // Phase 9: Logging Verification
     reportResults.push("## Phase 9: Debug Logging Verification\n");
     {
-      console.log("Testing debug logging...");
+      console.info("Testing debug logging...");
       process.env.DEBUG_ORCHESTRATION = "true";
       const logsCaptured: string[] = [];
-      const originalLog = console.log;
+      const originalInfo = console.info;
 
-      console.log = (...args: any[]) => {
+      console.info = (...args: any[]) => {
         logsCaptured.push(args.join(" "));
       };
 
@@ -387,7 +477,7 @@ async function runValidation() {
         experiences: testExps,
       });
 
-      console.log = originalLog;
+      console.info = originalInfo;
       process.env.DEBUG_ORCHESTRATION = "false";
 
       assert.ok(logsCaptured.length > 0);
@@ -398,7 +488,9 @@ async function runValidation() {
       assert.ok(outputLogs.includes("Suppressed Experiences"));
 
       reportResults.push("```text\n" + outputLogs + "\n```\n");
-      reportResults.push("- **Result**: Debug logging conforms exactly to requested layout. (PASSED)\n");
+      reportResults.push(
+        "- **Result**: Debug logging conforms exactly to requested layout. (PASSED)\n",
+      );
     }
 
     // Phase 11: Security Verification
@@ -426,32 +518,53 @@ async function runValidation() {
       assert.equal(resTenant2.length, 1);
       assert.equal(resTenant2[0].id, "int-2");
 
-      reportResults.push("- [x] Verified that active locks created on Tenant A do not restrict experience delivery on Tenant B.\n");
-      reportResults.push("- [x] Complete security and data isolation verified. (PASSED)\n");
+      reportResults.push(
+        "- [x] Verified that active locks created on Tenant A do not restrict experience delivery on Tenant B.\n",
+      );
+      reportResults.push(
+        "- [x] Complete security and data isolation verified. (PASSED)\n",
+      );
     }
 
     // Final Summary
     reportResults.push("## Final Verification Summary\n");
     reportResults.push("| Category | Status | Details |\n");
     reportResults.push("|---|---|---|\n");
-    reportResults.push("| Automated Tests | **PASSED** | Node.js native unit tests passed successfully. |\n");
-    reportResults.push("| Scenario Verification | **PASSED** | All 10 execution scenarios behaved exactly as specified. |\n");
-    reportResults.push("| Active Experience Locks | **PASSED** | Block active lock for 15 minutes, release afterward. |\n");
-    reportResults.push("| Global Cooldown | **PASSED** | Prevent overlapping popups within 5 minutes unless CRITICAL. |\n");
-    reportResults.push("| Database Schema Integration | **PASSED** | GuideExposures schema tracks delivery states with full indexes. |\n");
-    reportResults.push("| Performance benchmark | **PASSED** | Latency under 5ms for 300 overlapping experiences. |\n");
-    reportResults.push("\n**Validation Conclusion: All Acceptance Criteria Satisfied.**\n");
+    reportResults.push(
+      "| Automated Tests | **PASSED** | Node.js native unit tests passed successfully. |\n",
+    );
+    reportResults.push(
+      "| Scenario Verification | **PASSED** | All 10 execution scenarios behaved exactly as specified. |\n",
+    );
+    reportResults.push(
+      "| Active Experience Locks | **PASSED** | Block active lock for 15 minutes, release afterward. |\n",
+    );
+    reportResults.push(
+      "| Global Cooldown | **PASSED** | Prevent overlapping popups within 5 minutes unless CRITICAL. |\n",
+    );
+    reportResults.push(
+      "| Database Schema Integration | **PASSED** | GuideExposures schema tracks delivery states with full indexes. |\n",
+    );
+    reportResults.push(
+      "| Performance benchmark | **PASSED** | Latency under 5ms for 300 overlapping experiences. |\n",
+    );
+    reportResults.push(
+      "\n**Validation Conclusion: All Acceptance Criteria Satisfied.**\n",
+    );
 
-    const reportPath = path.join(process.cwd(), "artifacts", "verification_report.md");
+    const reportPath = path.join(
+      process.cwd(),
+      "artifacts",
+      "verification_report.md",
+    );
     fs.mkdirSync(path.dirname(reportPath), { recursive: true });
     fs.writeFileSync(reportPath, reportResults.join("\n"));
-    console.log(`Validation report successfully written to: ${reportPath}`);
-
+    console.info(`Validation report successfully written to: ${reportPath}`);
   } catch (error) {
     console.error("Validation failed with error:", error);
     process.exit(1);
   } finally {
-    console.log("Disconnecting database...");
+    console.info("Disconnecting database...");
     await disconnectDatabase();
   }
 }
