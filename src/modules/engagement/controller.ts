@@ -6,6 +6,7 @@ import surveyService from "../surveys/service.js";
 import targetingService from "../targeting/service.js";
 import { getTenantIdFromRequest } from "./permissions.js";
 import engagementService from "./service.js";
+import experienceOrchestrator from "./orchestrator.js";
 import {
   validateEngagementTrackDto,
   validateRuntimeEvaluationDto,
@@ -28,6 +29,8 @@ class EngagementController {
         session: dto.session,
         workflow: dto.workflow,
         now: dto.now,
+        eventName: dto.eventName,
+        eventProperties: dto.eventProperties,
       };
 
       if (dto.eventName) {
@@ -44,11 +47,13 @@ class EngagementController {
         surveyService.getEligibleSurveys(tenantId, context),
         checklistService.getEligibleChecklists(tenantId, context),
       ]);
-      const experiences = [...guides, ...surveys, ...checklists]
-        .sort((left, right) =>
-          targetingService.comparePriority(left.priority, right.priority),
-        )
-        .slice(0, 5);
+      const rawExperiences = [...guides, ...surveys, ...checklists];
+      const experiences = await experienceOrchestrator.orchestrate({
+        tenantId,
+        userId: context.userId,
+        sessionId: context.sessionId,
+        experiences: rawExperiences,
+      });
 
       await engagementService.recordRuntimeDelivery({
         tenantId,

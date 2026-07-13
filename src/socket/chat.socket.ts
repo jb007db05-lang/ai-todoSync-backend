@@ -100,7 +100,7 @@ class ChatSocketServer {
   public initialize(server: HTTPServer): void {
     this.io = new Server(server, {
       cors: {
-        origin: env.ALLOWED_ORIGINS,
+        origin: env.FRONTEND_BASE_URL,
         credentials: true,
         methods: ["GET", "POST"],
       },

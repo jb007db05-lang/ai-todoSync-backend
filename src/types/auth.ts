@@ -17,6 +17,9 @@ export interface AuthProfile {
   firstName: string | null;
   lastName: string | null;
   authProvider: "local" | "google";
+  openaiApiKeyConfigured?: boolean;
+  anthropicApiKeyConfigured?: boolean;
+  geminiApiKeyConfigured?: boolean;
 }
 
 export interface SessionDeviceContext {

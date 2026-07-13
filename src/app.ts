@@ -1,6 +1,5 @@
 import http from "http";
 import express, { Application } from "express";
-import cors from "cors";
 import helmet from "helmet";
 import hpp from "hpp";
 import { rateLimit } from "express-rate-limit";
@@ -15,6 +14,8 @@ import { schedulePriorityEngineJob } from "./utils/priority-engine-scheduler.js"
 import chatSocketServer from "./socket/chat.socket.js";
 import { errorMiddleware } from "./middleware/error.middleware.js";
 import { AppError } from "./utils/app-error.js";
+import { normalizeOrigin, setCorsHeaders, extractRawKey, validateIntegrationOrigin } from "./middleware/sdkAuth.middleware.js";
+import { deterministicHash } from "./utils/encryption.js";
 
 class App {
   public app: Application;
@@ -48,12 +49,59 @@ class App {
       next();
     });
 
-    this.app.use(
-      cors({
-        origin: env.ALLOWED_ORIGINS,
-        credentials: true,
-      }),
-    );
+    // Dynamic CORS Middleware
+    this.app.use(async (req, res, next) => {
+      const origin = req.headers.origin;
+      if (!origin) {
+        return next();
+      }
+
+      const normalizedOrigin = normalizeOrigin(origin);
+      const normalizedFrontend = normalizeOrigin(env.FRONTEND_BASE_URL);
+
+      let isAllowed = false;
+      if (normalizedOrigin === normalizedFrontend) {
+        isAllowed = true;
+      } else {
+        try {
+          const rawKey = extractRawKey(req);
+          const service = (await import("./modules/sdk-integrations/service.js")).default;
+          if (rawKey && req.method !== "OPTIONS") {
+            // For actual application requests, resolve the integration by key hash
+            // to set up the request context and perform dynamic origin validation.
+            const keyHash = deterministicHash(rawKey);
+            const integration = await service.resolveByKeyHash(keyHash);
+            if (integration) {
+              const originError = validateIntegrationOrigin(origin, integration);
+              if (!originError) {
+                isAllowed = true;
+                req.sdkIntegration = integration; // attach context for downstream reuse!
+              }
+            }
+          } else {
+            // For preflight OPTIONS (stateless) or general checks, use the allowed origins check
+            isAllowed = await service.isOriginAllowed(origin);
+          }
+        } catch (err) {
+          logger.error("CORS database lookup failed", err instanceof Error ? err : new Error(String(err)));
+        }
+      }
+
+      if (isAllowed) {
+        setCorsHeaders(res, origin);
+        if (req.method === "OPTIONS") {
+          res.sendStatus(204);
+          return;
+        }
+      } else {
+        if (req.method === "OPTIONS") {
+          res.status(403).json({ error: `Origin '${origin}' not allowed.` });
+          return;
+        }
+      }
+
+      next();
+    });
 
     // Global rate limiter: 25 non-preflight requests per second per IP.
     const limiter = rateLimit({

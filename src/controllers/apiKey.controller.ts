@@ -9,7 +9,7 @@ class ApiKeyController {
    */
   public createKey = async (req: Request, res: Response) => {
     try {
-      const { name } = req.body;
+      const { name, allowedOrigins } = req.body;
       const userId = (req as any).user?.id; // Assuming authMiddleware provides this
 
       if (!name) {
@@ -34,6 +34,7 @@ class ApiKeyController {
         name,
         hashedKey: rawKey,
         status: "active",
+        allowedOrigins: Array.isArray(allowedOrigins) ? allowedOrigins : [],
       });
 
       // IMPORTANT: Return rawKey only once
@@ -42,6 +43,7 @@ class ApiKeyController {
         name: newKey.name,
         key: rawKey,
         status: newKey.status,
+        allowedOrigins: newKey.allowedOrigins,
         createdAt: newKey.createdAt,
       });
     } catch (error) {
@@ -66,6 +68,7 @@ class ApiKeyController {
         id: k._id,
         name: k.name,
         status: k.status,
+        allowedOrigins: k.allowedOrigins,
         createdAt: k.createdAt,
         // Provide masked version for UI
         maskedKey: `ak_••••••••${k.hashedKey.slice(-4)}`,

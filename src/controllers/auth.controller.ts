@@ -401,14 +401,20 @@ class AuthController {
         return;
       }
 
-      const { firstName, lastName } = req.body as {
+      const { firstName, lastName, openaiApiKey, anthropicApiKey, geminiApiKey } = req.body as {
         firstName?: string;
         lastName?: string;
+        openaiApiKey?: string;
+        anthropicApiKey?: string;
+        geminiApiKey?: string;
       };
 
       const profile = await authService.updateProfile(user._id.toString(), {
         firstName,
         lastName,
+        openaiApiKey,
+        anthropicApiKey,
+        geminiApiKey,
       });
 
       res.status(200).json({

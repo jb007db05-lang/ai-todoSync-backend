@@ -17,6 +17,9 @@ export interface EnvConfig {
   GPT_OAUTH_REDIRECT_URI: string;
   BACKEND_URL: string;
   ENCRYPTION_KEY: string;
+  AI_PROVIDER_BASE_URL?: string;
+  AI_PROVIDER_API_KEY?: string;
+  AI_PROVIDER_MODEL: string;
 }
 
 const {
@@ -34,6 +37,9 @@ const {
   GPT_OAUTH_REDIRECT_URI,
   ENCRYPTION_KEY,
   BACKEND_URL,
+  AI_PROVIDER_BASE_URL,
+  AI_PROVIDER_API_KEY,
+  AI_PROVIDER_MODEL = "gpt-4.1-mini",
 } = process.env;
 
 if (!MONGODB_URI || !JWT_SECRET || !JWT_EXPIRES_IN) {
@@ -71,6 +77,9 @@ const env: EnvConfig = {
   GPT_OAUTH_REDIRECT_URI: GPT_OAUTH_REDIRECT_URI.trim(),
   BACKEND_URL: BACKEND_URL.trim(),
   ENCRYPTION_KEY: ENCRYPTION_KEY.trim(),
+  AI_PROVIDER_BASE_URL: AI_PROVIDER_BASE_URL?.trim() || undefined,
+  AI_PROVIDER_API_KEY: AI_PROVIDER_API_KEY?.trim() || undefined,
+  AI_PROVIDER_MODEL: AI_PROVIDER_MODEL.trim(),
 };
 
 export default env;

@@ -4,6 +4,7 @@ import type { IProjectDocument } from "../models/project.model.js";
 import type { ProjectRole } from "../models/project-member.model.js";
 import type { IUserDocument } from "../models/user.model.js";
 import type { IAnalyticsKeyDocument } from "../models/analytics-key.model.js";
+import type { ISdkIntegrationDocument } from "../modules/sdk-integrations/model.js";
 import type { SessionDeviceContext } from "./auth.js";
 
 interface ProjectAccessContext {
@@ -21,6 +22,8 @@ declare global {
       projectAccess?: ProjectAccessContext;
       analyticsKey?: IAnalyticsKeyDocument;
       apiKeyId?: string;
+      /** Populated by validateSdkIntegrationKey / validateSdkKeyUnified */
+      sdkIntegration?: ISdkIntegrationDocument;
     }
   }
 }

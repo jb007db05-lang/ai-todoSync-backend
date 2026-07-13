@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import type { Document } from "mongoose";
 import { Schema, model } from "mongoose";
+import { encrypt, decrypt } from "../utils/encryption.js";
 
 export interface IUser {
   email: string;
@@ -12,6 +13,9 @@ export interface IUser {
   name?: string | null;
   firstName?: string | null;
   lastName?: string | null;
+  openaiApiKey?: string;
+  anthropicApiKey?: string;
+  geminiApiKey?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -66,8 +70,66 @@ const userSchema = new Schema<IUserDocument>(
       trim: true,
       default: null,
     },
+    openaiApiKey: {
+      type: String,
+      default: null,
+      get: (v: string) => {
+        if (!v) return v;
+        try {
+          return decrypt(v);
+        } catch {
+          return v;
+        }
+      },
+      set: (v: string) => {
+        if (v && !v.includes(":")) {
+          return encrypt(v);
+        }
+        return v;
+      },
+    },
+    anthropicApiKey: {
+      type: String,
+      default: null,
+      get: (v: string) => {
+        if (!v) return v;
+        try {
+          return decrypt(v);
+        } catch {
+          return v;
+        }
+      },
+      set: (v: string) => {
+        if (v && !v.includes(":")) {
+          return encrypt(v);
+        }
+        return v;
+      },
+    },
+    geminiApiKey: {
+      type: String,
+      default: null,
+      get: (v: string) => {
+        if (!v) return v;
+        try {
+          return decrypt(v);
+        } catch {
+          return v;
+        }
+      },
+      set: (v: string) => {
+        if (v && !v.includes(":")) {
+          return encrypt(v);
+        }
+        return v;
+      },
+    },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+    toJSON: { getters: true },
+    toObject: { getters: true },
+  },
 );
 
 userSchema.pre<IUserDocument>("save", async function () {

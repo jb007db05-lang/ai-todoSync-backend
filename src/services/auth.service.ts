@@ -247,7 +247,13 @@ class AuthService {
 
   public async updateProfile(
     userId: string,
-    data: { firstName?: string; lastName?: string },
+    data: {
+      firstName?: string;
+      lastName?: string;
+      openaiApiKey?: string;
+      anthropicApiKey?: string;
+      geminiApiKey?: string;
+    },
   ): Promise<AuthProfile> {
     const user = await findUserById(userId);
 
@@ -257,6 +263,30 @@ class AuthService {
 
     if (data.firstName !== undefined) user.firstName = data.firstName;
     if (data.lastName !== undefined) user.lastName = data.lastName;
+
+    if (data.openaiApiKey !== undefined) {
+      if (data.openaiApiKey === "") {
+        user.set("openaiApiKey", undefined);
+      } else if (data.openaiApiKey !== "••••••••") {
+        user.openaiApiKey = data.openaiApiKey;
+      }
+    }
+
+    if (data.anthropicApiKey !== undefined) {
+      if (data.anthropicApiKey === "") {
+        user.set("anthropicApiKey", undefined);
+      } else if (data.anthropicApiKey !== "••••••••") {
+        user.anthropicApiKey = data.anthropicApiKey;
+      }
+    }
+
+    if (data.geminiApiKey !== undefined) {
+      if (data.geminiApiKey === "") {
+        user.set("geminiApiKey", undefined);
+      } else if (data.geminiApiKey !== "••••••••") {
+        user.geminiApiKey = data.geminiApiKey;
+      }
+    }
 
     // Compute display name
     const parts = [user.firstName, user.lastName].filter(Boolean);
@@ -779,6 +809,9 @@ class AuthService {
       firstName: user.firstName ?? null,
       lastName: user.lastName ?? null,
       authProvider: user.authProvider,
+      openaiApiKeyConfigured: !!user.openaiApiKey,
+      anthropicApiKeyConfigured: !!user.anthropicApiKey,
+      geminiApiKeyConfigured: !!user.geminiApiKey,
     };
   }
 
