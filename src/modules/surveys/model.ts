@@ -122,7 +122,7 @@ const surveyResponseSchema = new Schema<ISurveyResponseDocument>(
     userId: { type: String, index: true },
     tenantId: { type: String, required: true, index: true },
     sessionId: { type: String, index: true },
-    answers: { type: Schema.Types.Mixed, default: [] },
+    answers: { type: [surveyAnswerSchema], default: [] },
     npsScore: { type: Number, default: null },
     category: {
       type: String,

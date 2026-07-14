@@ -35,6 +35,10 @@ class AuthRoutes implements Routes {
     this.router.post("/register", authController.register);
     this.router.post("/login", authController.login);
     this.router.post("/refresh", refreshLimiter, authController.refresh);
+    this.router.post("/forgot-password", authController.forgotPassword);
+    this.router.post("/verify-otp", authController.verifyOtp);
+    this.router.post("/verify-2fa", authController.verify2FA);
+    this.router.post("/2fa/toggle", authMiddleware, authController.toggle2FA);
     this.router.post(
       "/companion-login",
       companionLoginLimiter,

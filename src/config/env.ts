@@ -20,6 +20,9 @@ export interface EnvConfig {
   AI_PROVIDER_BASE_URL?: string;
   AI_PROVIDER_API_KEY?: string;
   AI_PROVIDER_MODEL: string;
+  SMTP_USER?: string;
+  SMTP_PASS?: string;
+  SMTP_FROM?: string;
 }
 
 const {
@@ -40,6 +43,9 @@ const {
   AI_PROVIDER_BASE_URL,
   AI_PROVIDER_API_KEY,
   AI_PROVIDER_MODEL = "gpt-4.1-mini",
+  SMTP_USER,
+  SMTP_PASS,
+  SMTP_FROM,
 } = process.env;
 
 if (!MONGODB_URI || !JWT_SECRET || !JWT_EXPIRES_IN) {
@@ -80,6 +86,9 @@ const env: EnvConfig = {
   AI_PROVIDER_BASE_URL: AI_PROVIDER_BASE_URL?.trim() || undefined,
   AI_PROVIDER_API_KEY: AI_PROVIDER_API_KEY?.trim() || undefined,
   AI_PROVIDER_MODEL: AI_PROVIDER_MODEL.trim(),
+  SMTP_USER: SMTP_USER?.trim() || undefined,
+  SMTP_PASS: SMTP_PASS?.trim() || undefined,
+  SMTP_FROM: SMTP_FROM?.trim() || undefined,
 };
 
 export default env;

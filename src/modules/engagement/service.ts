@@ -20,14 +20,15 @@ class EngagementService {
     actorUserId?: string;
     dto: EngagementTrackDto;
   }) {
-    const guideId = input.dto.guideId ?? input.dto.surveyId;
+    const experienceId =
+      input.dto.guideId ?? input.dto.surveyId ?? input.dto.checklistId;
     const userId = input.dto.userId ?? input.actorUserId;
 
-    if (guideId) {
+    if (experienceId) {
       await engagementRepository.upsertExposure(
         {
           tenantId: input.tenantId,
-          guideId,
+          guideId: experienceId,
           userId,
           sessionId: input.dto.sessionId,
         },
@@ -87,7 +88,7 @@ class EngagementService {
           actorUserId: input.userId,
           dto: {
             eventName: "guide_shown",
-            guideId: guide.id,
+            guideId: surveyId || checklistId ? undefined : guide.id,
             surveyId,
             checklistId,
             userId: input.userId,

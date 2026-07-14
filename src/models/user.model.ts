@@ -16,6 +16,11 @@ export interface IUser {
   openaiApiKey?: string;
   anthropicApiKey?: string;
   geminiApiKey?: string;
+  twoFactorEnabled?: boolean;
+  twoFactorCode?: string | null;
+  twoFactorCodeExpiresAt?: Date | null;
+  passwordResetCode?: string | null;
+  passwordResetCodeExpiresAt?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -123,6 +128,26 @@ const userSchema = new Schema<IUserDocument>(
         }
         return v;
       },
+    },
+    twoFactorEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    twoFactorCode: {
+      type: String,
+      default: null,
+    },
+    twoFactorCodeExpiresAt: {
+      type: Date,
+      default: null,
+    },
+    passwordResetCode: {
+      type: String,
+      default: null,
+    },
+    passwordResetCodeExpiresAt: {
+      type: Date,
+      default: null,
     },
   },
   {
