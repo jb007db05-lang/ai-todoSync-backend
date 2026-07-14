@@ -1,10 +1,7 @@
 import crypto from "crypto";
 import { deterministicHash } from "../../utils/encryption.js";
 import * as repo from "./repository.js";
-import type {
-  ISdkIntegrationDocument,
-  SdkEnvironment,
-} from "./model.js";
+import type { ISdkIntegrationDocument, SdkEnvironment } from "./model.js";
 import { sdkIntegrationCache } from "./cache.js";
 import type { IUserDocument } from "../../models/user.model.js";
 
@@ -60,7 +57,9 @@ class SdkIntegrationService {
       name: input.name.trim(),
       environment: input.environment,
       domain: normalizeOrigin(input.domain),
-      allowedOrigins: (input.allowedOrigins || []).map((o) => normalizeOrigin(o)),
+      allowedOrigins: (input.allowedOrigins || []).map((o) =>
+        normalizeOrigin(o),
+      ),
       description: input.description?.trim() ?? "",
       status: "pending",
       sdkKey: rawKey,
@@ -149,8 +148,7 @@ class SdkIntegrationService {
   ): Promise<ISdkIntegrationDocument | null> {
     const existing = await repo.findByTenantAndId(tenantId, id);
     if (!existing) return null;
-    const newStatus =
-      existing.connectionCount > 0 ? "connected" : "pending";
+    const newStatus = existing.connectionCount > 0 ? "connected" : "pending";
     const updated = await repo.updateStatus(id, newStatus);
     if (updated) {
       sdkIntegrationCache.invalidate(id, existing.sdkKeyHash);
@@ -182,7 +180,9 @@ class SdkIntegrationService {
   }
 
   /** Resolve integration from SDK key — used by auth middleware */
-  async resolveByKeyHash(keyHash: string): Promise<ISdkIntegrationDocument | null> {
+  async resolveByKeyHash(
+    keyHash: string,
+  ): Promise<ISdkIntegrationDocument | null> {
     const cached = sdkIntegrationCache.getIntegrationByKeyHash(keyHash);
     if (cached) return cached;
 
@@ -209,21 +209,47 @@ class SdkIntegrationService {
   /** Check if an origin is allowed across any active SDK integration (used by CORS preflight) */
   async isOriginAllowed(origin: string): Promise<boolean> {
     const normalized = normalizeOrigin(origin);
+
+    // Always allow local development origins
+    const isLocalhost =
+      normalized.includes("localhost") ||
+      normalized.includes("127.0.0.1") ||
+      normalized.includes("[::1]") ||
+      normalized.includes("::1");
+    if (isLocalhost) {
+      return true;
+    }
+
     const cached = sdkIntegrationCache.isOriginAllowed(normalized);
     if (cached !== null) return cached;
 
     const SdkIntegrationModel = (await import("./model.js")).default;
     const integration = await SdkIntegrationModel.findOne({
-      $or: [
-        { domain: normalized },
-        { allowedOrigins: normalized },
-      ],
+      $or: [{ domain: normalized }, { allowedOrigins: normalized }],
       status: { $in: ["connected", "pending"] },
     });
 
-    const allowed = !!integration;
-    sdkIntegrationCache.setOriginAllowed(normalized, allowed);
-    return allowed;
+    if (integration) {
+      sdkIntegrationCache.setOriginAllowed(normalized, true);
+      return true;
+    }
+
+    // Also check legacy AnalyticsKey model
+    try {
+      const AnalyticsKeyModel = (
+        await import("../../models/analytics-key.model.js")
+      ).default;
+      const keyDoc = await AnalyticsKeyModel.findOne({
+        allowedOrigins: normalized,
+        status: "active",
+      });
+      const allowed = !!keyDoc;
+      sdkIntegrationCache.setOriginAllowed(normalized, allowed);
+      return allowed;
+    } catch {
+      sdkIntegrationCache.setOriginAllowed(normalized, false);
+      return false;
+    }
   }
 
   /** Update connection tracking after successful auth */

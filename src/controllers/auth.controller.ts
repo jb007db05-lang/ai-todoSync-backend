@@ -60,9 +60,90 @@ class AuthController {
         this.extractDeviceMetadata(req),
       );
 
+      if ("require2fa" in authResult) {
+        res.status(202).json({
+          message: "2FA code required",
+          data: { require2fa: true, email: authResult.email },
+        });
+        return;
+      }
+
       res.status(200).json({
         message: "Login successful",
         data: this.buildAuthResponse(authResult),
+      });
+    } catch (error) {
+      this.respondWithError(res, error);
+    }
+  };
+
+  public verify2FA = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { email, code } = req.body as { email?: string; code?: string };
+      const authResult = await authService.verify2FA(
+        email ?? "",
+        code ?? "",
+        this.extractDeviceMetadata(req),
+      );
+
+      res.status(200).json({
+        message: "2FA verification successful",
+        data: this.buildAuthResponse(authResult),
+      });
+    } catch (error) {
+      this.respondWithError(res, error);
+    }
+  };
+
+  public forgotPassword = async (
+    req: Request,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const { email } = req.body as { email?: string };
+      await authService.forgotPassword(email ?? "");
+      res.status(200).json({
+        message: "OTP sent to email",
+      });
+    } catch (error) {
+      this.respondWithError(res, error);
+    }
+  };
+
+  public verifyOtp = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { email, otp, password } = req.body as {
+        email?: string;
+        otp?: string;
+        password?: string;
+      };
+      await authService.verifyOtp(email ?? "", otp ?? "", password ?? "");
+      res.status(200).json({
+        message: "Password reset successful",
+      });
+    } catch (error) {
+      this.respondWithError(res, error);
+    }
+  };
+
+  public toggle2FA = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const user = req.user;
+      if (user == null) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+      const { enabled } = req.body as { enabled?: boolean };
+      const profile = await authService.toggle2FA(
+        user._id.toString(),
+        !!enabled,
+      );
+      res.status(200).json({
+        message: `2FA ${enabled ? "enabled" : "disabled"} successfully`,
+        data: { user: profile },
       });
     } catch (error) {
       this.respondWithError(res, error);
@@ -401,7 +482,13 @@ class AuthController {
         return;
       }
 
-      const { firstName, lastName, openaiApiKey, anthropicApiKey, geminiApiKey } = req.body as {
+      const {
+        firstName,
+        lastName,
+        openaiApiKey,
+        anthropicApiKey,
+        geminiApiKey,
+      } = req.body as {
         firstName?: string;
         lastName?: string;
         openaiApiKey?: string;

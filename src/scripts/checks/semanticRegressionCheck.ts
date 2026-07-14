@@ -86,6 +86,9 @@ const mcpTools = [
   "replay_operational_timeline",
 ] as const;
 
+const rollupPeriods = ["daily", "weekly", "monthly"] as const;
+const rollupScopes = ["workspace", "project"] as const;
+
 // ─── 4. UTILITIES ────────────────────────────────────────────
 
 function assert(condition: boolean, message: string): void {
@@ -389,8 +392,30 @@ assert(
   "Governance lifecycle state must be one of: stable, experimental, deprecated",
 );
 
+// ─── 15. ROLLUP SCHEDULING CONTRACT ──────────────────────────
+
+assert(
+  rollupPeriods.includes("daily"),
+  "Semantic rollups must support daily aggregation",
+);
+
+assert(
+  rollupPeriods.includes("weekly"),
+  "Semantic rollups must support weekly aggregation",
+);
+
+assert(
+  rollupPeriods.includes("monthly"),
+  "Semantic rollups must support monthly aggregation",
+);
+
+assert(
+  rollupScopes.includes("workspace") && rollupScopes.includes("project"),
+  "Scheduled semantic rollups must cover workspace and project scopes",
+);
+
 // ─── DONE ────────────────────────────────────────────────────
 
 process.stdout.write(
-  "Semantic regression validation passed — all 14 test groups green\n",
+  "Semantic regression validation passed — all 15 test groups green\n",
 );

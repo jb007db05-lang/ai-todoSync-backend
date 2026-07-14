@@ -20,6 +20,7 @@ export interface AuthProfile {
   openaiApiKeyConfigured?: boolean;
   anthropicApiKeyConfigured?: boolean;
   geminiApiKeyConfigured?: boolean;
+  twoFactorEnabled?: boolean;
 }
 
 export interface SessionDeviceContext {

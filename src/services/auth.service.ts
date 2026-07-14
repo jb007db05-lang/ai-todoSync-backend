@@ -4,6 +4,7 @@ import jwt, { JwtPayload } from "jsonwebtoken";
 import { OAuth2Client, TokenPayload } from "google-auth-library";
 
 import env from "../config/env.js";
+import { EmailService } from "./email.service.js";
 import {
   countActiveCompanionDevices,
   createCompanionDevice,
@@ -149,13 +150,28 @@ class AuthService {
     }
 
     const user = await createUser(payload);
+
+    try {
+      const invitationService = (await import("./invitation.service.js"))
+        .default;
+      await invitationService.handlePostRegistrationInvitations(
+        user._id.toString(),
+        user.email,
+      );
+    } catch (err) {
+      console.error(
+        "Failed to auto-process pending invitations on registration",
+        err,
+      );
+    }
+
     return this.issuePrimaryAuthResult(user, metadata);
   }
 
   public async login(
     credentials: LoginCredentials,
     metadata: DeviceMetadataInput = {},
-  ): Promise<AuthResult> {
+  ): Promise<AuthResult | { require2fa: true; email: string }> {
     if (credentials.email == null || credentials.password == null) {
       throw new HttpError(400, "Email and password are required");
     }
@@ -172,7 +188,115 @@ class AuthService {
       throw new HttpError(401, "Invalid credentials");
     }
 
+    if (user.twoFactorEnabled) {
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      user.twoFactorCode = otp;
+      user.twoFactorCodeExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+      await user.save();
+
+      await EmailService.sendOtpEmail(user.email, otp, "2fa");
+      return { require2fa: true, email: user.email };
+    }
+
     return this.issuePrimaryAuthResult(user, metadata);
+  }
+
+  public async verify2FA(
+    email: string,
+    code: string,
+    metadata: DeviceMetadataInput = {},
+  ): Promise<AuthResult> {
+    if (!email || !code) {
+      throw new HttpError(400, "Email and code are required");
+    }
+
+    const user = await findUserByEmail(email);
+    if (user == null) {
+      throw new HttpError(404, "User not found");
+    }
+
+    if (
+      !user.twoFactorCode ||
+      !user.twoFactorCodeExpiresAt ||
+      user.twoFactorCodeExpiresAt.getTime() < Date.now()
+    ) {
+      throw new HttpError(400, "2FA code has expired or is invalid");
+    }
+
+    if (user.twoFactorCode !== code) {
+      throw new HttpError(400, "Invalid 2FA code");
+    }
+
+    user.twoFactorCode = null;
+    user.twoFactorCodeExpiresAt = null;
+    await user.save();
+
+    return this.issuePrimaryAuthResult(user, metadata);
+  }
+
+  public async forgotPassword(email: string): Promise<void> {
+    if (!email) {
+      throw new HttpError(400, "Email is required");
+    }
+
+    const user = await findUserByEmail(email);
+    if (user == null) {
+      throw new HttpError(404, "User not found");
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    user.passwordResetCode = otp;
+    user.passwordResetCodeExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+    await user.save();
+
+    await EmailService.sendOtpEmail(user.email, otp, "forgot_password");
+  }
+
+  public async verifyOtp(
+    email: string,
+    otp: string,
+    newPassword: string,
+  ): Promise<void> {
+    if (!email || !otp || !newPassword) {
+      throw new HttpError(400, "Email, OTP and new password are required");
+    }
+
+    const user = await findUserByEmail(email);
+    if (user == null) {
+      throw new HttpError(404, "User not found");
+    }
+
+    if (
+      !user.passwordResetCode ||
+      !user.passwordResetCodeExpiresAt ||
+      user.passwordResetCodeExpiresAt.getTime() < Date.now()
+    ) {
+      throw new HttpError(400, "OTP has expired or is invalid");
+    }
+
+    if (user.passwordResetCode !== otp) {
+      throw new HttpError(400, "Invalid OTP");
+    }
+
+    user.password = newPassword;
+    user.passwordResetCode = null;
+    user.passwordResetCodeExpiresAt = null;
+    await user.save();
+  }
+
+  public async toggle2FA(
+    userId: string,
+    enabled: boolean,
+  ): Promise<AuthProfile> {
+    const user = await findUserById(userId);
+    if (user == null) {
+      throw new HttpError(404, "User not found");
+    }
+
+    user.twoFactorEnabled = enabled;
+    await user.save();
+
+    return this.buildProfile(user);
   }
 
   public async refreshTokens(refreshToken: string): Promise<AuthResult> {
@@ -812,6 +936,7 @@ class AuthService {
       openaiApiKeyConfigured: !!user.openaiApiKey,
       anthropicApiKeyConfigured: !!user.anthropicApiKey,
       geminiApiKeyConfigured: !!user.geminiApiKey,
+      twoFactorEnabled: user.twoFactorEnabled,
     };
   }
 
@@ -857,13 +982,29 @@ class AuthService {
     }
 
     if (user == null) {
-      return createUser({
+      const newUser = await createUser({
         email: profile.email,
         password: null,
         authProvider: "google",
         googleId: profile.googleId,
         name: profile.name,
       });
+
+      try {
+        const invitationService = (await import("./invitation.service.js"))
+          .default;
+        await invitationService.handlePostRegistrationInvitations(
+          newUser._id.toString(),
+          newUser.email,
+        );
+      } catch (err) {
+        console.error(
+          "Failed to auto-process pending invitations on Google registration",
+          err,
+        );
+      }
+
+      return newUser;
     }
 
     let hasChanges = false;

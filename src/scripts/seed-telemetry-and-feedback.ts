@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 const MONGODB_URI =
-  process.env.MONGODB_URI || "mongodb://localhost:27017/ai-todosync";
+  process.env.MONGODB_URI || "mongodb://localhost:27017/pristine";
 const TENANT_ID = "69e70c3d7c474f0f1337d982"; // tm_test1@yopmail.com
 const API_KEY_ID = "69e74517fc6f64788b255a0b"; // "key 1"
 
@@ -28,7 +28,7 @@ async function main() {
 
   const sdkIntegration = {
     tenantId: TENANT_ID,
-    name: "Sync Todo Production App",
+    name: "Pristine Production App",
     environment: "production",
     domain: "http://localhost:5174",
     description:
@@ -159,7 +159,7 @@ async function main() {
       answers: [
         {
           questionId: "f9c9b7e4-47a8-4a94-a3b3-63ce750448f7",
-          questionTitle: "How likely are you to recommend Sync Todo?",
+          questionTitle: "How likely are you to recommend Pristine?",
           questionType: "NPS",
           value: 10,
         },
@@ -171,7 +171,7 @@ async function main() {
       answers: [
         {
           questionId: "f9c9b7e4-47a8-4a94-a3b3-63ce750448f7",
-          questionTitle: "How likely are you to recommend Sync Todo?",
+          questionTitle: "How likely are you to recommend Pristine?",
           questionType: "NPS",
           value: 9,
         },
@@ -183,7 +183,7 @@ async function main() {
       answers: [
         {
           questionId: "f9c9b7e4-47a8-4a94-a3b3-63ce750448f7",
-          questionTitle: "How likely are you to recommend Sync Todo?",
+          questionTitle: "How likely are you to recommend Pristine?",
           questionType: "NPS",
           value: 8,
         },
@@ -195,7 +195,7 @@ async function main() {
       answers: [
         {
           questionId: "f9c9b7e4-47a8-4a94-a3b3-63ce750448f7",
-          questionTitle: "How likely are you to recommend Sync Todo?",
+          questionTitle: "How likely are you to recommend Pristine?",
           questionType: "NPS",
           value: 7,
         },
@@ -207,7 +207,7 @@ async function main() {
       answers: [
         {
           questionId: "f9c9b7e4-47a8-4a94-a3b3-63ce750448f7",
-          questionTitle: "How likely are you to recommend Sync Todo?",
+          questionTitle: "How likely are you to recommend Pristine?",
           questionType: "NPS",
           value: 4,
         },
@@ -224,7 +224,7 @@ async function main() {
         {
           questionId: "q-1",
           questionTitle:
-            "How likely are you to recommend SyncTask to a colleague?",
+            "How likely are you to recommend Pristine to a colleague?",
           questionType: "NPS",
           value: 10,
         },
@@ -244,7 +244,7 @@ async function main() {
         {
           questionId: "q-1",
           questionTitle:
-            "How likely are you to recommend SyncTask to a colleague?",
+            "How likely are you to recommend Pristine to a colleague?",
           questionType: "NPS",
           value: 10,
         },
@@ -264,7 +264,7 @@ async function main() {
         {
           questionId: "q-1",
           questionTitle:
-            "How likely are you to recommend SyncTask to a colleague?",
+            "How likely are you to recommend Pristine to a colleague?",
           questionType: "NPS",
           value: 9,
         },
@@ -283,7 +283,7 @@ async function main() {
         {
           questionId: "q-1",
           questionTitle:
-            "How likely are you to recommend SyncTask to a colleague?",
+            "How likely are you to recommend Pristine to a colleague?",
           questionType: "NPS",
           value: 8,
         },
@@ -303,7 +303,7 @@ async function main() {
         {
           questionId: "q-1",
           questionTitle:
-            "How likely are you to recommend SyncTask to a colleague?",
+            "How likely are you to recommend Pristine to a colleague?",
           questionType: "NPS",
           value: 5,
         },

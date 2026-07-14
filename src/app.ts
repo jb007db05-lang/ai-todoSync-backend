@@ -11,10 +11,16 @@ import { connectDatabase } from "./config/db.config.js";
 import { scheduleRolloverJob } from "./utils/rollover.js";
 import { scheduleSlaJob } from "./utils/sla-scheduler.js";
 import { schedulePriorityEngineJob } from "./utils/priority-engine-scheduler.js";
+import { scheduleSemanticRollupJob } from "./utils/semantic-rollup-scheduler.js";
 import chatSocketServer from "./socket/chat.socket.js";
 import { errorMiddleware } from "./middleware/error.middleware.js";
 import { AppError } from "./utils/app-error.js";
-import { normalizeOrigin, setCorsHeaders, extractRawKey, validateIntegrationOrigin } from "./middleware/sdkAuth.middleware.js";
+import {
+  normalizeOrigin,
+  setCorsHeaders,
+  extractRawKey,
+  validateIntegrationOrigin,
+} from "./middleware/sdkAuth.middleware.js";
 import { deterministicHash } from "./utils/encryption.js";
 
 class App {
@@ -65,14 +71,19 @@ class App {
       } else {
         try {
           const rawKey = extractRawKey(req);
-          const service = (await import("./modules/sdk-integrations/service.js")).default;
+          const service = (
+            await import("./modules/sdk-integrations/service.js")
+          ).default;
           if (rawKey && req.method !== "OPTIONS") {
             // For actual application requests, resolve the integration by key hash
             // to set up the request context and perform dynamic origin validation.
             const keyHash = deterministicHash(rawKey);
             const integration = await service.resolveByKeyHash(keyHash);
             if (integration) {
-              const originError = validateIntegrationOrigin(origin, integration);
+              const originError = validateIntegrationOrigin(
+                origin,
+                integration,
+              );
               if (!originError) {
                 isAllowed = true;
                 req.sdkIntegration = integration; // attach context for downstream reuse!
@@ -83,7 +94,10 @@ class App {
             isAllowed = await service.isOriginAllowed(origin);
           }
         } catch (err) {
-          logger.error("CORS database lookup failed", err instanceof Error ? err : new Error(String(err)));
+          logger.error(
+            "CORS database lookup failed",
+            err instanceof Error ? err : new Error(String(err)),
+          );
         }
       }
 
@@ -141,6 +155,7 @@ class App {
     scheduleRolloverJob();
     scheduleSlaJob();
     schedulePriorityEngineJob();
+    scheduleSemanticRollupJob();
   }
 
   private initializeSocketIO(): void {
@@ -158,6 +173,22 @@ class App {
   public async listen(): Promise<void> {
     try {
       await this.initializeDatabase();
+
+      // Start background worker for project invitations
+      try {
+        const { startInvitationWorker } =
+          await import("./services/invitation-queue.service.js");
+        startInvitationWorker();
+        logger.info(`BullMQ invitation worker started`);
+      } catch (workerError) {
+        logger.error(
+          "Failed to start BullMQ invitation worker",
+          workerError instanceof Error
+            ? workerError
+            : new Error(String(workerError)),
+        );
+      }
+
       this.server.listen(this.port, () => {
         logger.info(`Server listening on port ${this.port}`);
         logger.info(`Socket.IO server ready for connections`);

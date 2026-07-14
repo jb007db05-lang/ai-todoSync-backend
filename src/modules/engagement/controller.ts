@@ -3,7 +3,6 @@ import { isAppError } from "../../utils/app-error.js";
 import checklistService from "../checklists/service.js";
 import guideService from "../guides/service.js";
 import surveyService from "../surveys/service.js";
-import targetingService from "../targeting/service.js";
 import { getTenantIdFromRequest } from "./permissions.js";
 import engagementService from "./service.js";
 import experienceOrchestrator from "./orchestrator.js";
