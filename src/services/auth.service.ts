@@ -150,6 +150,21 @@ class AuthService {
     }
 
     const user = await createUser(payload);
+
+    try {
+      const invitationService = (await import("./invitation.service.js"))
+        .default;
+      await invitationService.handlePostRegistrationInvitations(
+        user._id.toString(),
+        user.email,
+      );
+    } catch (err) {
+      console.error(
+        "Failed to auto-process pending invitations on registration",
+        err,
+      );
+    }
+
     return this.issuePrimaryAuthResult(user, metadata);
   }
 
@@ -967,13 +982,29 @@ class AuthService {
     }
 
     if (user == null) {
-      return createUser({
+      const newUser = await createUser({
         email: profile.email,
         password: null,
         authProvider: "google",
         googleId: profile.googleId,
         name: profile.name,
       });
+
+      try {
+        const invitationService = (await import("./invitation.service.js"))
+          .default;
+        await invitationService.handlePostRegistrationInvitations(
+          newUser._id.toString(),
+          newUser.email,
+        );
+      } catch (err) {
+        console.error(
+          "Failed to auto-process pending invitations on Google registration",
+          err,
+        );
+      }
+
+      return newUser;
     }
 
     let hasChanges = false;

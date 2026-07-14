@@ -4,7 +4,7 @@ import { Schema, model } from "mongoose";
 export interface ISemanticRollupSnapshot {
   scopeType: "workspace" | "project";
   scopeId: string;
-  period: "daily" | "weekly";
+  period: "daily" | "weekly" | "monthly";
   bucketStart: Date;
   bucketEnd: Date;
   metrics: Record<string, unknown>;
@@ -34,7 +34,7 @@ const semanticRollupSnapshotSchema =
       scopeId: { type: String, required: true, index: true },
       period: {
         type: String,
-        enum: ["daily", "weekly"],
+        enum: ["daily", "weekly", "monthly"],
         required: true,
         index: true,
       },

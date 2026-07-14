@@ -22,6 +22,7 @@ import SurveyRoutes from "./modules/surveys/routes.js";
 import TargetingRoutes from "./modules/targeting/routes.js";
 import AiPlanningRoutes from "./routes/ai-planning.routes.js";
 import SdkIntegrationRoutes from "./modules/sdk-integrations/routes.js";
+import InvitationRoutes from "./routes/invitation.routes.js";
 import logger from "./lib/logger.js";
 
 const server = new App([
@@ -48,6 +49,7 @@ const server = new App([
   new AiPlanningRoutes(),
   new ActivityHistoryRoutes(),
   new CommentRoutes(),
+  new InvitationRoutes(),
 ]);
 
 process.on("uncaughtException", (error) => {

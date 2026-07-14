@@ -24,6 +24,28 @@ class EngagementService {
       input.dto.guideId ?? input.dto.surveyId ?? input.dto.checklistId;
     const userId = input.dto.userId ?? input.actorUserId;
 
+    if (input.dto.eventName === "survey_completed" && input.dto.surveyId) {
+      const isAlreadyProcessed =
+        input.dto.properties &&
+        (input.dto.properties.responseId || input.dto.properties.isProcessed);
+      if (!isAlreadyProcessed) {
+        const surveyService = (await import("../surveys/service.js")).default;
+        await surveyService.submitResponse(input.tenantId, input.dto.surveyId, {
+          userId,
+          sessionId: input.dto.sessionId,
+          answers: (input.dto.properties?.answers || {}) as Record<
+            string,
+            unknown
+          >,
+          metadata: (input.dto.properties?.metadata || {}) as Record<
+            string,
+            unknown
+          >,
+        });
+        return { success: true };
+      }
+    }
+
     if (experienceId) {
       await engagementRepository.upsertExposure(
         {

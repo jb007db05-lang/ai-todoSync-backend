@@ -14,12 +14,14 @@ export type TimeRange =
   | "last_30_days"
   | "last_90_days"
   | "all_time";
+export type RollupPeriod = "daily" | "weekly" | "monthly";
 export type MetricScopeFilters = { projectId?: string; userId?: string };
 
-interface IntelligenceQueryInput {
+export interface IntelligenceQueryInput {
   metric?: string;
   filters?: MetricScopeFilters;
   timeRange?: TimeRange;
+  period?: RollupPeriod;
 }
 
 interface IntelligenceScope {
@@ -92,6 +94,7 @@ const timeRanges: TimeRange[] = [
   "last_90_days",
   "all_time",
 ];
+const rollupPeriods: RollupPeriod[] = ["daily", "weekly", "monthly"];
 
 const advancedMetrics = [
   "workflow_bottlenecks",
@@ -649,8 +652,8 @@ class SemanticOperationalIntelligenceService {
     input: IntelligenceQueryInput,
   ) {
     const scope = await this.buildScope(userId, input);
-    const bucketEnd = scope.endDate;
-    const bucketStart = scope.startDate ?? new Date(0);
+    const period = this.normalizeRollupPeriod(input.period);
+    const { bucketStart, bucketEnd } = this.rollupBucket(period, scope.endDate);
     const eventCounts = await this.eventCounts(scope);
     const metrics = {
       deliveryRisk: (await this.computeMetric("delivery_risk", scope)).value,
@@ -675,13 +678,13 @@ class SemanticOperationalIntelligenceService {
       {
         scopeType: scope.filters.projectId ? "project" : "workspace",
         scopeId,
-        period: "daily",
+        period,
         bucketStart,
       },
       {
         scopeType: scope.filters.projectId ? "project" : "workspace",
         scopeId,
-        period: "daily",
+        period,
         bucketStart,
         bucketEnd,
         metrics,
@@ -700,9 +703,89 @@ class SemanticOperationalIntelligenceService {
 
     return {
       snapshotId: snapshot._id.toString(),
+      scopeType: snapshot.scopeType,
+      scopeId: snapshot.scopeId,
+      period,
+      bucketStart,
+      bucketEnd,
       metrics,
       eventCounts,
       freshness: snapshot.freshness,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  public async writeScheduledRollupSnapshots() {
+    const periods: RollupPeriod[] = ["daily", "weekly", "monthly"];
+    const projectOwners = await ProjectModel.find()
+      .select("_id userId")
+      .lean()
+      .exec();
+    const memberAdmins = await ProjectMemberModel.find({ role: "ADMIN" })
+      .select("projectId userId")
+      .lean()
+      .exec();
+    const userIds = new Set<string>();
+    const projectScopes = new Map<string, string>();
+
+    projectOwners.forEach((project) => {
+      const userId = project.userId.toString();
+      const projectId = project._id.toString();
+      userIds.add(userId);
+      projectScopes.set(projectId, userId);
+    });
+
+    memberAdmins.forEach((membership) => {
+      const userId = membership.userId.toString();
+      const projectId = membership.projectId.toString();
+      userIds.add(userId);
+      if (!projectScopes.has(projectId)) {
+        projectScopes.set(projectId, userId);
+      }
+    });
+
+    let written = 0;
+    const failures: Array<{ scope: string; message: string }> = [];
+
+    for (const userId of userIds) {
+      for (const period of periods) {
+        try {
+          await this.writeRollupSnapshot(userId, {
+            timeRange: "today",
+            period,
+          });
+          written += 1;
+        } catch (error) {
+          failures.push({
+            scope: `workspace:${userId}:${period}`,
+            message: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
+      }
+    }
+
+    for (const [projectId, userId] of projectScopes) {
+      for (const period of periods) {
+        try {
+          await this.writeRollupSnapshot(userId, {
+            filters: { projectId },
+            timeRange: "today",
+            period,
+          });
+          written += 1;
+        } catch (error) {
+          failures.push({
+            scope: `project:${projectId}:${period}`,
+            message: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
+      }
+    }
+
+    return {
+      written,
+      failed: failures.length,
+      failures: failures.slice(0, 10),
       generatedAt: new Date().toISOString(),
     };
   }
@@ -1128,6 +1211,43 @@ class SemanticOperationalIntelligenceService {
     }
 
     return timeRange;
+  }
+
+  private normalizeRollupPeriod(period?: RollupPeriod): RollupPeriod {
+    if (period === undefined) {
+      return "daily";
+    }
+
+    if (!rollupPeriods.includes(period)) {
+      throw new HttpError(400, "Unsupported rollup period");
+    }
+
+    return period;
+  }
+
+  private rollupBucket(period: RollupPeriod, anchor: Date) {
+    const bucketStart = new Date(anchor);
+    bucketStart.setHours(0, 0, 0, 0);
+
+    if (period === "weekly") {
+      const day = bucketStart.getDay();
+      bucketStart.setDate(bucketStart.getDate() - day);
+    }
+
+    if (period === "monthly") {
+      bucketStart.setDate(1);
+    }
+
+    const bucketEnd = new Date(bucketStart);
+    if (period === "daily") {
+      bucketEnd.setDate(bucketEnd.getDate() + 1);
+    } else if (period === "weekly") {
+      bucketEnd.setDate(bucketEnd.getDate() + 7);
+    } else {
+      bucketEnd.setMonth(bucketEnd.getMonth() + 1);
+    }
+
+    return { bucketStart, bucketEnd };
   }
 
   private resolveTimeRange(timeRange: TimeRange) {
@@ -2179,4 +2299,3 @@ class SemanticOperationalIntelligenceService {
 }
 
 export default new SemanticOperationalIntelligenceService();
-export type { IntelligenceQueryInput };
