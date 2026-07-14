@@ -1,7 +1,7 @@
 import { Schema, model, type Document } from "mongoose";
 
 export interface IGuideAnalyticsSnapshot {
-  tenantId: string;
+  sdkIntegrationId: string;
   guideId?: string | null;
   surveyId?: string | null;
   metrics: Record<string, unknown>;
@@ -16,7 +16,7 @@ export interface IGuideAnalyticsSnapshotDocument
 const guideAnalyticsSnapshotSchema =
   new Schema<IGuideAnalyticsSnapshotDocument>(
     {
-      tenantId: { type: String, required: true, index: true },
+      sdkIntegrationId: { type: String, required: true, index: true },
       guideId: { type: String, default: null, index: true },
       surveyId: { type: String, default: null, index: true },
       metrics: { type: Schema.Types.Mixed, default: {} },
@@ -26,7 +26,7 @@ const guideAnalyticsSnapshotSchema =
   );
 
 guideAnalyticsSnapshotSchema.index({
-  tenantId: 1,
+  sdkIntegrationId: 1,
   guideId: 1,
   surveyId: 1,
   period: 1,

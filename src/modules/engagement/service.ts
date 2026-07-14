@@ -17,6 +17,7 @@ const DISMISSED_EVENTS: EngagementEventName[] = [
 class EngagementService {
   public async recordInteraction(input: {
     tenantId: string;
+    sdkIntegrationId: string;
     actorUserId?: string;
     dto: EngagementTrackDto;
   }) {
@@ -30,7 +31,7 @@ class EngagementService {
         (input.dto.properties.responseId || input.dto.properties.isProcessed);
       if (!isAlreadyProcessed) {
         const surveyService = (await import("../surveys/service.js")).default;
-        await surveyService.submitResponse(input.tenantId, input.dto.surveyId, {
+        await surveyService.submitResponse(input.tenantId, input.sdkIntegrationId, input.dto.surveyId, {
           userId,
           sessionId: input.dto.sessionId,
           answers: (input.dto.properties?.answers || {}) as Record<
@@ -50,6 +51,7 @@ class EngagementService {
       await engagementRepository.upsertExposure(
         {
           tenantId: input.tenantId,
+          sdkIntegrationId: input.sdkIntegrationId,
           guideId: experienceId,
           userId,
           sessionId: input.dto.sessionId,
@@ -66,6 +68,7 @@ class EngagementService {
     if (userId && input.dto.eventName === "guide_shown") {
       await engagementRepository.incrementMtu({
         tenantId: input.tenantId,
+        sdkIntegrationId: input.sdkIntegrationId,
         userId,
         guideId: input.dto.guideId,
         surveyId: input.dto.surveyId,
@@ -90,6 +93,7 @@ class EngagementService {
 
   public async recordRuntimeDelivery(input: {
     tenantId: string;
+    sdkIntegrationId: string;
     userId?: string;
     sessionId?: string;
     guides: RuntimeGuideDto[];
@@ -107,6 +111,7 @@ class EngagementService {
 
         await this.recordInteraction({
           tenantId: input.tenantId,
+          sdkIntegrationId: input.sdkIntegrationId,
           actorUserId: input.userId,
           dto: {
             eventName: "guide_shown",
@@ -122,8 +127,8 @@ class EngagementService {
     );
   }
 
-  public countMtu(tenantId: string, month: string): Promise<number> {
-    return engagementRepository.countMtu(tenantId, month);
+  public countMtu(sdkIntegrationId: string, month: string): Promise<number> {
+    return engagementRepository.countMtu(sdkIntegrationId, month);
   }
 
   private resolveExposureStatus(eventName: EngagementEventName) {

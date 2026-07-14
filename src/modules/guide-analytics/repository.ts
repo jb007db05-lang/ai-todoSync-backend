@@ -10,46 +10,33 @@ import { SurveyModel, SurveyResponseModel } from "../surveys/model.js";
 import GuideAnalyticsSnapshotModel from "./model.js";
 
 class GuideAnalyticsRepository {
-  public countGuides(tenantId: string) {
-    return GuideModel.countDocuments({ tenantId }).exec();
+  public countGuides(sdkIntegrationId: string) {
+    return GuideModel.countDocuments({ sdkIntegrationId }).exec();
   }
 
-  public countLiveGuides(tenantId: string) {
-    return GuideModel.countDocuments({ tenantId, status: "LIVE" }).exec();
+  public countLiveGuides(sdkIntegrationId: string) {
+    return GuideModel.countDocuments({ sdkIntegrationId, status: "LIVE" }).exec();
   }
 
-  public listExposures(tenantId: string) {
-    return GuideExposureModel.find({ tenantId }).lean().exec();
+  public listExposures(sdkIntegrationId: string) {
+    return GuideExposureModel.find({ sdkIntegrationId }).lean().exec();
   }
 
-  public countSurveys(tenantId: string) {
-    return SurveyModel.countDocuments({ tenantId }).exec();
+  public countSurveys(sdkIntegrationId: string) {
+    return SurveyModel.countDocuments({ sdkIntegrationId }).exec();
   }
 
-  public listSurveyResponses(tenantId: string) {
-    return SurveyResponseModel.find({ tenantId }).lean().exec();
+  public listSurveyResponses(sdkIntegrationId: string) {
+    return SurveyResponseModel.find({ sdkIntegrationId }).lean().exec();
   }
 
-  public countMtu(tenantId: string, month: string) {
-    return MonthlyTargetedUserModel.countDocuments({ tenantId, month }).exec();
+  public countMtu(sdkIntegrationId: string, month: string) {
+    return MonthlyTargetedUserModel.countDocuments({ sdkIntegrationId, month }).exec();
   }
 
-  public async aggregateEngagementEvents(tenantId: string) {
-    const keys = await AnalyticsKeyModel.find({
-      userId: tenantId,
-      status: "active",
-    })
-      .select("_id")
-      .lean()
-      .exec();
-    const apiKeyIds = keys.map((key) => key._id.toString());
-
-    if (apiKeyIds.length === 0) {
-      return [];
-    }
-
+  public async aggregateEngagementEvents(sdkIntegrationId: string) {
     const registries = await AnalyticsEventRegistryModel.find({
-      apiKeyId: { $in: apiKeyIds },
+      sdkIntegrationId,
       eventName: {
         $in: [
           "guide_shown",
@@ -87,7 +74,7 @@ class GuideAnalyticsRepository {
     }>([
       {
         $match: {
-          apiKeyId: { $in: apiKeyIds },
+          sdkIntegrationId,
           eventRef: { $in: [...eventNameByRef.keys()] },
         },
       },
@@ -101,12 +88,12 @@ class GuideAnalyticsRepository {
   }
 
   public writeSnapshot(input: {
-    tenantId: string;
+    sdkIntegrationId: string;
     period: string;
     metrics: Record<string, unknown>;
   }) {
     return GuideAnalyticsSnapshotModel.findOneAndUpdate(
-      { tenantId: input.tenantId, period: input.period },
+      { sdkIntegrationId: input.sdkIntegrationId, period: input.period },
       { $set: { metrics: input.metrics } },
       { upsert: true, new: true },
     ).exec();

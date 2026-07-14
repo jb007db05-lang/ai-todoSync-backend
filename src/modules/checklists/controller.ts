@@ -92,8 +92,11 @@ class ChecklistController {
 
   public applyEvent = async (req: Request, res: Response): Promise<void> => {
     try {
+      const tenantId = getTenantIdFromRequest(req);
+      const sdkIntegrationId = req.sdkIntegration?._id?.toString() ?? "";
       const progress = await checklistService.applyEvent(
-        getTenantIdFromRequest(req),
+        tenantId,
+        sdkIntegrationId,
         validateChecklistEventDto(req.body),
       );
       res.status(200).json({ data: { progress } });

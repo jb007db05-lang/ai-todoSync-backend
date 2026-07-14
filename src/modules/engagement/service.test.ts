@@ -64,6 +64,7 @@ test("recordRuntimeDelivery stores survey exposure under canonical survey id", a
 
   await engagementService.recordRuntimeDelivery({
     tenantId: "tenant-1",
+    sdkIntegrationId: "test-integration",
     userId: "user-1",
     sessionId: "session-1",
     guides: [
@@ -106,6 +107,7 @@ test("recordRuntimeDelivery stores checklist exposure under canonical checklist 
 
   await engagementService.recordRuntimeDelivery({
     tenantId: "tenant-1",
+    sdkIntegrationId: "test-integration",
     userId: "user-1",
     sessionId: "session-1",
     guides: [

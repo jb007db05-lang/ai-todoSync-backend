@@ -157,6 +157,7 @@ export interface SurveyQuestion {
 
 export interface TargetingRuntimeContext {
   tenantId: string;
+  sdkIntegrationId?: string;
   userId?: string;
   sessionId?: string;
   url?: string;

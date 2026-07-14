@@ -8,12 +8,24 @@ import type { IGuideDocument } from "./model.js";
 import guideRepository from "./repository.js";
 
 class GuideService {
-  public listGuides(tenantId: string, query: GuideQueryDto) {
-    return guideRepository.listGuides(tenantId, query);
+  public listGuides(
+    tenantId: string,
+    sdkIntegrationId: string,
+    query: GuideQueryDto,
+  ) {
+    return guideRepository.listGuides(tenantId, sdkIntegrationId, query);
   }
 
-  public async getGuide(tenantId: string, guideId: string) {
-    const guide = await guideRepository.getGuide(tenantId, guideId);
+  public async getGuide(
+    tenantId: string,
+    sdkIntegrationId: string,
+    guideId: string,
+  ) {
+    const guide = await guideRepository.getGuide(
+      tenantId,
+      sdkIntegrationId,
+      guideId,
+    );
 
     if (!guide) {
       throw new AppError(404, "Guide not found", "NOT_FOUND");
@@ -22,19 +34,26 @@ class GuideService {
     return guide;
   }
 
-  public createGuide(tenantId: string, createdBy: string, dto: CreateGuideDto) {
-    return guideRepository.createGuide(tenantId, createdBy, dto);
+  public createGuide(
+    tenantId: string,
+    sdkIntegrationId: string,
+    createdBy: string,
+    dto: CreateGuideDto,
+  ) {
+    return guideRepository.createGuide(tenantId, sdkIntegrationId, createdBy, dto);
   }
 
   public async updateGuide(
     tenantId: string,
+    sdkIntegrationId: string,
     guideId: string,
     updatedBy: string,
     dto: UpdateGuideDto,
   ) {
-    const existing = await this.getGuide(tenantId, guideId);
+    const existing = await this.getGuide(tenantId, sdkIntegrationId, guideId);
     const guide = await guideRepository.updateGuide(
       tenantId,
+      sdkIntegrationId,
       guideId,
       updatedBy,
       dto,
@@ -50,12 +69,14 @@ class GuideService {
 
   public async updateStatus(
     tenantId: string,
+    sdkIntegrationId: string,
     guideId: string,
     updatedBy: string,
     status: "DRAFT" | "LIVE" | "PAUSED" | "ARCHIVED",
   ) {
     const guide = await guideRepository.updateStatus(
       tenantId,
+      sdkIntegrationId,
       guideId,
       updatedBy,
       status,
@@ -68,8 +89,16 @@ class GuideService {
     return guide;
   }
 
-  public async deleteGuide(tenantId: string, guideId: string) {
-    const result = await guideRepository.deleteGuide(tenantId, guideId);
+  public async deleteGuide(
+    tenantId: string,
+    sdkIntegrationId: string,
+    guideId: string,
+  ) {
+    const result = await guideRepository.deleteGuide(
+      tenantId,
+      sdkIntegrationId,
+      guideId,
+    );
 
     if (result.deletedCount === 0) {
       throw new AppError(404, "Guide not found", "NOT_FOUND");
@@ -78,9 +107,10 @@ class GuideService {
 
   public async getEligibleGuides(
     tenantId: string,
+    sdkIntegrationId: string,
     context: Omit<TargetingRuntimeContext, "tenantId">,
   ): Promise<RuntimeGuideDto[]> {
-    const guides = await guideRepository.listLiveGuides(tenantId);
+    const guides = await guideRepository.listLiveGuides(tenantId, sdkIntegrationId);
     const contextWithTenant = { ...context, tenantId };
     const evaluated = await Promise.all(
       guides.map(async (guide) => {
@@ -107,8 +137,12 @@ class GuideService {
       .slice(0, 5);
   }
 
-  public async getGuideExposureSummary(tenantId: string, guideId: string) {
-    await this.getGuide(tenantId, guideId);
+  public async getGuideExposureSummary(
+    tenantId: string,
+    sdkIntegrationId: string,
+    guideId: string,
+  ) {
+    await this.getGuide(tenantId, sdkIntegrationId, guideId);
     const exposures = await engagementRepository.findExposuresForGuide(
       tenantId,
       guideId,

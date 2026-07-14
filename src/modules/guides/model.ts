@@ -15,6 +15,7 @@ import {
 
 export interface IGuide {
   tenantId: string;
+  sdkIntegrationId: string;
   organizationId?: string | null;
   title: string;
   description?: string;
@@ -79,6 +80,7 @@ const guideVersionSchema = new Schema(
 const guideSchema = new Schema<IGuideDocument>(
   {
     tenantId: { type: String, required: true, index: true },
+    sdkIntegrationId: { type: String, required: true, index: true },
     organizationId: { type: String, default: null, index: true },
     title: { type: String, required: true, trim: true },
     description: { type: String, default: "" },
@@ -115,6 +117,8 @@ const guideSchema = new Schema<IGuideDocument>(
 
 guideSchema.index({ tenantId: 1, status: 1, priority: 1 });
 guideSchema.index({ tenantId: 1, type: 1, status: 1 });
+guideSchema.index({ sdkIntegrationId: 1, status: 1, priority: 1 });
+guideSchema.index({ sdkIntegrationId: 1, type: 1, status: 1 });
 
 const GuideModel = model<IGuideDocument>("Guide", guideSchema);
 

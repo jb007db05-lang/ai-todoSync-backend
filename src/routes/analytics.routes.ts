@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { Routes } from "../interfaces/routes.interface.js";
 import authMiddleware from "../middleware/auth.middleware.js";
-import { validateSdkApiKey } from "../middleware/sdkAuth.middleware.js";
+import { validateSdkKeyUnified } from "../middleware/sdkAuth.middleware.js";
+import { requireSdkIntegrationAccess } from "../middleware/sdkIntegrationAuth.middleware.js";
 import apiKeyController from "../controllers/apiKey.controller.js";
 import trackingController from "../controllers/tracking.controller.js";
 import analyticsDataController from "../controllers/analyticsData.controller.js";
@@ -23,23 +24,23 @@ class AnalyticsRoutes implements Routes {
     this.router.delete("/keys/:id", authMiddleware, apiKeyController.deleteKey);
 
     // 2. EVENT TRACKING (Protected by Dedicated SDK API Key validation)
-    this.router.post("/track", validateSdkApiKey, trackingController.track);
-    this.router.post("/batch", validateSdkApiKey, trackingController.batch);
+    this.router.post("/track", validateSdkKeyUnified, trackingController.track);
+    this.router.post("/batch", validateSdkKeyUnified, trackingController.batch);
     this.router.post(
       "/identify",
-      validateSdkApiKey,
+      validateSdkKeyUnified,
       trackingController.identify,
     );
-    this.router.post("/alias", validateSdkApiKey, trackingController.alias);
-    this.router.post("/page", validateSdkApiKey, trackingController.page);
+    this.router.post("/alias", validateSdkKeyUnified, trackingController.alias);
+    this.router.post("/page", validateSdkKeyUnified, trackingController.page);
     this.router.post(
       "/identify-track",
-      validateSdkApiKey,
+      validateSdkKeyUnified,
       trackingController.identifyTrack,
     );
-    this.router.get("/config", validateSdkApiKey, trackingController.config);
+    this.router.get("/config", validateSdkKeyUnified, trackingController.config);
 
-    // 3. DATA FETCHING (Protected by JWT)
+    // 3. DATA FETCHING — Legacy (apiKeyId-scoped, kept for backward compat)
     this.router.get(
       "/analytics/events",
       authMiddleware,
@@ -64,6 +65,32 @@ class AnalyticsRoutes implements Routes {
       "/analytics/users/:identifier/events",
       authMiddleware,
       analyticsDataController.getUserEvents,
+    );
+
+    // 3b. DATA FETCHING — SDK Integration scoped (new architecture)
+    this.router.get(
+      "/sdk-integrations/:sdkIntegrationId/events",
+      authMiddleware,
+      requireSdkIntegrationAccess,
+      analyticsDataController.getScopedEvents,
+    );
+    this.router.get(
+      "/sdk-integrations/:sdkIntegrationId/events/:eventId/logs",
+      authMiddleware,
+      requireSdkIntegrationAccess,
+      analyticsDataController.getScopedEventLogs,
+    );
+    this.router.get(
+      "/sdk-integrations/:sdkIntegrationId/all-logs",
+      authMiddleware,
+      requireSdkIntegrationAccess,
+      analyticsDataController.getScopedAllLogs,
+    );
+    this.router.get(
+      "/sdk-integrations/:sdkIntegrationId/users",
+      authMiddleware,
+      requireSdkIntegrationAccess,
+      analyticsDataController.getScopedUsers,
     );
 
     // 4. SEMANTIC ANALYTICS (Protected by JWT, controlled metric API)

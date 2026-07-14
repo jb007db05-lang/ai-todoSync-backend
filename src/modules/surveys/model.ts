@@ -14,6 +14,7 @@ import {
 
 export interface ISurvey {
   tenantId: string;
+  sdkIntegrationId: string;
   title: string;
   description?: string;
   status: GuideStatus;
@@ -51,6 +52,7 @@ const surveyQuestionSchema = new Schema(
 const surveySchema = new Schema<ISurveyDocument>(
   {
     tenantId: { type: String, required: true, index: true },
+    sdkIntegrationId: { type: String, required: true, index: true },
     title: { type: String, required: true, trim: true },
     description: { type: String, default: "" },
     status: {
@@ -82,6 +84,7 @@ const surveySchema = new Schema<ISurveyDocument>(
 );
 
 surveySchema.index({ tenantId: 1, status: 1, priority: 1 });
+surveySchema.index({ sdkIntegrationId: 1, status: 1, priority: 1 });
 
 export interface ISurveyAnswer {
   questionId: string;
@@ -94,6 +97,7 @@ export interface ISurveyResponse {
   surveyId: string;
   userId?: string;
   tenantId: string;
+  sdkIntegrationId: string;
   sessionId?: string;
   answers: ISurveyAnswer[] | Record<string, unknown>;
   npsScore?: number | null;
@@ -121,6 +125,7 @@ const surveyResponseSchema = new Schema<ISurveyResponseDocument>(
     surveyId: { type: String, required: true, index: true },
     userId: { type: String, index: true },
     tenantId: { type: String, required: true, index: true },
+    sdkIntegrationId: { type: String, required: true, index: true },
     sessionId: { type: String, index: true },
     answers: { type: [surveyAnswerSchema], default: [] },
     npsScore: { type: Number, default: null },
@@ -138,6 +143,8 @@ const surveyResponseSchema = new Schema<ISurveyResponseDocument>(
 
 surveyResponseSchema.index({ tenantId: 1, surveyId: 1, submittedAt: -1 });
 surveyResponseSchema.index({ tenantId: 1, category: 1, submittedAt: -1 });
+surveyResponseSchema.index({ sdkIntegrationId: 1, surveyId: 1, submittedAt: -1 });
+surveyResponseSchema.index({ sdkIntegrationId: 1, category: 1, submittedAt: -1 });
 
 export const SurveyModel = model<ISurveyDocument>("Survey", surveySchema);
 export const SurveyResponseModel = model<ISurveyResponseDocument>(

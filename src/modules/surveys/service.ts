@@ -17,12 +17,24 @@ import type { ISurveyDocument } from "./model.js";
 import surveyRepository from "./repository.js";
 
 class SurveyService {
-  public listSurveys(tenantId: string, query: SurveyQueryDto) {
-    return surveyRepository.listSurveys(tenantId, query);
+  public listSurveys(
+    tenantId: string,
+    sdkIntegrationId: string,
+    query: SurveyQueryDto,
+  ) {
+    return surveyRepository.listSurveys(tenantId, sdkIntegrationId, query);
   }
 
-  public async getSurvey(tenantId: string, surveyId: string) {
-    const survey = await surveyRepository.getSurvey(tenantId, surveyId);
+  public async getSurvey(
+    tenantId: string,
+    sdkIntegrationId: string,
+    surveyId: string,
+  ) {
+    const survey = await surveyRepository.getSurvey(
+      tenantId,
+      sdkIntegrationId,
+      surveyId,
+    );
 
     if (!survey) {
       throw new AppError(404, "Survey not found", "NOT_FOUND");
@@ -33,20 +45,28 @@ class SurveyService {
 
   public createSurvey(
     tenantId: string,
+    sdkIntegrationId: string,
     createdBy: string,
     dto: CreateSurveyDto,
   ) {
-    return surveyRepository.createSurvey(tenantId, createdBy, dto);
+    return surveyRepository.createSurvey(
+      tenantId,
+      sdkIntegrationId,
+      createdBy,
+      dto,
+    );
   }
 
   public async updateSurvey(
     tenantId: string,
+    sdkIntegrationId: string,
     surveyId: string,
     updatedBy: string,
     dto: UpdateSurveyDto,
   ) {
     const survey = await surveyRepository.updateSurvey(
       tenantId,
+      sdkIntegrationId,
       surveyId,
       updatedBy,
       dto,
@@ -59,8 +79,16 @@ class SurveyService {
     return survey;
   }
 
-  public async deleteSurvey(tenantId: string, surveyId: string) {
-    const result = await surveyRepository.deleteSurvey(tenantId, surveyId);
+  public async deleteSurvey(
+    tenantId: string,
+    sdkIntegrationId: string,
+    surveyId: string,
+  ) {
+    const result = await surveyRepository.deleteSurvey(
+      tenantId,
+      sdkIntegrationId,
+      surveyId,
+    );
 
     if (result.deletedCount === 0) {
       throw new AppError(404, "Survey not found", "NOT_FOUND");
@@ -69,14 +97,16 @@ class SurveyService {
 
   public async submitResponse(
     tenantId: string,
+    sdkIntegrationId: string,
     surveyId: string,
     dto: SubmitSurveyResponseDto,
   ) {
-    const survey = await this.getSurvey(tenantId, surveyId);
+    const survey = await this.getSurvey(tenantId, sdkIntegrationId, surveyId);
     const npsScore = this.extractNpsScore(survey, dto.answers);
     const category = this.categorizeNps(npsScore);
     const response = await surveyRepository.createResponse({
       tenantId,
+      sdkIntegrationId,
       survey,
       dto,
       npsScore,
@@ -85,6 +115,7 @@ class SurveyService {
 
     await engagementService.recordInteraction({
       tenantId,
+      sdkIntegrationId,
       actorUserId: dto.userId,
       dto: {
         eventName: "survey_completed",
@@ -104,9 +135,13 @@ class SurveyService {
 
   public async getEligibleSurveys(
     tenantId: string,
+    sdkIntegrationId: string,
     context: Omit<TargetingRuntimeContext, "tenantId">,
   ): Promise<RuntimeGuideDto[]> {
-    const surveys = await surveyRepository.listLiveSurveys(tenantId);
+    const surveys = await surveyRepository.listLiveSurveys(
+      tenantId,
+      sdkIntegrationId,
+    );
     const contextWithTenant = { ...context, tenantId };
     const evaluated = await Promise.all(
       surveys.map(async (survey) => {
@@ -153,11 +188,19 @@ class SurveyService {
       .map((entry) => this.toRuntimeDto(entry.survey, entry.eligibility));
   }
 
-  public async getSurveyAnalytics(tenantId: string, surveyId: string) {
-    const survey = await this.getSurvey(tenantId, surveyId);
-    const responses = await surveyRepository.listResponses(tenantId, surveyId);
+  public async getSurveyAnalytics(
+    tenantId: string,
+    sdkIntegrationId: string,
+    surveyId: string,
+  ) {
+    const survey = await this.getSurvey(tenantId, sdkIntegrationId, surveyId);
+    const responses = await surveyRepository.listResponses(
+      tenantId,
+      sdkIntegrationId,
+      surveyId,
+    );
     
-    const exposures = await GuideExposureModel.find({ tenantId, guideId: surveyId }).exec();
+    const exposures = await GuideExposureModel.find({ sdkIntegrationId, guideId: surveyId }).exec();
 
     const totalImpressions = exposures.reduce((sum, exp) => sum + (exp.displayCount ?? 0), 0);
     const uniqueUsersCount = new Set(exposures.map((exp) => exp.userId).filter(Boolean)).size;

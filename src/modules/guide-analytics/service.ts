@@ -3,7 +3,7 @@ import guideAnalyticsRepository from "./repository.js";
 
 class GuideAnalyticsService {
   public async summary(
-    tenantId: string,
+    sdkIntegrationId: string,
     month: string,
   ): Promise<GuideAnalyticsSummaryDto> {
     const [
@@ -15,13 +15,13 @@ class GuideAnalyticsService {
       mtu,
       events,
     ] = await Promise.all([
-      guideAnalyticsRepository.countGuides(tenantId),
-      guideAnalyticsRepository.countLiveGuides(tenantId),
-      guideAnalyticsRepository.listExposures(tenantId),
-      guideAnalyticsRepository.countSurveys(tenantId),
-      guideAnalyticsRepository.listSurveyResponses(tenantId),
-      guideAnalyticsRepository.countMtu(tenantId, month),
-      guideAnalyticsRepository.aggregateEngagementEvents(tenantId),
+      guideAnalyticsRepository.countGuides(sdkIntegrationId),
+      guideAnalyticsRepository.countLiveGuides(sdkIntegrationId),
+      guideAnalyticsRepository.listExposures(sdkIntegrationId),
+      guideAnalyticsRepository.countSurveys(sdkIntegrationId),
+      guideAnalyticsRepository.listSurveyResponses(sdkIntegrationId),
+      guideAnalyticsRepository.countMtu(sdkIntegrationId, month),
+      guideAnalyticsRepository.aggregateEngagementEvents(sdkIntegrationId),
     ]);
 
     const impressions = exposures.reduce(
@@ -74,7 +74,7 @@ class GuideAnalyticsService {
     };
 
     await guideAnalyticsRepository.writeSnapshot({
-      tenantId,
+      sdkIntegrationId,
       period: month,
       metrics: summary,
     });

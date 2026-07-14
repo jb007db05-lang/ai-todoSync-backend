@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 
-const BASE = "http://localhost:3000/api";
+const BASE = "http://localhost:4000/api";
 const EMAIL = process.env.TEST_EMAIL ?? `test_e2e_${Date.now()}@example.com`;
 const PASSWORD = process.env.TEST_PASSWORD ?? "password123";
 
@@ -75,19 +75,23 @@ async function sdkFetch(
 
 // ── setup ─────────────────────────────────────────────────────────────────────
 async function login() {
-  // Try to register first in case user doesn't exist
   try {
-    await fetch(`${BASE}/auth/register`, {
+    const regRes = await fetch(`${BASE}/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         email: EMAIL,
         password: PASSWORD,
-        name: "Test User",
+        firstName: "Test",
+        lastName: "User",
+        username: "test_" + Date.now(),
       }),
     });
+    console.log(`Register status: ${regRes.status}`);
+    const regText = await regRes.text();
+    console.log(`Register body: ${regText}`);
   } catch (e) {
-    // Ignore, might already exist or fail
+    console.error("Register exception:", e);
   }
 
   const r = await fetch(`${BASE}/auth/login`, {
@@ -96,7 +100,7 @@ async function login() {
     body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
   });
   const data = await json(r);
-  const token = (data.data as Record<string, unknown>)?.token as string;
+  const token = ((data.data as any)?.token || (data.data as any)?.accessToken) as string;
   if (!token)
     throw new Error(`Login failed. Response: ${JSON.stringify(data)}`);
   authToken = token;

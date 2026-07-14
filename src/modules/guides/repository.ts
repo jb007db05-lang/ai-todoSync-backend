@@ -2,9 +2,14 @@ import GuideModel, { type IGuideDocument } from "./model.js";
 import type { CreateGuideDto, GuideQueryDto, UpdateGuideDto } from "./dtos.js";
 
 class GuideRepository {
-  public listGuides(tenantId: string, query: GuideQueryDto) {
+  public listGuides(
+    tenantId: string,
+    sdkIntegrationId: string,
+    query: GuideQueryDto,
+  ) {
     const filter: Record<string, unknown> = {
       tenantId,
+      sdkIntegrationId,
       ...(query.status ? { status: query.status } : {}),
       ...(query.type ? { type: query.type } : {}),
     };
@@ -19,20 +24,30 @@ class GuideRepository {
     return GuideModel.find(filter).sort({ updatedAt: -1 }).exec();
   }
 
-  public listLiveGuides(tenantId: string) {
-    return GuideModel.find({ tenantId, status: "LIVE" })
+  public listLiveGuides(tenantId: string, sdkIntegrationId: string) {
+    return GuideModel.find({ tenantId, sdkIntegrationId, status: "LIVE" })
       .sort({ priority: -1, updatedAt: -1 })
       .exec();
   }
 
-  public getGuide(tenantId: string, guideId: string) {
-    return GuideModel.findOne({ _id: guideId, tenantId }).exec();
+  public getGuide(
+    tenantId: string,
+    sdkIntegrationId: string,
+    guideId: string,
+  ) {
+    return GuideModel.findOne({ _id: guideId, tenantId, sdkIntegrationId }).exec();
   }
 
-  public createGuide(tenantId: string, createdBy: string, dto: CreateGuideDto) {
+  public createGuide(
+    tenantId: string,
+    sdkIntegrationId: string,
+    createdBy: string,
+    dto: CreateGuideDto,
+  ) {
     return GuideModel.create({
       ...dto,
       tenantId,
+      sdkIntegrationId,
       createdBy,
       updatedBy: createdBy,
       analytics: {},
@@ -41,6 +56,7 @@ class GuideRepository {
 
   public updateGuide(
     tenantId: string,
+    sdkIntegrationId: string,
     guideId: string,
     updatedBy: string,
     dto: UpdateGuideDto,
@@ -48,7 +64,7 @@ class GuideRepository {
   ) {
     const snapshot = existing.toObject({ depopulate: true });
     return GuideModel.findOneAndUpdate(
-      { _id: guideId, tenantId },
+      { _id: guideId, tenantId, sdkIntegrationId },
       {
         $set: {
           ...dto,
@@ -70,19 +86,24 @@ class GuideRepository {
 
   public updateStatus(
     tenantId: string,
+    sdkIntegrationId: string,
     guideId: string,
     updatedBy: string,
     status: "DRAFT" | "LIVE" | "PAUSED" | "ARCHIVED",
   ) {
     return GuideModel.findOneAndUpdate(
-      { _id: guideId, tenantId },
+      { _id: guideId, tenantId, sdkIntegrationId },
       { $set: { status, updatedBy } },
       { new: true },
     ).exec();
   }
 
-  public deleteGuide(tenantId: string, guideId: string) {
-    return GuideModel.deleteOne({ _id: guideId, tenantId }).exec();
+  public deleteGuide(
+    tenantId: string,
+    sdkIntegrationId: string,
+    guideId: string,
+  ) {
+    return GuideModel.deleteOne({ _id: guideId, tenantId, sdkIntegrationId }).exec();
   }
 }
 

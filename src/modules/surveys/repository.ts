@@ -12,9 +12,14 @@ import {
 import type { NpsCategory } from "../engagement/types.js";
 
 class SurveyRepository {
-  public listSurveys(tenantId: string, query: SurveyQueryDto) {
+  public listSurveys(
+    tenantId: string,
+    sdkIntegrationId: string,
+    query: SurveyQueryDto,
+  ) {
     const filter: Record<string, unknown> = {
       tenantId,
+      sdkIntegrationId,
       ...(query.status ? { status: query.status } : {}),
     };
 
@@ -28,24 +33,30 @@ class SurveyRepository {
     return SurveyModel.find(filter).sort({ updatedAt: -1 }).exec();
   }
 
-  public listLiveSurveys(tenantId: string) {
-    return SurveyModel.find({ tenantId, status: "LIVE" })
+  public listLiveSurveys(tenantId: string, sdkIntegrationId: string) {
+    return SurveyModel.find({ tenantId, sdkIntegrationId, status: "LIVE" })
       .sort({ updatedAt: -1 })
       .exec();
   }
 
-  public getSurvey(tenantId: string, surveyId: string) {
-    return SurveyModel.findOne({ _id: surveyId, tenantId }).exec();
+  public getSurvey(
+    tenantId: string,
+    sdkIntegrationId: string,
+    surveyId: string,
+  ) {
+    return SurveyModel.findOne({ _id: surveyId, tenantId, sdkIntegrationId }).exec();
   }
 
   public createSurvey(
     tenantId: string,
+    sdkIntegrationId: string,
     createdBy: string,
     dto: CreateSurveyDto,
   ) {
     return SurveyModel.create({
       ...dto,
       tenantId,
+      sdkIntegrationId,
       createdBy,
       updatedBy: createdBy,
       analytics: {},
@@ -54,23 +65,29 @@ class SurveyRepository {
 
   public updateSurvey(
     tenantId: string,
+    sdkIntegrationId: string,
     surveyId: string,
     updatedBy: string,
     dto: UpdateSurveyDto,
   ) {
     return SurveyModel.findOneAndUpdate(
-      { _id: surveyId, tenantId },
+      { _id: surveyId, tenantId, sdkIntegrationId },
       { $set: { ...dto, updatedBy } },
       { new: true },
     ).exec();
   }
 
-  public deleteSurvey(tenantId: string, surveyId: string) {
-    return SurveyModel.deleteOne({ _id: surveyId, tenantId }).exec();
+  public deleteSurvey(
+    tenantId: string,
+    sdkIntegrationId: string,
+    surveyId: string,
+  ) {
+    return SurveyModel.deleteOne({ _id: surveyId, tenantId, sdkIntegrationId }).exec();
   }
 
   public createResponse(input: {
     tenantId: string;
+    sdkIntegrationId: string;
     survey: ISurveyDocument;
     dto: SubmitSurveyResponseDto;
     npsScore?: number | null;
@@ -97,6 +114,7 @@ class SurveyRepository {
 
     return SurveyResponseModel.create({
       tenantId: input.tenantId,
+      sdkIntegrationId: input.sdkIntegrationId,
       surveyId: input.survey._id.toString(),
       userId: input.dto.userId,
       sessionId: input.dto.sessionId,
@@ -108,8 +126,12 @@ class SurveyRepository {
     });
   }
 
-  public listResponses(tenantId: string, surveyId: string) {
-    return SurveyResponseModel.find({ tenantId, surveyId })
+  public listResponses(
+    tenantId: string,
+    sdkIntegrationId: string,
+    surveyId: string,
+  ) {
+    return SurveyResponseModel.find({ tenantId, sdkIntegrationId, surveyId })
       .sort({ submittedAt: -1 })
       .exec();
   }

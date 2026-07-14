@@ -69,7 +69,7 @@ class ChecklistService {
     }
   }
 
-  public async applyEvent(tenantId: string, event: ChecklistEventDto) {
+  public async applyEvent(tenantId: string, sdkIntegrationId: string, event: ChecklistEventDto) {
     const checklists = await checklistRepository.listLiveChecklists(tenantId);
     const updated = [];
 
@@ -101,6 +101,7 @@ class ChecklistService {
       if (next?.progressPercent === 100) {
         await engagementService.recordInteraction({
           tenantId,
+          sdkIntegrationId,
           actorUserId: event.userId,
           dto: {
             eventName: "guide_completed",

@@ -11,12 +11,21 @@ import {
 const getParam = (value: string | string[] | undefined): string =>
   Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
 
+const getSdkIntegrationId = (req: Request): string => {
+  const raw = req.sdkIntegration?._id?.toString() ?? req.params["sdkIntegrationId"];
+  const id = Array.isArray(raw) ? raw[0] : raw;
+  if (!id) throw new Error("sdkIntegrationId missing from request context");
+  return id;
+};
+
 class GuideController {
   public listGuides = async (req: Request, res: Response): Promise<void> => {
     try {
       const tenantId = getTenantIdFromRequest(req);
+      const sdkIntegrationId = getSdkIntegrationId(req);
       const guides = await guideService.listGuides(
         tenantId,
+        sdkIntegrationId,
         validateGuideQueryDto(req.query),
       );
       res.status(200).json({ data: { guides } });
@@ -29,6 +38,7 @@ class GuideController {
     try {
       const guide = await guideService.getGuide(
         getTenantIdFromRequest(req),
+        getSdkIntegrationId(req),
         getParam(req.params.guideId),
       );
       res.status(200).json({ data: { guide } });
@@ -40,8 +50,10 @@ class GuideController {
   public createGuide = async (req: Request, res: Response): Promise<void> => {
     try {
       const tenantId = getTenantIdFromRequest(req);
+      const sdkIntegrationId = getSdkIntegrationId(req);
       const guide = await guideService.createGuide(
         tenantId,
+        sdkIntegrationId,
         tenantId,
         validateCreateGuideDto(req.body),
       );
@@ -56,6 +68,7 @@ class GuideController {
       const tenantId = getTenantIdFromRequest(req);
       const guide = await guideService.updateGuide(
         tenantId,
+        getSdkIntegrationId(req),
         getParam(req.params.guideId),
         tenantId,
         validateUpdateGuideDto(req.body),
@@ -82,6 +95,7 @@ class GuideController {
       const tenantId = getTenantIdFromRequest(req);
       const guide = await guideService.updateStatus(
         tenantId,
+        getSdkIntegrationId(req),
         getParam(req.params.guideId),
         tenantId,
         status,
@@ -96,6 +110,7 @@ class GuideController {
     try {
       await guideService.deleteGuide(
         getTenantIdFromRequest(req),
+        getSdkIntegrationId(req),
         getParam(req.params.guideId),
       );
       res.status(200).json({ data: { deleted: true } });
@@ -108,6 +123,7 @@ class GuideController {
     try {
       const summary = await guideService.getGuideExposureSummary(
         getTenantIdFromRequest(req),
+        getSdkIntegrationId(req),
         getParam(req.params.guideId),
       );
       res.status(200).json({ data: summary });

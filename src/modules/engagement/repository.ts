@@ -7,6 +7,7 @@ import {
 
 interface ExposureIdentity {
   tenantId: string;
+  sdkIntegrationId: string;
   guideId: string;
   userId?: string;
   sessionId?: string;
@@ -71,6 +72,7 @@ class EngagementRepository {
 
     const setOnInsert: Record<string, unknown> = {
       tenantId: identity.tenantId,
+      sdkIntegrationId: identity.sdkIntegrationId,
       guideId: identity.guideId,
       userId: identity.userId,
       sessionId: identity.sessionId,
@@ -105,6 +107,7 @@ class EngagementRepository {
 
   public async incrementMtu(input: {
     tenantId: string;
+    sdkIntegrationId: string;
     userId: string;
     guideId?: string;
     surveyId?: string;
@@ -125,10 +128,11 @@ class EngagementRepository {
     }
 
     await MonthlyTargetedUserModel.findOneAndUpdate(
-      { tenantId: input.tenantId, userId: input.userId, month },
+      { sdkIntegrationId: input.sdkIntegrationId, userId: input.userId, month },
       {
         $setOnInsert: {
           tenantId: input.tenantId,
+          sdkIntegrationId: input.sdkIntegrationId,
           userId: input.userId,
           month,
           firstExposedAt: now,
@@ -141,13 +145,13 @@ class EngagementRepository {
     ).exec();
   }
 
-  public async countMtu(tenantId: string, month: string): Promise<number> {
-    return MonthlyTargetedUserModel.countDocuments({ tenantId, month }).exec();
+  public async countMtu(sdkIntegrationId: string, month: string): Promise<number> {
+    return MonthlyTargetedUserModel.countDocuments({ sdkIntegrationId, month }).exec();
   }
 
   private buildExposureFilter(identity: ExposureIdentity) {
     return {
-      tenantId: identity.tenantId,
+      sdkIntegrationId: identity.sdkIntegrationId,
       guideId: identity.guideId,
       ...(identity.userId ? { userId: identity.userId } : {}),
       ...(identity.sessionId ? { sessionId: identity.sessionId } : {}),

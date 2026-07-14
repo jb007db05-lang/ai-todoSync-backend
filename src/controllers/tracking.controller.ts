@@ -25,6 +25,7 @@ class TrackingController {
         eventId?: string;
       };
       const apiKeyId = req.apiKeyId;
+      const sdkIntegrationId = req.sdkIntegration?._id?.toString();
 
       if (!apiKeyId) {
         return res.status(401).json({ error: "API key is required" });
@@ -34,6 +35,7 @@ class TrackingController {
 
       const log = await trackingService.trackSingle({
         apiKeyId,
+        sdkIntegrationId,
         eventName: eventName ?? "",
         payload,
         sessionId,
@@ -95,6 +97,7 @@ class TrackingController {
   public batch = async (req: Request, res: Response) => {
     try {
       const apiKeyId = req.apiKeyId;
+      const sdkIntegrationId = req.sdkIntegration?._id?.toString();
       if (!apiKeyId) {
         return res.status(401).json({ error: "API key is required" });
       }
@@ -104,7 +107,11 @@ class TrackingController {
         count: Array.isArray(req.body) ? req.body.length : "unknown",
       });
 
-      const result = await trackingService.ingestBatch(apiKeyId, req.body);
+      const result = await trackingService.ingestBatch(
+        apiKeyId,
+        req.body,
+        sdkIntegrationId,
+      );
       return res.status(200).json({ success: true, ...result });
     } catch (error) {
       return this.handleError(res, error, "Failed to ingest batch");
