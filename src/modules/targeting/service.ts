@@ -103,6 +103,7 @@ class TargetingService {
     if (input.guideId && input.frequencyRules) {
       const frequencyResult = await this.evaluateFrequency({
         tenantId: input.context.tenantId,
+        sdkIntegrationId: input.context.sdkIntegrationId,
         guideId: input.guideId,
         userId: input.context.userId,
         sessionId: input.context.sessionId,
@@ -484,6 +485,7 @@ class TargetingService {
 
   private async evaluateFrequency(input: {
     tenantId: string;
+    sdkIntegrationId?: string;
     guideId: string;
     userId?: string;
     sessionId?: string;
@@ -492,6 +494,9 @@ class TargetingService {
   }): Promise<ConditionEvaluation> {
     const userFilter = {
       tenantId: input.tenantId,
+      ...(input.sdkIntegrationId
+        ? { sdkIntegrationId: input.sdkIntegrationId }
+        : {}),
       guideId: input.guideId,
       ...(input.userId ? { userId: input.userId } : {}),
       ...(!input.userId && input.sessionId
@@ -516,6 +521,23 @@ class TargetingService {
 
     if (!exposure) {
       return { matched: true, reason: "No previous exposure" };
+    }
+
+    const hasCompletedOrDismissed =
+      (latestExposure &&
+        ["completed", "dismissed", "abandoned"].includes(
+          latestExposure.status,
+        )) ||
+      (sessionExposure &&
+        ["completed", "dismissed", "abandoned"].includes(
+          sessionExposure.status,
+        ));
+
+    if (hasCompletedOrDismissed) {
+      return {
+        matched: false,
+        reason: `Frequency cap: already completed, dismissed, or abandoned`,
+      };
     }
 
     if (input.rules.showOnceEver && totalDisplayCount > 0) {

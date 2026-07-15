@@ -357,6 +357,7 @@ async function runValidation() {
       const mockDelivered = [mockExp("exp-99", "MODAL", "HIGH")];
       await engagementService.recordRuntimeDelivery({
         tenantId: "tenant-1",
+        sdkIntegrationId: "test-integration",
         userId: "user-telemetry",
         sessionId: "sess-telemetry",
         guides: mockDelivered,

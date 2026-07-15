@@ -12,11 +12,20 @@ import {
 const getParam = (value: string | string[] | undefined): string =>
   Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
 
+const getSdkIntegrationId = (req: Request): string => {
+  const raw =
+    req.sdkIntegration?._id?.toString() ?? req.params["sdkIntegrationId"];
+  const id = Array.isArray(raw) ? raw[0] : raw;
+  if (!id) throw new Error("sdkIntegrationId missing from request context");
+  return id;
+};
+
 class SurveyController {
   public listSurveys = async (req: Request, res: Response): Promise<void> => {
     try {
       const surveys = await surveyService.listSurveys(
         getTenantIdFromRequest(req),
+        getSdkIntegrationId(req),
         validateSurveyQueryDto(req.query),
       );
       res.status(200).json({ data: { surveys } });
@@ -29,6 +38,7 @@ class SurveyController {
     try {
       const survey = await surveyService.getSurvey(
         getTenantIdFromRequest(req),
+        getSdkIntegrationId(req),
         getParam(req.params.surveyId),
       );
       res.status(200).json({ data: { survey } });
@@ -40,8 +50,10 @@ class SurveyController {
   public createSurvey = async (req: Request, res: Response): Promise<void> => {
     try {
       const tenantId = getTenantIdFromRequest(req);
+      const sdkIntegrationId = getSdkIntegrationId(req);
       const survey = await surveyService.createSurvey(
         tenantId,
+        sdkIntegrationId,
         tenantId,
         validateCreateSurveyDto(req.body),
       );
@@ -56,6 +68,7 @@ class SurveyController {
       const tenantId = getTenantIdFromRequest(req);
       const survey = await surveyService.updateSurvey(
         tenantId,
+        getSdkIntegrationId(req),
         getParam(req.params.surveyId),
         tenantId,
         validateUpdateSurveyDto(req.body),
@@ -70,6 +83,7 @@ class SurveyController {
     try {
       await surveyService.deleteSurvey(
         getTenantIdFromRequest(req),
+        getSdkIntegrationId(req),
         getParam(req.params.surveyId),
       );
       res.status(200).json({ data: { deleted: true } });
@@ -85,6 +99,7 @@ class SurveyController {
     try {
       const response = await surveyService.submitResponse(
         getTenantIdFromRequest(req),
+        getSdkIntegrationId(req),
         getParam(req.params.surveyId),
         validateSubmitSurveyResponseDto(req.body),
       );
@@ -94,10 +109,24 @@ class SurveyController {
     }
   };
 
+  public getResponses = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const responses = await surveyService.listResponses(
+        getTenantIdFromRequest(req),
+        getSdkIntegrationId(req),
+        getParam(req.params.surveyId),
+      );
+      res.status(200).json({ data: { responses } });
+    } catch (error) {
+      this.respondError(res, error);
+    }
+  };
+
   public analytics = async (req: Request, res: Response): Promise<void> => {
     try {
       const analytics = await surveyService.getSurveyAnalytics(
         getTenantIdFromRequest(req),
+        getSdkIntegrationId(req),
         getParam(req.params.surveyId),
       );
       res.status(200).json({ data: analytics });

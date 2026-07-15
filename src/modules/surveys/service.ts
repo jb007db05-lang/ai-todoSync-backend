@@ -17,12 +17,32 @@ import type { ISurveyDocument } from "./model.js";
 import surveyRepository from "./repository.js";
 
 class SurveyService {
-  public listSurveys(tenantId: string, query: SurveyQueryDto) {
-    return surveyRepository.listSurveys(tenantId, query);
+  public listSurveys(
+    tenantId: string,
+    sdkIntegrationId: string,
+    query: SurveyQueryDto,
+  ) {
+    return surveyRepository.listSurveys(tenantId, sdkIntegrationId, query);
   }
 
-  public async getSurvey(tenantId: string, surveyId: string) {
-    const survey = await surveyRepository.getSurvey(tenantId, surveyId);
+  public listResponses(
+    tenantId: string,
+    sdkIntegrationId: string,
+    surveyId: string,
+  ) {
+    return surveyRepository.listResponses(tenantId, sdkIntegrationId, surveyId);
+  }
+
+  public async getSurvey(
+    tenantId: string,
+    sdkIntegrationId: string,
+    surveyId: string,
+  ) {
+    const survey = await surveyRepository.getSurvey(
+      tenantId,
+      sdkIntegrationId,
+      surveyId,
+    );
 
     if (!survey) {
       throw new AppError(404, "Survey not found", "NOT_FOUND");
@@ -33,20 +53,28 @@ class SurveyService {
 
   public createSurvey(
     tenantId: string,
+    sdkIntegrationId: string,
     createdBy: string,
     dto: CreateSurveyDto,
   ) {
-    return surveyRepository.createSurvey(tenantId, createdBy, dto);
+    return surveyRepository.createSurvey(
+      tenantId,
+      sdkIntegrationId,
+      createdBy,
+      dto,
+    );
   }
 
   public async updateSurvey(
     tenantId: string,
+    sdkIntegrationId: string,
     surveyId: string,
     updatedBy: string,
     dto: UpdateSurveyDto,
   ) {
     const survey = await surveyRepository.updateSurvey(
       tenantId,
+      sdkIntegrationId,
       surveyId,
       updatedBy,
       dto,
@@ -59,8 +87,16 @@ class SurveyService {
     return survey;
   }
 
-  public async deleteSurvey(tenantId: string, surveyId: string) {
-    const result = await surveyRepository.deleteSurvey(tenantId, surveyId);
+  public async deleteSurvey(
+    tenantId: string,
+    sdkIntegrationId: string,
+    surveyId: string,
+  ) {
+    const result = await surveyRepository.deleteSurvey(
+      tenantId,
+      sdkIntegrationId,
+      surveyId,
+    );
 
     if (result.deletedCount === 0) {
       throw new AppError(404, "Survey not found", "NOT_FOUND");
@@ -69,14 +105,16 @@ class SurveyService {
 
   public async submitResponse(
     tenantId: string,
+    sdkIntegrationId: string,
     surveyId: string,
     dto: SubmitSurveyResponseDto,
   ) {
-    const survey = await this.getSurvey(tenantId, surveyId);
+    const survey = await this.getSurvey(tenantId, sdkIntegrationId, surveyId);
     const npsScore = this.extractNpsScore(survey, dto.answers);
     const category = this.categorizeNps(npsScore);
     const response = await surveyRepository.createResponse({
       tenantId,
+      sdkIntegrationId,
       survey,
       dto,
       npsScore,
@@ -85,6 +123,7 @@ class SurveyService {
 
     await engagementService.recordInteraction({
       tenantId,
+      sdkIntegrationId,
       actorUserId: dto.userId,
       dto: {
         eventName: "survey_completed",
@@ -104,9 +143,13 @@ class SurveyService {
 
   public async getEligibleSurveys(
     tenantId: string,
+    sdkIntegrationId: string,
     context: Omit<TargetingRuntimeContext, "tenantId">,
   ): Promise<RuntimeGuideDto[]> {
-    const surveys = await surveyRepository.listLiveSurveys(tenantId);
+    const surveys = await surveyRepository.listLiveSurveys(
+      tenantId,
+      sdkIntegrationId,
+    );
     const contextWithTenant = { ...context, tenantId };
     const evaluated = await Promise.all(
       surveys.map(async (survey) => {
@@ -114,7 +157,7 @@ class SurveyService {
           targetingService.evaluate({
             rules: survey.targetingRules,
             context: contextWithTenant,
-            guideId: survey._id.toString(),
+            guideId: `survey:${survey._id.toString()}`,
             frequencyRules: survey.frequencyRules,
             scheduleRules: survey.scheduleRules,
           }),
@@ -153,27 +196,48 @@ class SurveyService {
       .map((entry) => this.toRuntimeDto(entry.survey, entry.eligibility));
   }
 
-  public async getSurveyAnalytics(tenantId: string, surveyId: string) {
-    const survey = await this.getSurvey(tenantId, surveyId);
-    const responses = await surveyRepository.listResponses(tenantId, surveyId);
-    
-    const exposures = await GuideExposureModel.find({ tenantId, guideId: surveyId }).exec();
+  public async getSurveyAnalytics(
+    tenantId: string,
+    sdkIntegrationId: string,
+    surveyId: string,
+  ) {
+    const survey = await this.getSurvey(tenantId, sdkIntegrationId, surveyId);
+    const responses = await surveyRepository.listResponses(
+      tenantId,
+      sdkIntegrationId,
+      surveyId,
+    );
 
-    const totalImpressions = exposures.reduce((sum, exp) => sum + (exp.displayCount ?? 0), 0);
-    const uniqueUsersCount = new Set(exposures.map((exp) => exp.userId).filter(Boolean)).size;
+    const exposures = await GuideExposureModel.find({
+      sdkIntegrationId,
+      guideId: `survey:${surveyId}`,
+    }).exec();
+
+    const totalImpressions = exposures.reduce(
+      (sum, exp) => sum + (exp.displayCount ?? 0),
+      0,
+    );
+    const uniqueUsersCount = new Set(
+      exposures.map((exp) => exp.userId).filter(Boolean),
+    ).size;
     const starts = exposures.filter((exp) => exp.status !== "shown").length;
     const submissions = responses.length;
-    const dismissals = exposures.filter((exp) => exp.status === "dismissed" || exp.status === "abandoned").length;
-    
-    const completionRate = totalImpressions > 0 ? (submissions / totalImpressions) * 100 : 0;
-    const dropOffRate = starts > 0 ? ((starts - submissions) / starts) * 100 : 0;
+    const dismissals = exposures.filter(
+      (exp) => exp.status === "dismissed" || exp.status === "abandoned",
+    ).length;
+
+    const completionRate =
+      totalImpressions > 0 ? (submissions / totalImpressions) * 100 : 0;
+    const dropOffRate =
+      starts > 0 ? ((starts - submissions) / starts) * 100 : 0;
 
     let totalCompletionTime = 0;
     let completionTimeCount = 0;
-    
+
     exposures.forEach((exp) => {
       if (exp.startedAt && exp.completedAt) {
-        totalCompletionTime += (exp.completedAt.getTime() - exp.startedAt.getTime()) / 1000;
+        totalCompletionTime +=
+          (exp.completedAt.getTime() - exp.startedAt.getTime()) / 1000;
         completionTimeCount++;
       }
     });
@@ -190,20 +254,26 @@ class SurveyService {
         }
       });
     }
-    const averageCompletionTime = completionTimeCount > 0 ? totalCompletionTime / completionTimeCount : 0;
+    const averageCompletionTime =
+      completionTimeCount > 0 ? totalCompletionTime / completionTimeCount : 0;
 
     const promoters = responses.filter((r) => r.category === "PROMOTER").length;
     const passives = responses.filter((r) => r.category === "PASSIVE").length;
-    const detractors = responses.filter((r) => r.category === "DETRACTOR").length;
-    const nps = submissions > 0 ? ((promoters - detractors) / submissions) * 100 : 0;
+    const detractors = responses.filter(
+      (r) => r.category === "DETRACTOR",
+    ).length;
+    const nps =
+      submissions > 0 ? ((promoters - detractors) / submissions) * 100 : 0;
 
     const questionAnalytics = survey.questions.map((q) => {
-      const qAnswers = responses.map((r) => {
-        if (Array.isArray(r.answers)) {
-          return r.answers.find((a: any) => a.questionId === q.id)?.value;
-        }
-        return (r.answers as Record<string, unknown>)[q.id];
-      }).filter((val) => val !== undefined && val !== null);
+      const qAnswers = responses
+        .map((r) => {
+          if (Array.isArray(r.answers)) {
+            return r.answers.find((a: any) => a.questionId === q.id)?.value;
+          }
+          return (r.answers as Record<string, unknown>)[q.id];
+        })
+        .filter((val) => val !== undefined && val !== null);
 
       const answeredCount = qAnswers.length;
       const skippedCount = submissions - answeredCount;
@@ -211,7 +281,9 @@ class SurveyService {
       let averageScore = 0;
       const distribution: Record<string, number> = {};
 
-      if (["NPS", "RATING_SCALE", "OPINION_SCALE", "CSAT", "CES"].includes(q.type)) {
+      if (
+        ["NPS", "RATING_SCALE", "OPINION_SCALE", "CSAT", "CES"].includes(q.type)
+      ) {
         const scores = qAnswers.map(Number).filter(Number.isFinite);
         if (scores.length > 0) {
           averageScore = scores.reduce((sum, s) => sum + s, 0) / scores.length;
@@ -219,7 +291,10 @@ class SurveyService {
       }
 
       qAnswers.forEach((ans) => {
-        const key = typeof ans === "object" && ans !== null ? JSON.stringify(ans) : String(ans);
+        const key =
+          typeof ans === "object" && ans !== null
+            ? JSON.stringify(ans)
+            : String(ans);
         distribution[key] = (distribution[key] ?? 0) + 1;
       });
 
@@ -259,7 +334,8 @@ class SurveyService {
       promoters,
       passives,
       detractors,
-      responseRate: totalImpressions > 0 ? (submissions / totalImpressions) * 100 : 0,
+      responseRate:
+        totalImpressions > 0 ? (submissions / totalImpressions) * 100 : 0,
       impressions: totalImpressions,
       eligibleUsers: uniqueUsersCount,
       displays: totalImpressions,
@@ -297,7 +373,7 @@ class SurveyService {
 
   private extractNpsScore(
     survey: ISurveyDocument,
-    answers: Record<string, unknown>,
+    answers: Record<string, unknown> | Array<any>,
   ): number | null {
     const npsQuestion = survey.questions.find(
       (question) => question.type === "NPS",
@@ -306,7 +382,18 @@ class SurveyService {
       return null;
     }
 
-    const value = Number(answers[npsQuestion.id]);
+    let valueStr: any = undefined;
+    if (Array.isArray(answers)) {
+      const found = answers.find((ans) => ans?.questionId === npsQuestion.id);
+      if (found) {
+        valueStr = found.value;
+      }
+    } else if (answers && typeof answers === "object") {
+      valueStr = answers[npsQuestion.id];
+    }
+
+    const value =
+      valueStr !== undefined && valueStr !== null ? Number(valueStr) : NaN;
     return Number.isFinite(value) ? value : null;
   }
 

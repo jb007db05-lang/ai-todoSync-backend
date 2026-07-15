@@ -9,6 +9,7 @@ export type GuideExposureStatus =
 
 export interface IGuideExposure {
   tenantId: string;
+  sdkIntegrationId: string;
   guideId: string;
   userId?: string;
   sessionId?: string;
@@ -31,6 +32,7 @@ export interface IGuideExposureDocument extends IGuideExposure, Document {}
 const guideExposureSchema = new Schema<IGuideExposureDocument>(
   {
     tenantId: { type: String, required: true, index: true },
+    sdkIntegrationId: { type: String, required: true, index: true },
     guideId: { type: String, required: true, index: true },
     userId: { type: String, index: true },
     sessionId: { type: String, index: true },
@@ -54,11 +56,14 @@ const guideExposureSchema = new Schema<IGuideExposureDocument>(
   { timestamps: true },
 );
 
+guideExposureSchema.index({ sdkIntegrationId: 1, guideId: 1, userId: 1 });
+guideExposureSchema.index({ sdkIntegrationId: 1, guideId: 1, sessionId: 1 });
 guideExposureSchema.index({ tenantId: 1, guideId: 1, userId: 1 });
 guideExposureSchema.index({ tenantId: 1, guideId: 1, sessionId: 1 });
 
 export interface IMonthlyTargetedUser {
   tenantId: string;
+  sdkIntegrationId: string;
   userId: string;
   month: string;
   guideIds: string[];
@@ -76,6 +81,7 @@ export interface IMonthlyTargetedUserDocument
 const monthlyTargetedUserSchema = new Schema<IMonthlyTargetedUserDocument>(
   {
     tenantId: { type: String, required: true, index: true },
+    sdkIntegrationId: { type: String, required: true, index: true },
     userId: { type: String, required: true, index: true },
     month: { type: String, required: true, index: true },
     guideIds: { type: [String], default: [] },
@@ -88,8 +94,11 @@ const monthlyTargetedUserSchema = new Schema<IMonthlyTargetedUserDocument>(
 );
 
 monthlyTargetedUserSchema.index(
-  { tenantId: 1, month: 1, userId: 1 },
+  { sdkIntegrationId: 1, month: 1, userId: 1 },
   { unique: true },
+);
+monthlyTargetedUserSchema.index(
+  { tenantId: 1, month: 1, userId: 1 },
 );
 
 export const GuideExposureModel = model<IGuideExposureDocument>(

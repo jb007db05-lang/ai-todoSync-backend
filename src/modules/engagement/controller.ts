@@ -6,6 +6,7 @@ import surveyService from "../surveys/service.js";
 import { getTenantIdFromRequest } from "./permissions.js";
 import engagementService from "./service.js";
 import experienceOrchestrator from "./orchestrator.js";
+import sdkIntegrationService from "../sdk-integrations/service.js";
 import {
   validateEngagementTrackDto,
   validateRuntimeEvaluationDto,
@@ -15,10 +16,12 @@ class EngagementController {
   public runtime = async (req: Request, res: Response): Promise<void> => {
     try {
       const tenantId = getTenantIdFromRequest(req);
+      const sdkIntegrationId = req.sdkIntegration?._id?.toString() ?? "";
       const dto = validateRuntimeEvaluationDto(req.body);
       const context = {
         userId: dto.userId ?? req.user?._id?.toString(),
         sessionId: dto.sessionId ?? req.auth?.sessionId ?? undefined,
+        sdkIntegrationId,
         url: dto.url,
         referrer: dto.referrer,
         role: dto.role,
@@ -33,7 +36,7 @@ class EngagementController {
       };
 
       if (dto.eventName) {
-        await checklistService.applyEvent(tenantId, {
+        await checklistService.applyEvent(tenantId, sdkIntegrationId, {
           eventName: dto.eventName,
           userId: context.userId,
           sessionId: context.sessionId,
@@ -42,8 +45,8 @@ class EngagementController {
       }
 
       const [guides, surveys, checklists] = await Promise.all([
-        guideService.getEligibleGuides(tenantId, context),
-        surveyService.getEligibleSurveys(tenantId, context),
+        guideService.getEligibleGuides(tenantId, sdkIntegrationId, context),
+        surveyService.getEligibleSurveys(tenantId, sdkIntegrationId, context),
         checklistService.getEligibleChecklists(tenantId, context),
       ]);
       const rawExperiences = [...guides, ...surveys, ...checklists];
@@ -56,6 +59,7 @@ class EngagementController {
 
       await engagementService.recordRuntimeDelivery({
         tenantId,
+        sdkIntegrationId,
         userId: context.userId,
         sessionId: context.sessionId,
         guides: experiences,
@@ -70,8 +74,10 @@ class EngagementController {
   public track = async (req: Request, res: Response): Promise<void> => {
     try {
       const tenantId = getTenantIdFromRequest(req);
+      const sdkIntegrationId = req.sdkIntegration?._id?.toString() ?? "";
       const result = await engagementService.recordInteraction({
         tenantId,
+        sdkIntegrationId,
         actorUserId: req.user?._id?.toString(),
         dto: validateEngagementTrackDto(req.body),
       });
@@ -83,13 +89,16 @@ class EngagementController {
 
   public mtu = async (req: Request, res: Response): Promise<void> => {
     try {
+      const tenantId = getTenantIdFromRequest(req);
+      const integrations = await sdkIntegrationService.listByTenant(tenantId);
+      const sdkIntegrationId = req.sdkIntegration?._id?.toString() ?? integrations[0]?._id?.toString() ?? "";
       const now = new Date();
       const month =
         typeof req.query.month === "string"
           ? req.query.month
           : `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
       const count = await engagementService.countMtu(
-        getTenantIdFromRequest(req),
+        sdkIntegrationId,
         month,
       );
       res.status(200).json({ data: { month, mtu: count } });

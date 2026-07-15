@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-const IGNORE_FOLDERS = ["node_modules", "dist", "src/scripts/checks"];
+const IGNORE_FOLDERS = ["node_modules", "dist", "src/scripts"];
 
 function walk(dir: string): string[] {
   return fs.readdirSync(dir).flatMap((file) => {

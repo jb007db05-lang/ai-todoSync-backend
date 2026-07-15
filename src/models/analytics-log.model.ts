@@ -3,7 +3,8 @@ import { Schema, model, type Document } from "mongoose";
 export interface IAnalyticsLog {
   eventId: string;
   eventRef?: string;
-  apiKeyId: string;
+  apiKeyId?: string;
+  sdkIntegrationId: string;
   userIdentifier?: string;
   sessionId?: string;
   payload: Record<string, unknown>;
@@ -16,7 +17,8 @@ const analyticsLogSchema = new Schema<IAnalyticsLogDocument>(
   {
     eventId: { type: String, required: true, index: true },
     eventRef: { type: String, index: true },
-    apiKeyId: { type: String, required: true, index: true },
+    apiKeyId: { type: String, required: false, index: true },
+    sdkIntegrationId: { type: String, required: true, index: true },
     userIdentifier: { type: String, index: true },
     sessionId: { type: String, index: true },
     payload: { type: Schema.Types.Mixed, default: {} },
@@ -25,7 +27,7 @@ const analyticsLogSchema = new Schema<IAnalyticsLogDocument>(
 );
 
 analyticsLogSchema.index(
-  { eventId: 1, apiKeyId: 1 },
+  { eventId: 1, sdkIntegrationId: 1 },
   {
     unique: true,
     partialFilterExpression: {

@@ -16,6 +16,7 @@ type JsonRecord = Record<string, unknown>;
 
 interface SingleTrackInput {
   apiKeyId: string;
+  sdkIntegrationId?: string;
   eventName: string;
   payload?: JsonRecord;
   userIdentifier?: string;
@@ -62,11 +63,17 @@ class TrackingService {
     return crypto.randomUUID();
   }
 
-  private async ensureEventRegistry(eventName: string, apiKeyId: string) {
-    const existing = await AnalyticsEventRegistryModel.findOne({
-      eventName,
-      apiKeyId,
-    })
+  private async ensureEventRegistry(
+    eventName: string,
+    apiKeyId: string,
+    sdkIntegrationId?: string,
+  ) {
+    // Prefer sdkIntegrationId-based lookup when available
+    const lookupFilter = sdkIntegrationId
+      ? { eventName, sdkIntegrationId }
+      : { eventName, apiKeyId };
+
+    const existing = await AnalyticsEventRegistryModel.findOne(lookupFilter)
       .lean()
       .exec();
 
@@ -75,17 +82,18 @@ class TrackingService {
     }
 
     try {
-      return await AnalyticsEventRegistryModel.create({ eventName, apiKeyId });
+      return await AnalyticsEventRegistryModel.create({
+        eventName,
+        apiKeyId,
+        ...(sdkIntegrationId ? { sdkIntegrationId } : { sdkIntegrationId: apiKeyId }),
+      });
     } catch (error) {
       const duplicate = this.isDuplicateKeyError(error);
       if (!duplicate) {
         throw error;
       }
 
-      const created = await AnalyticsEventRegistryModel.findOne({
-        eventName,
-        apiKeyId,
-      })
+      const created = await AnalyticsEventRegistryModel.findOne(lookupFilter)
         .lean()
         .exec();
 
@@ -101,11 +109,13 @@ class TrackingService {
     event: NormalizedTrackingEvent,
     apiKeyId: string,
     eventRef: string,
+    sdkIntegrationId?: string,
   ) {
     return {
       eventId: event.eventId || this.generateEventId(),
       eventRef,
       apiKeyId,
+      sdkIntegrationId: sdkIntegrationId ?? apiKeyId,
       userIdentifier: event.userIdentifier,
       sessionId: event.sessionId,
       payload: event.payload,
@@ -152,11 +162,17 @@ class TrackingService {
     const event = await this.ensureEventRegistry(
       normalized.eventName,
       input.apiKeyId,
+      input.sdkIntegrationId,
     );
 
     try {
       return await AnalyticsLogModel.create(
-        this.buildLogDocument(normalized, input.apiKeyId, event._id.toString()),
+        this.buildLogDocument(
+          normalized,
+          input.apiKeyId,
+          event._id.toString(),
+          input.sdkIntegrationId,
+        ),
       );
     } catch (error) {
       if (this.isDuplicateKeyError(error)) {
@@ -170,6 +186,7 @@ class TrackingService {
   public async ingestBatch(
     apiKeyId: string,
     body: unknown,
+    sdkIntegrationId?: string,
   ): Promise<BatchResult> {
     const rawEvents = validateBatchBody(body);
     const normalizedEvents = rawEvents.map((event, index) =>
@@ -183,7 +200,11 @@ class TrackingService {
     ];
     const eventDocs = await Promise.all(
       eventNames.map(async (eventName) => {
-        const event = await this.ensureEventRegistry(eventName, apiKeyId);
+        const event = await this.ensureEventRegistry(
+          eventName,
+          apiKeyId,
+          sdkIntegrationId,
+        );
         return [eventName, event._id.toString()] as const;
       }),
     );
@@ -214,6 +235,7 @@ class TrackingService {
           },
           apiKeyId,
           eventRefByName.get(event.eventName) as string,
+          sdkIntegrationId,
         ),
       },
     }));

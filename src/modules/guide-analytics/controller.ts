@@ -7,13 +7,14 @@ import { validateGuideAnalyticsQueryDto } from "./validators.js";
 class GuideAnalyticsController {
   public summary = async (req: Request, res: Response): Promise<void> => {
     try {
+      const sdkIntegrationId = String(req.params.sdkIntegrationId);
       const now = new Date();
       const query = validateGuideAnalyticsQueryDto(req.query);
       const month =
         query.month ??
         `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
       const summary = await guideAnalyticsService.summary(
-        getTenantIdFromRequest(req),
+        sdkIntegrationId,
         month,
       );
       res.status(200).json({ data: summary });

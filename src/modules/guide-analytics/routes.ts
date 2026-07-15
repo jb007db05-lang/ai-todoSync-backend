@@ -1,10 +1,11 @@
 import { Router } from "express";
 import type { Routes } from "../../interfaces/routes.interface.js";
+import authMiddleware from "../../middleware/auth.middleware.js";
+import { requireSdkIntegrationAccess } from "../../middleware/sdkIntegrationAuth.middleware.js";
 import guideAnalyticsController from "./controller.js";
-import { requireGuideAnalyticsAdmin } from "./permissions.js";
 
 class GuideAnalyticsRoutes implements Routes {
-  public path = "/api/guide-analytics";
+  public path = "/api";
   public router = Router();
 
   constructor() {
@@ -12,8 +13,12 @@ class GuideAnalyticsRoutes implements Routes {
   }
 
   private initializeRoutes(): void {
-    this.router.use(requireGuideAnalyticsAdmin);
-    this.router.get("/summary", guideAnalyticsController.summary);
+    this.router.get(
+      "/sdk-integrations/:sdkIntegrationId/guide-analytics/summary",
+      authMiddleware,
+      requireSdkIntegrationAccess,
+      guideAnalyticsController.summary,
+    );
   }
 }
 
