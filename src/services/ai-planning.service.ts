@@ -9,7 +9,6 @@ import EpicModel from "../models/epic.model.js";
 import NoteModel from "../models/note.model.js";
 import TaskModel from "../models/task.model.js";
 import UserModel from "../models/user.model.js";
-import env from "../config/env.js";
 import logger from "../lib/logger.js";
 import { buildSafeRefMatch } from "../utils/mongo-ref.js";
 import activityLogService from "./activity-log.service.js";

@@ -5,8 +5,9 @@ import AnalyticsKeyModel from "../models/analytics-key.model.js";
 import { deterministicHash } from "../utils/encryption.js";
 import sdkIntegrationService, {
   normalizeOrigin,
+  matchOrigin,
 } from "../modules/sdk-integrations/service.js";
-export { normalizeOrigin };
+export { normalizeOrigin, matchOrigin };
 import logger from "../lib/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -77,15 +78,12 @@ export const validateIntegrationOrigin = (
 
   try {
     const parsedOrigin = normalizeOrigin(origin);
-    const normalizedDomain = normalizeOrigin(integration.domain);
-    const normalizedAllowed = (integration.allowedOrigins || []).map(
-      (o: string) => normalizeOrigin(o),
+    const domainMatches = integration.domain && matchOrigin(parsedOrigin, integration.domain);
+    const allowedMatches = (integration.allowedOrigins || []).some((o: string) =>
+      matchOrigin(parsedOrigin, o),
     );
 
-    if (
-      parsedOrigin === normalizedDomain ||
-      normalizedAllowed.includes(parsedOrigin)
-    ) {
+    if (domainMatches || allowedMatches) {
       return null;
     }
 
@@ -121,7 +119,7 @@ export class ServerSdkAuthStrategy implements SdkAuthStrategy {
   supports(req: Request): boolean {
     return !req.headers.origin;
   }
-  async authenticate(req: Request, integration: any): Promise<string | null> {
+  async authenticate(_req: Request, _integration: any): Promise<string | null> {
     // Server strategies bypass browser-based Origin checks.
     // In the future, this can verify signatures, API tokens, IP allowlists, etc.
     return null;
@@ -445,6 +443,7 @@ export const validateSdkKeyUnified = async (
     }
 
     req.user = user;
+    req.apiKeyId = integration._id.toString();
 
     void sdkIntegrationService
       .touchConnection(integration._id.toString(), {
@@ -473,7 +472,11 @@ export const validateSdkKeyUnified = async (
 
   try {
     const keyHash = deterministicHash(rawKey);
+    console.log("[DEBUG AUTH] Incoming rawKey:", rawKey);
+    console.log("[DEBUG AUTH] Computed keyHash:", keyHash);
     const integration = await sdkIntegrationService.resolveByKeyHash(keyHash);
+    console.log("[DEBUG AUTH] Found integration:", integration ? integration.name : "NONE");
+
 
     if (integration) {
       if (integration.status === "disabled") {
@@ -520,6 +523,7 @@ export const validateSdkKeyUnified = async (
 
       req.user = user;
       req.sdkIntegration = integration;
+      req.apiKeyId = integration._id.toString();
 
       void sdkIntegrationService
         .touchConnection(integration._id.toString(), {

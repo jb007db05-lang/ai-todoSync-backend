@@ -109,6 +109,7 @@ class TargetingService {
         sessionId: input.context.sessionId,
         rules: input.frequencyRules,
         now,
+        forceShowCompleted: input.context.forceShowCompleted,
       });
 
       if (!frequencyResult.matched) {
@@ -491,6 +492,7 @@ class TargetingService {
     sessionId?: string;
     rules: FrequencyRules;
     now: Date;
+    forceShowCompleted?: boolean;
   }): Promise<ConditionEvaluation> {
     const userFilter = {
       tenantId: input.tenantId,
@@ -518,6 +520,10 @@ class TargetingService {
       (sum, item) => sum + (item.displayCount ?? 0),
       0,
     );
+
+    if (input.forceShowCompleted) {
+      return { matched: true, reason: "Bypassed frequency evaluation due to forceShowCompleted flag" };
+    }
 
     if (!exposure) {
       return { matched: true, reason: "No previous exposure" };

@@ -66,7 +66,13 @@ class App {
       const normalizedFrontend = normalizeOrigin(env.FRONTEND_BASE_URL);
 
       let isAllowed = false;
-      if (normalizedOrigin === normalizedFrontend) {
+      const allowedStaticOrigins = (env.ALLOWED_ORIGINS || []).map((o) =>
+        normalizeOrigin(o),
+      );
+      if (
+        normalizedOrigin === normalizedFrontend ||
+        allowedStaticOrigins.includes(normalizedOrigin)
+      ) {
         isAllowed = true;
       } else {
         try {

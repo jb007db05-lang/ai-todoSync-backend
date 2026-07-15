@@ -133,7 +133,7 @@ test("AuthService: toggle2FA updates user document settings", async () => {
   };
 
   const originalFindById = UserModel.findById;
-  UserModel.findById = function (id: any) {
+  UserModel.findById = function (_id: any) {
     return makeMockQuery(mockUser) as any;
   };
 

@@ -33,6 +33,7 @@ class EngagementController {
         now: dto.now,
         eventName: dto.eventName,
         eventProperties: dto.eventProperties,
+        forceShowCompleted: dto.forceShowCompleted,
       };
 
       if (dto.eventName) {

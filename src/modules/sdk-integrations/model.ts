@@ -2,7 +2,6 @@ import { Schema, model, type Document } from "mongoose";
 import {
   encrypt,
   decrypt,
-  deterministicHash,
 } from "../../utils/encryption.js";
 
 export type SdkIntegrationStatus =

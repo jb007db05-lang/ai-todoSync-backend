@@ -177,6 +177,7 @@ export interface TargetingRuntimeContext {
   now?: string | Date;
   eventName?: string;
   eventProperties?: Record<string, unknown>;
+  forceShowCompleted?: boolean;
 }
 
 export type EngagementEventName =

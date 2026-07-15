@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 
-const BASE = "http://localhost:4000/api";
+const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3000/api";
 const EMAIL = process.env.TEST_EMAIL ?? `test_e2e_${Date.now()}@example.com`;
 const PASSWORD = process.env.TEST_PASSWORD ?? "password123";
 
@@ -379,8 +379,6 @@ async function testLifecycleActions() {
   );
 
   await runTest("Old key invalid after regeneration → 401", async () => {
-    // Temporarily store old key
-    const oldKey = sdkKey; // sdkKey was updated above so this is already the new key
     // We need the *truly* old key — it was captured before regeneration so we use a fake one
     const r = await sdkFetch(
       "POST",

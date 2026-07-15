@@ -1,5 +1,4 @@
 import AnalyticsEventRegistryModel from "../../models/analytics-event-registry.model.js";
-import AnalyticsKeyModel from "../../models/analytics-key.model.js";
 import AnalyticsLogModel from "../../models/analytics-log.model.js";
 import {
   GuideExposureModel,

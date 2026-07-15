@@ -62,6 +62,10 @@ export const validateRuntimeEvaluationDto = (
       record.eventProperties != null
         ? (record.eventProperties as Record<string, unknown>)
         : undefined,
+    forceShowCompleted:
+      typeof record.forceShowCompleted === "boolean"
+        ? record.forceShowCompleted
+        : undefined,
   };
 };
 

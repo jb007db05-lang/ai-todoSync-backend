@@ -1,7 +1,6 @@
 import type { Document, Types } from "mongoose";
 import { Schema, model } from "mongoose";
 import type { IPromptVariable } from "./prompt-library.model.js";
-import { promptVariableSchemaDefinition } from "./prompt-library.model.js";
 
 export interface IPromptVersion {
   promptId: Types.ObjectId | string; // root prompt id (parentId or self for v1)

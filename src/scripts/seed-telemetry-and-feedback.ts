@@ -10,7 +10,7 @@ dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 const MONGODB_URI =
   process.env.MONGODB_URI || "mongodb://localhost:27017/pristine";
-const TENANT_ID = "69e70c3d7c474f0f1337d982"; // tm_test1@yopmail.com
+const TENANT_ID = "6a5721566aa63d2dfaa99e57"; // nairadityasunil2003@gmail.com
 const API_KEY_ID = "69e74517fc6f64788b255a0b"; // "key 1"
 
 async function main() {
