@@ -25,6 +25,14 @@ class SurveyService {
     return surveyRepository.listSurveys(tenantId, sdkIntegrationId, query);
   }
 
+  public listResponses(
+    tenantId: string,
+    sdkIntegrationId: string,
+    surveyId: string,
+  ) {
+    return surveyRepository.listResponses(tenantId, sdkIntegrationId, surveyId);
+  }
+
   public async getSurvey(
     tenantId: string,
     sdkIntegrationId: string,
@@ -149,7 +157,7 @@ class SurveyService {
           targetingService.evaluate({
             rules: survey.targetingRules,
             context: contextWithTenant,
-            guideId: survey._id.toString(),
+            guideId: `survey:${survey._id.toString()}`,
             frequencyRules: survey.frequencyRules,
             scheduleRules: survey.scheduleRules,
           }),
@@ -199,24 +207,37 @@ class SurveyService {
       sdkIntegrationId,
       surveyId,
     );
-    
-    const exposures = await GuideExposureModel.find({ sdkIntegrationId, guideId: surveyId }).exec();
 
-    const totalImpressions = exposures.reduce((sum, exp) => sum + (exp.displayCount ?? 0), 0);
-    const uniqueUsersCount = new Set(exposures.map((exp) => exp.userId).filter(Boolean)).size;
+    const exposures = await GuideExposureModel.find({
+      sdkIntegrationId,
+      guideId: `survey:${surveyId}`,
+    }).exec();
+
+    const totalImpressions = exposures.reduce(
+      (sum, exp) => sum + (exp.displayCount ?? 0),
+      0,
+    );
+    const uniqueUsersCount = new Set(
+      exposures.map((exp) => exp.userId).filter(Boolean),
+    ).size;
     const starts = exposures.filter((exp) => exp.status !== "shown").length;
     const submissions = responses.length;
-    const dismissals = exposures.filter((exp) => exp.status === "dismissed" || exp.status === "abandoned").length;
-    
-    const completionRate = totalImpressions > 0 ? (submissions / totalImpressions) * 100 : 0;
-    const dropOffRate = starts > 0 ? ((starts - submissions) / starts) * 100 : 0;
+    const dismissals = exposures.filter(
+      (exp) => exp.status === "dismissed" || exp.status === "abandoned",
+    ).length;
+
+    const completionRate =
+      totalImpressions > 0 ? (submissions / totalImpressions) * 100 : 0;
+    const dropOffRate =
+      starts > 0 ? ((starts - submissions) / starts) * 100 : 0;
 
     let totalCompletionTime = 0;
     let completionTimeCount = 0;
-    
+
     exposures.forEach((exp) => {
       if (exp.startedAt && exp.completedAt) {
-        totalCompletionTime += (exp.completedAt.getTime() - exp.startedAt.getTime()) / 1000;
+        totalCompletionTime +=
+          (exp.completedAt.getTime() - exp.startedAt.getTime()) / 1000;
         completionTimeCount++;
       }
     });
@@ -233,20 +254,26 @@ class SurveyService {
         }
       });
     }
-    const averageCompletionTime = completionTimeCount > 0 ? totalCompletionTime / completionTimeCount : 0;
+    const averageCompletionTime =
+      completionTimeCount > 0 ? totalCompletionTime / completionTimeCount : 0;
 
     const promoters = responses.filter((r) => r.category === "PROMOTER").length;
     const passives = responses.filter((r) => r.category === "PASSIVE").length;
-    const detractors = responses.filter((r) => r.category === "DETRACTOR").length;
-    const nps = submissions > 0 ? ((promoters - detractors) / submissions) * 100 : 0;
+    const detractors = responses.filter(
+      (r) => r.category === "DETRACTOR",
+    ).length;
+    const nps =
+      submissions > 0 ? ((promoters - detractors) / submissions) * 100 : 0;
 
     const questionAnalytics = survey.questions.map((q) => {
-      const qAnswers = responses.map((r) => {
-        if (Array.isArray(r.answers)) {
-          return r.answers.find((a: any) => a.questionId === q.id)?.value;
-        }
-        return (r.answers as Record<string, unknown>)[q.id];
-      }).filter((val) => val !== undefined && val !== null);
+      const qAnswers = responses
+        .map((r) => {
+          if (Array.isArray(r.answers)) {
+            return r.answers.find((a: any) => a.questionId === q.id)?.value;
+          }
+          return (r.answers as Record<string, unknown>)[q.id];
+        })
+        .filter((val) => val !== undefined && val !== null);
 
       const answeredCount = qAnswers.length;
       const skippedCount = submissions - answeredCount;
@@ -254,7 +281,9 @@ class SurveyService {
       let averageScore = 0;
       const distribution: Record<string, number> = {};
 
-      if (["NPS", "RATING_SCALE", "OPINION_SCALE", "CSAT", "CES"].includes(q.type)) {
+      if (
+        ["NPS", "RATING_SCALE", "OPINION_SCALE", "CSAT", "CES"].includes(q.type)
+      ) {
         const scores = qAnswers.map(Number).filter(Number.isFinite);
         if (scores.length > 0) {
           averageScore = scores.reduce((sum, s) => sum + s, 0) / scores.length;
@@ -262,7 +291,10 @@ class SurveyService {
       }
 
       qAnswers.forEach((ans) => {
-        const key = typeof ans === "object" && ans !== null ? JSON.stringify(ans) : String(ans);
+        const key =
+          typeof ans === "object" && ans !== null
+            ? JSON.stringify(ans)
+            : String(ans);
         distribution[key] = (distribution[key] ?? 0) + 1;
       });
 
@@ -302,7 +334,8 @@ class SurveyService {
       promoters,
       passives,
       detractors,
-      responseRate: totalImpressions > 0 ? (submissions / totalImpressions) * 100 : 0,
+      responseRate:
+        totalImpressions > 0 ? (submissions / totalImpressions) * 100 : 0,
       impressions: totalImpressions,
       eligibleUsers: uniqueUsersCount,
       displays: totalImpressions,
@@ -340,7 +373,7 @@ class SurveyService {
 
   private extractNpsScore(
     survey: ISurveyDocument,
-    answers: Record<string, unknown>,
+    answers: Record<string, unknown> | Array<any>,
   ): number | null {
     const npsQuestion = survey.questions.find(
       (question) => question.type === "NPS",
@@ -349,7 +382,18 @@ class SurveyService {
       return null;
     }
 
-    const value = Number(answers[npsQuestion.id]);
+    let valueStr: any = undefined;
+    if (Array.isArray(answers)) {
+      const found = answers.find((ans) => ans?.questionId === npsQuestion.id);
+      if (found) {
+        valueStr = found.value;
+      }
+    } else if (answers && typeof answers === "object") {
+      valueStr = answers[npsQuestion.id];
+    }
+
+    const value =
+      valueStr !== undefined && valueStr !== null ? Number(valueStr) : NaN;
     return Number.isFinite(value) ? value : null;
   }
 

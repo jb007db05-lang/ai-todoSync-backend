@@ -20,6 +20,7 @@ class SurveyRoutes implements Routes {
     this.router.patch("/:surveyId", surveyController.updateSurvey);
     this.router.delete("/:surveyId", surveyController.deleteSurvey);
     this.router.post("/:surveyId/responses", surveyController.submitResponse);
+    this.router.get("/:surveyId/responses", surveyController.getResponses);
     this.router.get("/:surveyId/analytics", surveyController.analytics);
   }
 }

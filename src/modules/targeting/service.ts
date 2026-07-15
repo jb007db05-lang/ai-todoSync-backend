@@ -494,7 +494,9 @@ class TargetingService {
   }): Promise<ConditionEvaluation> {
     const userFilter = {
       tenantId: input.tenantId,
-      ...(input.sdkIntegrationId ? { sdkIntegrationId: input.sdkIntegrationId } : {}),
+      ...(input.sdkIntegrationId
+        ? { sdkIntegrationId: input.sdkIntegrationId }
+        : {}),
       guideId: input.guideId,
       ...(input.userId ? { userId: input.userId } : {}),
       ...(!input.userId && input.sessionId
@@ -519,6 +521,23 @@ class TargetingService {
 
     if (!exposure) {
       return { matched: true, reason: "No previous exposure" };
+    }
+
+    const hasCompletedOrDismissed =
+      (latestExposure &&
+        ["completed", "dismissed", "abandoned"].includes(
+          latestExposure.status,
+        )) ||
+      (sessionExposure &&
+        ["completed", "dismissed", "abandoned"].includes(
+          sessionExposure.status,
+        ));
+
+    if (hasCompletedOrDismissed) {
+      return {
+        matched: false,
+        reason: `Frequency cap: already completed, dismissed, or abandoned`,
+      };
     }
 
     if (input.rules.showOnceEver && totalDisplayCount > 0) {

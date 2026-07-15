@@ -149,6 +149,11 @@ class AuthService {
       throw new HttpError(400, "Email and password are required");
     }
 
+    const existingUser = await findUserByEmail(payload.email);
+    if (existingUser != null) {
+      throw new HttpError(409, "Email is already in use");
+    }
+
     const user = await createUser(payload);
 
     try {

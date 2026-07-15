@@ -22,7 +22,11 @@ class EngagementService {
     dto: EngagementTrackDto;
   }) {
     const experienceId =
-      input.dto.guideId ?? input.dto.surveyId ?? input.dto.checklistId;
+      input.dto.guideId ??
+      (input.dto.surveyId ? `survey:${input.dto.surveyId}` : undefined) ??
+      (input.dto.checklistId
+        ? `checklist:${input.dto.checklistId}`
+        : undefined);
     const userId = input.dto.userId ?? input.actorUserId;
 
     if (input.dto.eventName === "survey_completed" && input.dto.surveyId) {
@@ -31,19 +35,23 @@ class EngagementService {
         (input.dto.properties.responseId || input.dto.properties.isProcessed);
       if (!isAlreadyProcessed) {
         const surveyService = (await import("../surveys/service.js")).default;
-        await surveyService.submitResponse(input.tenantId, input.sdkIntegrationId, input.dto.surveyId, {
-          userId,
-          sessionId: input.dto.sessionId,
-          answers: (input.dto.properties?.answers || {}) as Record<
-            string,
-            unknown
-          >,
-          metadata: (input.dto.properties?.metadata || {}) as Record<
-            string,
-            unknown
-          >,
-        });
-        return { success: true };
+        await surveyService.submitResponse(
+          input.tenantId,
+          input.sdkIntegrationId,
+          input.dto.surveyId,
+          {
+            userId,
+            sessionId: input.dto.sessionId,
+            answers: (input.dto.properties?.answers || {}) as Record<
+              string,
+              unknown
+            >,
+            metadata: (input.dto.properties?.metadata || {}) as Record<
+              string,
+              unknown
+            >,
+          },
+        );
       }
     }
 

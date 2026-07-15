@@ -13,7 +13,8 @@ const getParam = (value: string | string[] | undefined): string =>
   Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
 
 const getSdkIntegrationId = (req: Request): string => {
-  const raw = req.sdkIntegration?._id?.toString() ?? req.params["sdkIntegrationId"];
+  const raw =
+    req.sdkIntegration?._id?.toString() ?? req.params["sdkIntegrationId"];
   const id = Array.isArray(raw) ? raw[0] : raw;
   if (!id) throw new Error("sdkIntegrationId missing from request context");
   return id;
@@ -103,6 +104,19 @@ class SurveyController {
         validateSubmitSurveyResponseDto(req.body),
       );
       res.status(201).json({ data: { response } });
+    } catch (error) {
+      this.respondError(res, error);
+    }
+  };
+
+  public getResponses = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const responses = await surveyService.listResponses(
+        getTenantIdFromRequest(req),
+        getSdkIntegrationId(req),
+        getParam(req.params.surveyId),
+      );
+      res.status(200).json({ data: { responses } });
     } catch (error) {
       this.respondError(res, error);
     }
