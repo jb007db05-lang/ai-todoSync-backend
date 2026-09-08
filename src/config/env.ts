@@ -24,6 +24,8 @@ export interface EnvConfig {
   SMTP_PASS?: string;
   SMTP_FROM?: string;
   REDIS_URL: string;
+  GEMINI_API_KEY?: string;
+  GEMINI_MODEL: string;
 }
 
 const {
@@ -48,6 +50,8 @@ const {
   SMTP_PASS,
   SMTP_FROM,
   REDIS_URL = "redis://127.0.0.1:6379",
+  GEMINI_API_KEY,
+  GEMINI_MODEL = "gemini-2.0-flash",
 } = process.env;
 
 if (!MONGODB_URI || !JWT_SECRET || !JWT_EXPIRES_IN) {
@@ -92,6 +96,8 @@ const env: EnvConfig = {
   SMTP_PASS: SMTP_PASS?.trim() || undefined,
   SMTP_FROM: SMTP_FROM?.trim() || undefined,
   REDIS_URL: REDIS_URL.trim(),
+  GEMINI_API_KEY: GEMINI_API_KEY?.trim() || undefined,
+  GEMINI_MODEL: GEMINI_MODEL.trim(),
 };
 
 export default env;

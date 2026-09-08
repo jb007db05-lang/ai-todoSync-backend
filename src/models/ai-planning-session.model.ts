@@ -4,10 +4,12 @@ import { Schema, model } from "mongoose";
 export type AiPlanningSessionStatus = "ACTIVE" | "ARCHIVED";
 
 export interface IAiPlanningSession {
-  projectId: Types.ObjectId | string;
+  workspaceId?: Types.ObjectId | string | null;
+  projectId?: Types.ObjectId | string | null;
   createdBy: Types.ObjectId | string;
   title: string;
   status: AiPlanningSessionStatus;
+  lastMessageAt?: Date;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -17,22 +19,29 @@ export interface IAiPlanningSessionDocument
 
 const aiPlanningSessionSchema = new Schema<IAiPlanningSessionDocument>(
   {
+    workspaceId: {
+      type: Schema.Types.ObjectId,
+      ref: "Workspace",
+      default: null,
+      index: true,
+    },
     projectId: {
       type: Schema.Types.ObjectId,
       ref: "Project",
-      required: true,
+      default: null,
       index: true,
     },
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
+      index: true,
     },
     title: {
       type: String,
       required: true,
       trim: true,
-      default: "Planning conversation",
+      default: "Planning Session",
     },
     status: {
       type: String,
@@ -40,11 +49,16 @@ const aiPlanningSessionSchema = new Schema<IAiPlanningSessionDocument>(
       default: "ACTIVE",
       required: true,
     },
+    lastMessageAt: {
+      type: Date,
+      default: Date.now,
+    },
   },
   { timestamps: true },
 );
 
-aiPlanningSessionSchema.index({ projectId: 1, updatedAt: -1 });
+aiPlanningSessionSchema.index({ workspaceId: 1, updatedAt: -1 });
+aiPlanningSessionSchema.index({ createdBy: 1, updatedAt: -1 });
 
 export default model<IAiPlanningSessionDocument>(
   "AiPlanningSession",

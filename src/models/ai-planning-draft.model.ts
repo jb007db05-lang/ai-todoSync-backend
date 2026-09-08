@@ -32,6 +32,7 @@ export interface IAiPlanningPlan {
   documentation: string;
   milestones: IAiPlanningMilestoneDraft[];
   tasks: IAiPlanningTaskDraft[];
+  [key: string]: any;
 }
 
 export interface IAiPlanningArtifactIds {
@@ -41,7 +42,8 @@ export interface IAiPlanningArtifactIds {
 }
 
 export interface IAiPlanningDraft {
-  projectId: Types.ObjectId | string;
+  workspaceId?: Types.ObjectId | string | null;
+  projectId?: Types.ObjectId | string | null;
   sessionId: Types.ObjectId | string;
   requestedBy: Types.ObjectId | string;
   status: AiPlanningDraftStatus;
@@ -60,10 +62,16 @@ export interface IAiPlanningDraftDocument extends IAiPlanningDraft, Document {}
 
 const aiPlanningDraftSchema = new Schema<IAiPlanningDraftDocument>(
   {
+    workspaceId: {
+      type: Schema.Types.ObjectId,
+      ref: "Workspace",
+      default: null,
+      index: true,
+    },
     projectId: {
       type: Schema.Types.ObjectId,
       ref: "Project",
-      required: true,
+      default: null,
       index: true,
     },
     sessionId: {
@@ -98,7 +106,7 @@ const aiPlanningDraftSchema = new Schema<IAiPlanningDraftDocument>(
   { timestamps: true },
 );
 
-aiPlanningDraftSchema.index({ projectId: 1, createdAt: -1 });
+aiPlanningDraftSchema.index({ workspaceId: 1, createdAt: -1 });
 aiPlanningDraftSchema.index({ sessionId: 1, createdAt: -1 });
 
 export default model<IAiPlanningDraftDocument>(

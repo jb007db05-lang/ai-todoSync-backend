@@ -7,6 +7,13 @@ import {
   requireProjectRole,
 } from "../middleware/project-access.middleware.js";
 import projectController from "../controllers/project.controller.js";
+import {
+  getProjectStates,
+  createProjectState,
+  updateProjectState,
+  deleteProjectState,
+  reorderProjectStates,
+} from "../controllers/project-state.controller.js";
 
 class ProjectRoutes implements Routes {
   public path = "/api/projects";
@@ -47,6 +54,13 @@ class ProjectRoutes implements Routes {
       isProjectMember,
       projectController.deleteProject,
     );
+
+    // Project Workflow States
+    this.router.get("/:id/states", isProjectMember, getProjectStates);
+    this.router.post("/:id/states", requireProjectRole("ADMIN"), createProjectState);
+    this.router.patch("/:id/states/reorder", requireProjectRole("ADMIN"), reorderProjectStates);
+    this.router.patch("/:id/states/:stateId", requireProjectRole("ADMIN"), updateProjectState);
+    this.router.delete("/:id/states/:stateId", requireProjectRole("ADMIN"), deleteProjectState);
   }
 }
 

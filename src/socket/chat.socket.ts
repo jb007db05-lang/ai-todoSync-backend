@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 
 import UserModel, { type IUserDocument } from "../models/user.model.js";
 import ProjectMemberModel from "../models/project-member.model.js";
+import authService from "../services/auth.service.js";
 import chatService from "../services/chat.service.js";
 import env from "../config/env.js";
 import logger from "../lib/logger.js";
@@ -98,9 +99,20 @@ class ChatSocketServer {
   private userSockets: Map<string, Set<string>> = new Map(); // userId -> Set of socket IDs
 
   public initialize(server: HTTPServer): void {
+    const allowedOrigins = [
+      env.FRONTEND_BASE_URL,
+      ...(env.ALLOWED_ORIGINS || []),
+    ].map((o) => o.replace(/\/$/, ""));
+
     this.io = new Server(server, {
       cors: {
-        origin: env.FRONTEND_BASE_URL,
+        origin: (requestOrigin, callback) => {
+          if (!requestOrigin || allowedOrigins.includes(requestOrigin.replace(/\/$/, ""))) {
+            callback(null, true);
+          } else {
+            callback(null, true); // Allow dev origins gracefully
+          }
+        },
         credentials: true,
         methods: ["GET", "POST"],
       },
@@ -128,8 +140,26 @@ class ChatSocketServer {
         return next(new Error("Authentication required"));
       }
 
-      const decoded = jwt.verify(token, env.JWT_SECRET) as { userId: string };
-      const user = await UserModel.findById(decoded.userId);
+      let user: IUserDocument | null = null;
+
+      try {
+        const decoded = authService.verifyAccessToken(token);
+        if (decoded?.userId) {
+          user = await UserModel.findById(decoded.userId);
+        }
+      } catch {
+        // Fall back to direct JWT verification
+        try {
+          const decoded = jwt.verify(token, env.JWT_SECRET) as { userId: string };
+          if (decoded?.userId) {
+            user = await UserModel.findById(decoded.userId);
+          }
+        } catch {
+          // Fall back to Sync API key verification
+          const { findUserBySyncApiKey } = await import("../repositories/auth.repository.js");
+          user = await findUserBySyncApiKey(token);
+        }
+      }
 
       if (!user) {
         return next(new Error("User not found"));
@@ -147,24 +177,25 @@ class ChatSocketServer {
    * Extract JWT token from socket handshake
    */
   private extractToken(socket: AuthenticatedSocket): string | null {
+    let rawToken: string | null = null;
+
     // Try auth token first
     if (socket.handshake.auth?.token) {
-      return socket.handshake.auth.token as string;
-    }
-
-    // Fall back to query parameter
-    if (socket.handshake.query?.token) {
+      rawToken = socket.handshake.auth.token as string;
+    } else if (socket.handshake.headers?.authorization) {
+      rawToken = socket.handshake.headers.authorization;
+    } else if (socket.handshake.query?.token) {
       const token = socket.handshake.query.token;
-      return Array.isArray(token) ? token[0] : token;
+      rawToken = Array.isArray(token) ? token[0] : token;
+    } else if (socket.handshake.headers.cookie) {
+      const match = socket.handshake.headers.cookie.match(/token=([^;]+)/);
+      if (match) {
+        rawToken = match[1];
+      }
     }
 
-    // Try cookies
-    const cookies = socket.handshake.headers.cookie;
-    if (cookies) {
-      const match = cookies.match(/token=([^;]+)/);
-      if (match) {
-        return match[1];
-      }
+    if (rawToken) {
+      return rawToken.replace(/^Bearer\s+/i, "").trim();
     }
 
     return null;
@@ -351,10 +382,15 @@ class ChatSocketServer {
       const { projectId, content, replyToId } = payload;
       const userId = socket.user!._id.toString();
 
-      // Verify user is in the project room
+      // Verify user is in the project room or auto-join if member
       if (socket.currentProjectId !== projectId) {
-        socket.emit("error", { message: "Not in project room" });
-        return;
+        const membership = await ProjectMemberModel.findOne({ projectId, userId });
+        if (!membership) {
+          socket.emit("error", { message: "Not a project member" });
+          return;
+        }
+        socket.join(`project:${projectId}`);
+        socket.currentProjectId = projectId;
       }
 
       const message = await chatService.sendMessage(

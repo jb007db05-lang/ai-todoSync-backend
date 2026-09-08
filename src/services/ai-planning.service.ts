@@ -16,6 +16,9 @@ import epicService from "./epic.service.js";
 import noteService from "./note.service.js";
 import projectService from "./project.service.js";
 import taskService from "./task.service.js";
+import workspaceService from "./workspace.service.js";
+import env from "../config/env.js";
+import mongoose from "mongoose";
 
 class HttpError extends Error {
   public status: number;
@@ -448,7 +451,7 @@ class AiPlanningService {
         provider: "gemini",
         apiKey: hasGlobalKey ? "••••••••" : "",
         baseUrl: "",
-        modelName: "Gemini 2.5 Flash",
+        modelName: "Gemini 3.6 Flash",
       };
     }
     return {
@@ -467,22 +470,13 @@ class AiPlanningService {
     const enabled = !!payload.enabled;
     const provider = payload.provider || "gemini";
     const baseUrl = typeof payload.baseUrl === "string" ? payload.baseUrl.trim() : "";
-    const modelName = typeof payload.modelName === "string" ? payload.modelName.trim() : "Gemini 2.5 Flash";
+    const modelName = typeof payload.modelName === "string" ? payload.modelName.trim() : "Gemini 3.6 Flash";
     
     if (enabled) {
       const supportedProviders = ["openai", "anthropic", "gemini"];
-      const supportedModels: Record<string, string[]> = {
-        openai: ["GPT-5", "GPT-5 Mini"],
-        anthropic: ["Claude Sonnet", "Claude Opus"],
-        gemini: ["Gemini 2.5 Flash", "Gemini 2.5 Pro"]
-      };
 
       if (!supportedProviders.includes(provider)) {
         throw new Error(`Unsupported AI provider: ${provider}`);
-      }
-      const models = supportedModels[provider];
-      if (!models || !models.includes(modelName)) {
-        throw new Error(`Unsupported model ${modelName} for provider ${provider}`);
       }
       
       const user = await UserModel.findById(userId).exec();
@@ -560,7 +554,7 @@ class AiPlanningService {
     
     const provider = payload.provider || "gemini";
     const baseUrl = typeof payload.baseUrl === "string" ? payload.baseUrl.trim() : "";
-    const modelName = typeof payload.modelName === "string" ? payload.modelName.trim() : "Gemini 2.5 Flash";
+    const modelName = typeof payload.modelName === "string" ? payload.modelName.trim() : "Gemini 3.6 Flash";
     
     let apiKey = payload.apiKey;
     if (!apiKey || apiKey === "••••••••") {
@@ -568,18 +562,15 @@ class AiPlanningService {
       if (user) {
         if (provider === "openai") apiKey = user.openaiApiKey;
         if (provider === "anthropic") apiKey = user.anthropicApiKey;
-        if (provider === "gemini") apiKey = user.geminiApiKey;
+        if (provider === "gemini") apiKey = user?.geminiApiKey || env.GEMINI_API_KEY;
       }
+    }
+    if (!apiKey && provider === "gemini") {
+      apiKey = env.GEMINI_API_KEY;
     }
 
     const supportedProviders = ["openai", "anthropic", "gemini"];
-    const supportedModels: Record<string, string[]> = {
-      openai: ["GPT-5", "GPT-5 Mini"],
-      anthropic: ["Claude Sonnet", "Claude Opus"],
-      gemini: ["Gemini 2.5 Flash", "Gemini 2.5 Pro"]
-    };
-
-    if (!supportedProviders.includes(provider) || !supportedModels[provider]?.includes(modelName)) {
+    if (!supportedProviders.includes(provider)) {
       return { success: false, error: "Configuration Invalid" };
     }
 
@@ -641,9 +632,13 @@ class AiPlanningService {
       body = { model, messages, temperature: 0.2 };
     } else if (provider === "gemini") {
       if (!url) url = "https://generativelanguage.googleapis.com/v1beta/openai";
-      url = `${url.replace(/\/$/, "")}/chat/completions`;
-      if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-      body = { model, messages, temperature: 0.2 };
+      url = `${url.replace(/\/$/, "")}/chat/completions${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ""}`;
+      if (apiKey) {
+        headers["Authorization"] = `Bearer ${apiKey}`;
+        headers["x-goog-api-key"] = apiKey;
+      }
+      let sanitizedModel = "gemini-3.6-flash";
+      body = { model: sanitizedModel, messages, temperature: 0.2 };
     } else if (provider === "anthropic") {
       if (!url) url = "https://api.anthropic.com/v1";
       url = `${url.replace(/\/$/, "")}/messages`;
@@ -692,7 +687,7 @@ class AiPlanningService {
       method: "POST",
       headers,
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(300000),
     });
 
     if (!response.ok) {
@@ -741,8 +736,11 @@ class AiPlanningService {
           if (user) {
             if (config.provider === "openai") apiKey = user.openaiApiKey;
             if (config.provider === "anthropic") apiKey = user.anthropicApiKey;
-            if (config.provider === "gemini") apiKey = user.geminiApiKey;
+            if (config.provider === "gemini") apiKey = user.geminiApiKey || env.GEMINI_API_KEY;
           }
+        }
+        if (!apiKey && config.provider === "gemini") {
+          apiKey = env.GEMINI_API_KEY;
         }
 
         const systemPrompt = `You are a world-class AI Project Assistant acting simultaneously as a Senior Project Manager, Business Analyst, and Solution Architect.
@@ -819,8 +817,11 @@ Instructions:
           if (user) {
             if (config.provider === "openai") apiKey = user.openaiApiKey;
             if (config.provider === "anthropic") apiKey = user.anthropicApiKey;
-            if (config.provider === "gemini") apiKey = user.geminiApiKey;
+            if (config.provider === "gemini") apiKey = user.geminiApiKey || env.GEMINI_API_KEY;
           }
+        }
+        if (!apiKey && config.provider === "gemini") {
+          apiKey = env.GEMINI_API_KEY;
         }
 
         const systemPrompt = `You are a Senior Project Manager and Business Analyst.
@@ -1056,10 +1057,118 @@ Existing Workspace Context:
     return normalized.length > 72 ? `${normalized.slice(0, 69)}...` : normalized;
   }
 
+  private async resolveValidWorkspaceId(userId: string, workspaceId?: string | null): Promise<string | null> {
+    if (workspaceId && mongoose.Types.ObjectId.isValid(workspaceId)) {
+      return workspaceId;
+    }
+    try {
+      const defaultWs = await workspaceService.getOrCreateDefaultWorkspace(userId);
+      return defaultWs._id.toString();
+    } catch {
+      return null;
+    }
+  }
+
+  public async listWorkspaceSessions(userId: string, workspaceId?: string | null) {
+    const validWsId = await this.resolveValidWorkspaceId(userId, workspaceId);
+    const query: any = { createdBy: userId };
+    if (validWsId) {
+      query.workspaceId = validWsId;
+    }
+    const sessions = await AiPlanningSessionModel.find(query)
+      .sort({ updatedAt: -1, _id: -1 })
+      .lean();
+
+    return sessions.map((session) => this.toSessionDto(session));
+  }
+
+  public async createWorkspaceSession(
+    userId: string,
+    workspaceId?: string | null,
+    payload?: { title?: unknown },
+  ) {
+    const validWsId = await this.resolveValidWorkspaceId(userId, workspaceId);
+    const title =
+      typeof payload?.title === "string" && payload.title.trim()
+        ? payload.title.trim().slice(0, 120)
+        : "New Planning Session";
+
+    const session = await AiPlanningSessionModel.create({
+      workspaceId: validWsId,
+      createdBy: userId,
+      title,
+      status: "ACTIVE",
+    });
+
+    return this.toSessionDto(session);
+  }
+
+  public async getWorkspaceSession(
+    userId: string,
+    workspaceId?: string | null,
+    sessionId?: string,
+  ) {
+    if (!sessionId || !mongoose.Types.ObjectId.isValid(sessionId)) {
+      throw new HttpError(400, "Invalid session ID");
+    }
+
+    const session = await AiPlanningSessionModel.findOne({
+      _id: sessionId,
+      createdBy: userId,
+    }).exec();
+
+    if (!session) {
+      throw new HttpError(404, "Planning session not found");
+    }
+
+    const [messages, drafts] = await Promise.all([
+      AiPlanningMessageModel.find({ sessionId })
+        .sort({ createdAt: 1, _id: 1 })
+        .lean(),
+      AiPlanningDraftModel.find({ sessionId })
+        .sort({ createdAt: -1, _id: -1 })
+        .lean(),
+    ]);
+
+    return {
+      session: this.toSessionDto(session),
+      messages: messages.map((message) => this.toMessageDto(message)),
+      drafts: drafts.map((draft) => this.toDraftDto(draft)),
+    };
+  }
+
+  public async deleteWorkspaceSession(
+    userId: string,
+    workspaceId?: string | null,
+    sessionId?: string,
+  ) {
+    if (!sessionId || !mongoose.Types.ObjectId.isValid(sessionId)) {
+      throw new HttpError(400, "Invalid session ID");
+    }
+
+    const session = await AiPlanningSessionModel.findOne({
+      _id: sessionId,
+      createdBy: userId,
+    }).exec();
+
+    if (!session) {
+      throw new HttpError(404, "Planning session not found");
+    }
+
+    await Promise.all([
+      AiPlanningSessionModel.deleteOne({ _id: sessionId }),
+      AiPlanningMessageModel.deleteMany({ sessionId }),
+      AiPlanningDraftModel.deleteMany({ sessionId }),
+    ]);
+
+    return { success: true };
+  }
+
   private toSessionDto(session: any) {
     return {
       id: session._id.toString(),
-      projectId: session.projectId.toString(),
+      workspaceId: session.workspaceId ? session.workspaceId.toString() : null,
+      projectId: session.projectId ? session.projectId.toString() : null,
       createdBy: session.createdBy.toString(),
       title: session.title,
       status: session.status,
@@ -1071,7 +1180,8 @@ Existing Workspace Context:
   private toMessageDto(message: any) {
     return {
       id: message._id.toString(),
-      projectId: message.projectId.toString(),
+      workspaceId: message.workspaceId ? message.workspaceId.toString() : null,
+      projectId: message.projectId ? message.projectId.toString() : null,
       sessionId: message.sessionId.toString(),
       role: message.role,
       content: message.content,
@@ -1083,7 +1193,8 @@ Existing Workspace Context:
   private toDraftDto(draft: any) {
     return {
       id: draft._id.toString(),
-      projectId: draft.projectId.toString(),
+      workspaceId: draft.workspaceId ? draft.workspaceId.toString() : null,
+      projectId: draft.projectId ? draft.projectId.toString() : null,
       sessionId: draft.sessionId.toString(),
       requestedBy: draft.requestedBy.toString(),
       status: draft.status,

@@ -46,11 +46,11 @@ class App {
     this.app.set("trust proxy", 1);
 
     this.app.use((req, _res, next) => {
+      const hasAuth = !!req.headers.authorization;
+      const hasSyncKey = !!req.headers["x-sync-api-key"];
       logger.info(`Incoming Request: ${req.method} ${req.url}`, {
-        headers: {
-          "x-sync-api-key": req.headers["x-sync-api-key"] ? "***" : "missing",
-          "user-agent": req.headers["user-agent"],
-        },
+        authType: hasAuth ? "Bearer JWT" : hasSyncKey ? "Sync API Key" : "None",
+        userAgent: req.headers["user-agent"],
       });
       next();
     });

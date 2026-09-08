@@ -4,7 +4,8 @@ import { Schema, model } from "mongoose";
 export type AiPlanningMessageRole = "USER" | "ASSISTANT";
 
 export interface IAiPlanningMessage {
-  projectId: Types.ObjectId | string;
+  workspaceId?: Types.ObjectId | string | null;
+  projectId?: Types.ObjectId | string | null;
   sessionId: Types.ObjectId | string;
   role: AiPlanningMessageRole;
   content: string;
@@ -19,10 +20,16 @@ export interface IAiPlanningMessageDocument
 
 const aiPlanningMessageSchema = new Schema<IAiPlanningMessageDocument>(
   {
+    workspaceId: {
+      type: Schema.Types.ObjectId,
+      ref: "Workspace",
+      default: null,
+      index: true,
+    },
     projectId: {
       type: Schema.Types.ObjectId,
       ref: "Project",
-      required: true,
+      default: null,
       index: true,
     },
     sessionId: {

@@ -174,6 +174,11 @@ class AnalyticsRoutes implements Routes {
       authMiddleware,
       semanticAnalyticsController.simulate,
     );
+    this.router.get(
+      "/analytics/projects/:projectId/report",
+      authMiddleware,
+      semanticAnalyticsController.getProjectReport,
+    );
 
     // 5. MCP-COMPATIBLE AI TOOL LAYER (Protected by JWT, AI-safe only)
     // AI assistants discover governed tools here, never raw DB.

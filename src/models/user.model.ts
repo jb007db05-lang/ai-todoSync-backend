@@ -78,56 +78,20 @@ const userSchema = new Schema<IUserDocument>(
     openaiApiKey: {
       type: String,
       default: null,
-      get: (v: string) => {
-        if (!v) return v;
-        try {
-          return decrypt(v);
-        } catch {
-          return v;
-        }
-      },
-      set: (v: string) => {
-        if (v && !v.includes(":")) {
-          return encrypt(v);
-        }
-        return v;
-      },
+      get: (v: string) => (v ? decrypt(v) : v),
+      set: (v: string) => (v ? encrypt(v) : v),
     },
     anthropicApiKey: {
       type: String,
       default: null,
-      get: (v: string) => {
-        if (!v) return v;
-        try {
-          return decrypt(v);
-        } catch {
-          return v;
-        }
-      },
-      set: (v: string) => {
-        if (v && !v.includes(":")) {
-          return encrypt(v);
-        }
-        return v;
-      },
+      get: (v: string) => (v ? decrypt(v) : v),
+      set: (v: string) => (v ? encrypt(v) : v),
     },
     geminiApiKey: {
       type: String,
       default: null,
-      get: (v: string) => {
-        if (!v) return v;
-        try {
-          return decrypt(v);
-        } catch {
-          return v;
-        }
-      },
-      set: (v: string) => {
-        if (v && !v.includes(":")) {
-          return encrypt(v);
-        }
-        return v;
-      },
+      get: (v: string) => (v ? decrypt(v) : v),
+      set: (v: string) => (v ? encrypt(v) : v),
     },
     twoFactorEnabled: {
       type: Boolean,

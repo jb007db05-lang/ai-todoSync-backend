@@ -51,6 +51,7 @@ export interface ITask {
   rolledOver: boolean;
   rolloverCount: number;
   source?: string;
+  estimatedHours?: number;
   projectId?: Types.ObjectId | string | null;
   epicId?: Types.ObjectId | string | null;
   assignedTo: Types.ObjectId | string;
@@ -217,6 +218,10 @@ const taskSchema = new Schema<ITaskDocument>(
     source: {
       type: String,
       default: "manual",
+    },
+    estimatedHours: {
+      type: Number,
+      default: 8,
     },
     projectId: {
       type: Schema.Types.ObjectId,

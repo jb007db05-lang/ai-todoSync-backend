@@ -44,6 +44,15 @@ interface ProjectDto {
 interface ProjectPayload {
   name?: string;
   description?: string;
+  workspaceId?: string;
+  icon?: string;
+  color?: string;
+  startDate?: Date;
+  targetDate?: Date;
+  status?: any;
+  priority?: any;
+  tags?: string[];
+  customFields?: any[];
 }
 
 interface AddProjectMemberPayload {
@@ -145,6 +154,10 @@ class ProjectService {
     } catch (error) {
       throw this.mapPersistenceError(error);
     }
+  }
+
+  public async getProjectById(projectId: string): Promise<IProjectDocument | null> {
+    return getProjectById(projectId);
   }
 
   public async fetchProjects(userId: string): Promise<ProjectDto[]> {

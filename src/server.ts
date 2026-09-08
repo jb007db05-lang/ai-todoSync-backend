@@ -23,9 +23,15 @@ import TargetingRoutes from "./modules/targeting/routes.js";
 import AiPlanningRoutes from "./routes/ai-planning.routes.js";
 import SdkIntegrationRoutes from "./modules/sdk-integrations/routes.js";
 import InvitationRoutes from "./routes/invitation.routes.js";
+import WorkspaceRoutes from "./routes/workspace.routes.js";
+import CentralizedAiRoutes from "./routes/ai.routes.js";
+import DocumentRoutes from "./routes/document.routes.js";
 import logger from "./lib/logger.js";
 
 const server = new App([
+  new DocumentRoutes(),
+  new CentralizedAiRoutes(),
+  new WorkspaceRoutes(),
   new GuideRoutes(),
   new SurveyRoutes(),
   new ChecklistRoutes(),

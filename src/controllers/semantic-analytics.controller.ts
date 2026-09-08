@@ -8,6 +8,7 @@ import semanticAnalyticsService, {
 import semanticOperationalIntelligenceService, {
   type IntelligenceQueryInput,
 } from "../services/semantic-operational-intelligence.service.js";
+import semanticIntelligenceService from "../services/semantic-intelligence.service.js";
 
 type AuthenticatedRequest = Request & { user?: IUserDocument };
 
@@ -336,6 +337,29 @@ class SemanticAnalyticsController {
       res
         .status(200)
         .json({ message: "Semantic rollup snapshot written", data: result });
+    } catch (error) {
+      this.handleError(res, error);
+    }
+  };
+
+  public getProjectReport = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ) => {
+    try {
+      const user = req.user;
+      if (!user) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+      const projectId = req.params.projectId as string;
+      if (!projectId) {
+        res.status(400).json({ error: "projectId is required" });
+        return;
+      }
+
+      const report = await semanticIntelligenceService.generateReport(projectId);
+      res.status(200).json({ message: "Semantic report generated", report });
     } catch (error) {
       this.handleError(res, error);
     }

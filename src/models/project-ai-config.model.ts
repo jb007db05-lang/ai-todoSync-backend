@@ -36,20 +36,8 @@ const projectAiConfigSchema = new Schema<IProjectAiConfigDocument>(
     },
     apiKey: {
       type: String,
-      get: (v: string) => {
-        if (!v) return v;
-        try {
-          return decrypt(v);
-        } catch {
-          return v;
-        }
-      },
-      set: (v: string) => {
-        if (v && !v.includes(":")) {
-          return encrypt(v);
-        }
-        return v;
-      },
+      get: (v: string) => (v ? decrypt(v) : v),
+      set: (v: string) => (v ? encrypt(v) : v),
     },
     baseUrl: {
       type: String,
@@ -58,7 +46,7 @@ const projectAiConfigSchema = new Schema<IProjectAiConfigDocument>(
     modelName: {
       type: String,
       required: true,
-      default: "Gemini 2.5 Flash",
+      default: "Gemini 3.6 Flash",
     },
   },
   {
