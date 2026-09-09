@@ -24,6 +24,7 @@ declare global {
       apiKeyId?: string;
       /** Populated by validateSdkIntegrationKey / validateSdkKeyUnified */
       sdkIntegration?: ISdkIntegrationDocument;
+      sdkSession?: any;
     }
   }
 }

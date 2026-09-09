@@ -9,6 +9,8 @@ import sdkIntegrationService, {
 } from "../modules/sdk-integrations/service.js";
 export { normalizeOrigin, matchOrigin };
 import logger from "../lib/logger.js";
+import { SdkAuthService } from "../services/sdkAuth.service.js";
+import { sdkAuthConfig } from "../config/sdkAuth.config.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -25,6 +27,7 @@ export const extractRawKey = (req: Request): string | undefined => {
   return (
     bearerToken ||
     (req.headers["x-api-key"] as string) ||
+    (req.headers["x-sdk-key"] as string) ||
     (req.body && req.body.apiKey) ||
     (req.body && req.body.sdkKey)
   );
@@ -39,7 +42,7 @@ export const setCorsHeaders = (res: Response, origin: string): void => {
   );
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, x-api-key, x-sync-api-key, x-sdk-version",
+    "Content-Type, Authorization, x-api-key, x-sdk-key, x-session-id, x-timestamp, x-nonce, x-body-sha256, x-signature, x-sync-api-key, x-sdk-version",
   );
 };
 
@@ -78,9 +81,10 @@ export const validateIntegrationOrigin = (
 
   try {
     const parsedOrigin = normalizeOrigin(origin);
-    const domainMatches = integration.domain && matchOrigin(parsedOrigin, integration.domain);
-    const allowedMatches = (integration.allowedOrigins || []).some((o: string) =>
-      matchOrigin(parsedOrigin, o),
+    const domainMatches =
+      integration.domain && matchOrigin(parsedOrigin, integration.domain);
+    const allowedMatches = (integration.allowedOrigins || []).some(
+      (o: string) => matchOrigin(parsedOrigin, o),
     );
 
     if (domainMatches || allowedMatches) {
@@ -121,7 +125,6 @@ export class ServerSdkAuthStrategy implements SdkAuthStrategy {
   }
   async authenticate(_req: Request, _integration: any): Promise<string | null> {
     // Server strategies bypass browser-based Origin checks.
-    // In the future, this can verify signatures, API tokens, IP allowlists, etc.
     return null;
   }
 }
@@ -140,147 +143,7 @@ export const validateSdkIntegrationKey = async (
   res: Response,
   next: NextFunction,
 ): Promise<void> => {
-  // Check if integration is already resolved in req.sdkIntegration (e.g. by CORS middleware)
-  if (req.sdkIntegration) {
-    const integration = req.sdkIntegration;
-
-    if (integration.status === "disabled") {
-      logSecurityEvent("Disabled Integration", req, extractRawKey(req), {
-        id: integration._id.toString(),
-      });
-      res
-        .status(403)
-        .json({ error: "This SDK integration has been disabled." });
-      return;
-    }
-
-    if (integration.status === "revoked") {
-      logSecurityEvent("Revoked Integration", req, extractRawKey(req), {
-        id: integration._id.toString(),
-      });
-      res.status(403).json({ error: "This SDK key has been revoked." });
-      return;
-    }
-
-    let authError: string | null = null;
-    const strategy = authStrategies.find((s) => s.supports(req));
-    if (strategy) {
-      authError = await strategy.authenticate(req, integration);
-    }
-
-    if (authError) {
-      logSecurityEvent("Origin Mismatch", req, extractRawKey(req), {
-        error: authError,
-      });
-      res.status(403).json({ error: authError });
-      return;
-    }
-
-    if (req.headers.origin) {
-      setCorsHeaders(res, req.headers.origin);
-    }
-
-    const user = await sdkIntegrationService.resolveTenant(
-      integration.tenantId,
-    );
-    if (!user) {
-      logSecurityEvent("Owner Not Found", req, extractRawKey(req));
-      res.status(401).json({ error: "Integration owner not found" });
-      return;
-    }
-
-    req.user = user;
-    next();
-    return;
-  }
-
-  const rawKey = extractRawKey(req);
-
-  if (!rawKey || typeof rawKey !== "string") {
-    logSecurityEvent("Missing Key", req);
-    res.status(401).json({
-      error:
-        "SDK key is required in Authorization Bearer, x-api-key header, or sdkKey body field",
-    });
-    return;
-  }
-
-  try {
-    const keyHash = deterministicHash(rawKey);
-    const integration = await sdkIntegrationService.resolveByKeyHash(keyHash);
-
-    if (!integration) {
-      logSecurityEvent("Invalid Key", req, rawKey);
-      res.status(401).json({ error: "Invalid or revoked SDK key" });
-      return;
-    }
-
-    if (integration.status === "disabled") {
-      logSecurityEvent("Disabled Integration", req, rawKey, {
-        id: integration._id.toString(),
-      });
-      res
-        .status(403)
-        .json({ error: "This SDK integration has been disabled." });
-      return;
-    }
-
-    if (integration.status === "revoked") {
-      logSecurityEvent("Revoked Integration", req, rawKey, {
-        id: integration._id.toString(),
-      });
-      res.status(403).json({ error: "This SDK key has been revoked." });
-      return;
-    }
-
-    let authError: string | null = null;
-    const strategy = authStrategies.find((s) => s.supports(req));
-    if (strategy) {
-      authError = await strategy.authenticate(req, integration);
-    }
-
-    if (authError) {
-      logSecurityEvent("Origin Mismatch", req, rawKey, { error: authError });
-      res.status(403).json({ error: authError });
-      return;
-    }
-
-    if (req.headers.origin) {
-      setCorsHeaders(res, req.headers.origin);
-    }
-
-    const user = await sdkIntegrationService.resolveTenant(
-      integration.tenantId,
-    );
-    if (!user) {
-      logSecurityEvent("Owner Not Found", req, rawKey);
-      res.status(401).json({ error: "Integration owner not found" });
-      return;
-    }
-
-    req.user = user;
-    req.sdkIntegration = integration;
-
-    void sdkIntegrationService
-      .touchConnection(integration._id.toString(), {
-        latestOrigin: req.headers.origin,
-        sdkVersion: req.body?.sdkVersion as string | undefined,
-        touchRuntime: req.path.includes("/runtime"),
-        touchEvent: req.path.includes("/track"),
-        touchHeartbeat: true,
-      })
-      .catch(() => {});
-
-    next();
-  } catch (error) {
-    logger.error(
-      "SDK Integration Auth Middleware Error:",
-      error instanceof Error ? error : new Error(String(error)),
-    );
-    res
-      .status(500)
-      .json({ error: "Internal server error during authentication" });
-  }
+  await validateSdkKeyUnified(req, res, next);
 };
 
 // ---------------------------------------------------------------------------
@@ -395,168 +258,67 @@ export const validateSdkKeyUnified = async (
   res: Response,
   next: NextFunction,
 ): Promise<void> => {
-  if (req.sdkIntegration) {
-    const integration = req.sdkIntegration;
+  const hasSignatureHeaders =
+    req.headers["x-session-id"] && req.headers["x-signature"];
 
-    if (integration.status === "disabled") {
-      logSecurityEvent("Disabled Integration", req, extractRawKey(req), {
-        id: integration._id.toString(),
-      });
-      res
-        .status(403)
-        .json({ error: "This SDK integration has been disabled." });
-      return;
-    }
-    if (integration.status === "revoked") {
-      logSecurityEvent("Revoked Integration", req, extractRawKey(req), {
-        id: integration._id.toString(),
-      });
-      res.status(403).json({ error: "This SDK key has been revoked." });
-      return;
-    }
-
-    let authError: string | null = null;
-    const strategy = authStrategies.find((s) => s.supports(req));
-    if (strategy) {
-      authError = await strategy.authenticate(req, integration);
-    }
-
-    if (authError) {
-      logSecurityEvent("Origin Mismatch", req, extractRawKey(req), {
-        error: authError,
-      });
-      res.status(403).json({ error: authError });
-      return;
-    }
-
-    if (req.headers.origin) {
-      setCorsHeaders(res, req.headers.origin);
-    }
-
-    const user = await sdkIntegrationService.resolveTenant(
-      integration.tenantId,
-    );
-    if (!user) {
-      logSecurityEvent("Owner Not Found", req, extractRawKey(req));
-      res.status(401).json({ error: "Integration owner not found" });
-      return;
-    }
-
-    req.user = user;
-    req.apiKeyId = integration._id.toString();
-
-    void sdkIntegrationService
-      .touchConnection(integration._id.toString(), {
-        latestOrigin: req.headers.origin,
-        sdkVersion: req.body?.sdkVersion as string | undefined,
-        touchRuntime: req.path.includes("/runtime"),
-        touchEvent: req.path.includes("/track"),
-        touchHeartbeat: true,
-      })
-      .catch(() => {});
-
-    next();
-    return;
-  }
-
-  const rawKey = extractRawKey(req);
-
-  if (!rawKey || typeof rawKey !== "string") {
-    logSecurityEvent("Missing Key", req);
-    res.status(401).json({
-      error:
-        "SDK key is required in Authorization Bearer, x-api-key header, or sdkKey body field",
-    });
-    return;
-  }
-
-  try {
-    const keyHash = deterministicHash(rawKey);
-    console.log("[DEBUG AUTH] Incoming rawKey:", rawKey);
-    console.log("[DEBUG AUTH] Computed keyHash:", keyHash);
-    const integration = await sdkIntegrationService.resolveByKeyHash(keyHash);
-    console.log("[DEBUG AUTH] Found integration:", integration ? integration.name : "NONE");
-
-
-    if (integration) {
-      if (integration.status === "disabled") {
-        logSecurityEvent("Disabled Integration", req, rawKey, {
-          id: integration._id.toString(),
-        });
-        res
-          .status(403)
-          .json({ error: "This SDK integration has been disabled." });
-        return;
-      }
-      if (integration.status === "revoked") {
-        logSecurityEvent("Revoked Integration", req, rawKey, {
-          id: integration._id.toString(),
-        });
-        res.status(403).json({ error: "This SDK key has been revoked." });
-        return;
-      }
-
-      let authError: string | null = null;
-      const strategy = authStrategies.find((s) => s.supports(req));
-      if (strategy) {
-        authError = await strategy.authenticate(req, integration);
-      }
-
-      if (authError) {
-        logSecurityEvent("Origin Mismatch", req, rawKey, { error: authError });
-        res.status(403).json({ error: authError });
-        return;
-      }
+  if (hasSignatureHeaders) {
+    try {
+      const { session, integration, user } =
+        await SdkAuthService.verifySignature(req);
+      req.user = user;
+      req.sdkIntegration = integration;
+      req.apiKeyId = integration._id.toString();
+      req.sdkSession = session;
 
       if (req.headers.origin) {
         setCorsHeaders(res, req.headers.origin);
       }
 
-      const user = await sdkIntegrationService.resolveTenant(
-        integration.tenantId,
-      );
-      if (!user) {
-        logSecurityEvent("Owner Not Found", req, rawKey);
-        res.status(401).json({ error: "Integration owner not found" });
-        return;
-      }
-
-      req.user = user;
-      req.sdkIntegration = integration;
-      req.apiKeyId = integration._id.toString();
-
-      void sdkIntegrationService
-        .touchConnection(integration._id.toString(), {
-          latestOrigin: req.headers.origin,
-          sdkVersion: req.body?.sdkVersion as string | undefined,
-          touchRuntime: req.path.includes("/runtime"),
-          touchEvent: req.path.includes("/track"),
-          touchHeartbeat: true,
-        })
-        .catch(() => {});
-
       next();
       return;
+    } catch (error: any) {
+      const status = error.status || 401;
+      res.status(status).json({ error: error.message || "Unauthorized" });
+      return;
     }
-
-    await validateSdkApiKey(req, res, next);
-  } catch (error) {
-    logger.error(
-      "Unified SDK Auth Error:",
-      error instanceof Error ? error : new Error(String(error)),
-    );
-    res
-      .status(500)
-      .json({ error: "Internal server error during authentication" });
   }
+
+  // If no signature headers, check if request tries to authenticate with raw SDK integration key
+  const rawKey = extractRawKey(req);
+  if (rawKey) {
+    const keyHash = deterministicHash(rawKey);
+    const integration = await sdkIntegrationService.resolveByKeyHash(keyHash);
+
+    if (integration) {
+      // Reject raw SDK key access without cryptographic signature
+      logSecurityEvent(
+        "Rejected Raw Key access to protected endpoint",
+        req,
+        rawKey,
+      );
+      res.status(401).json({
+        error:
+          "SDK key alone cannot authorize runtime requests. Cryptographic signature required.",
+      });
+      return;
+    }
+  }
+
+  // Otherwise, fall back to legacy non-SDK API keys (backward compatibility)
+  await validateSdkApiKey(req, res, next);
 };
 
+// ---------------------------------------------------------------------------
+// Rate Limiters
+// ---------------------------------------------------------------------------
+
 export const sdkRateLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute window
-  max: 300, // limit each SDK Integration key/hash or IP to 300 requests/min
+  windowMs: sdkAuthConfig.rateLimitWindowMs,
+  max: sdkAuthConfig.maxRequestsPerWindow,
   keyGenerator: (req: Request) => {
     return (
-      req.sdkIntegration?._id.toString() ||
+      req.sdkSession?.sessionId ||
+      req.sdkIntegration?.tenantId ||
       extractRawKey(req) ||
       (req as any)["ip"]
     );
@@ -568,5 +330,21 @@ export const sdkRateLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req: Request) => req.method === "OPTIONS", // Preflight is stateless and doesn't count
+  skip: (req: Request) => req.method === "OPTIONS",
+});
+
+export const sdkAuthHandshakeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: sdkAuthConfig.maxAuthAttemptsPerMin,
+  keyGenerator: (req: Request) => {
+    return extractRawKey(req) || (req as any)["ip"];
+  },
+  handler: (req: Request, res: Response) => {
+    res.status(429).json({
+      error: "Too many authentication attempts. Please try again later.",
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req: Request) => req.method === "OPTIONS",
 });

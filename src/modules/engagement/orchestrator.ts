@@ -14,9 +14,11 @@ export class ExperienceOrchestrator {
     userId?: string;
     sessionId?: string;
     experiences: RuntimeGuideDto[];
+    forceShowCompleted?: boolean;
   }): Promise<RuntimeGuideDto[]> {
     const startTime = Date.now();
-    const { tenantId, userId, sessionId, experiences } = input;
+    const { tenantId, userId, sessionId, experiences, forceShowCompleted } =
+      input;
 
     if (experiences.length === 0) {
       if (process.env.DEBUG_ORCHESTRATION === "true") {
@@ -46,7 +48,7 @@ export class ExperienceOrchestrator {
     let hasActiveLock = false;
     let hasCooldown = false;
 
-    if (orConditions.length > 0) {
+    if (orConditions.length > 0 && !forceShowCompleted) {
       userFilter.$or = orConditions;
 
       // 1. Check for Active Lock (status: started, updated within 15 mins)

@@ -36,6 +36,10 @@ export const validateRuntimeEvaluationDto = (
 
   return {
     tenantId: asOptionalString(record.tenantId, "tenantId") ?? "",
+    sdkIntegrationId: asOptionalString(
+      record.sdkIntegrationId,
+      "sdkIntegrationId",
+    ),
     userId: asOptionalString(record.userId, "userId"),
     sessionId: asOptionalString(record.sessionId, "sessionId"),
     url: asOptionalString(record.url, "url"),

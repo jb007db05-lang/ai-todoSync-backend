@@ -25,13 +25,14 @@ async function main() {
 
   // 1. Seed Sdk Integrations (so the user sees a connected integration under /sdk-integrations)
   console.info("Seeding SDK Integrations...");
-  await db.collection("sdkintegrations").deleteMany({ tenantId: TENANT_ID });
+  const integrationId = new mongoose.Types.ObjectId("6a568e52e1cd8bd8164aa599");
+  await db
+    .collection("sdkintegrations")
+    .deleteMany({ $or: [{ tenantId: TENANT_ID }, { _id: integrationId }] });
 
   const sdkKey =
     "sdk_58d1976a4bc2c8e0018f3a97:e822a10dfa6cbb8a3d52d9b213695df1:293bc0c14c51480f2d8c39e14bc08dcf284ee90fca7a39ba9db42a17cb2a9bf8c187bc9e14a0f44e138a08d2";
   const sdkKeyHash = deterministicHash(sdkKey);
-
-  const integrationId = new mongoose.Types.ObjectId("6a568e52e1cd8bd8164aa599");
 
   const sdkIntegration = {
     _id: integrationId,
@@ -61,58 +62,310 @@ async function main() {
 
   // 1b. Seed Guides
   console.info("Seeding Guides...");
-  await db.collection("guides").deleteMany({ tenantId: TENANT_ID });
-  const guide = {
-    _id: new mongoose.Types.ObjectId("6a568e52e1cd8bd8164aa601"),
-    tenantId: TENANT_ID,
-    sdkIntegrationId: "6a568e52e1cd8bd8164aa599",
-    title: "Welcome to Pristine Product Tour!",
-    description: "Learn how to manage your inventory easily.",
-    type: "TOUR",
-    status: "LIVE",
-    theme: {},
-    priority: "MEDIUM",
-    targetingRules: {
-      id: "tr-1",
-      operator: "AND",
-      conditions: [
+  const guideIds = [
+    new mongoose.Types.ObjectId("6a568e52e1cd8bd8164aa601"),
+    new mongoose.Types.ObjectId("6a568e52e1cd8bd8164aa602"),
+    new mongoose.Types.ObjectId("6a568e52e1cd8bd8164aa603"),
+    new mongoose.Types.ObjectId("6a568e52e1cd8bd8164aa604"),
+    new mongoose.Types.ObjectId("6a568e52e1cd8bd8164aa605"),
+  ];
+  await db
+    .collection("guides")
+    .deleteMany({ $or: [{ tenantId: TENANT_ID }, { _id: { $in: guideIds } }] });
+
+  const guides = [
+    {
+      _id: new mongoose.Types.ObjectId("6a568e52e1cd8bd8164aa601"),
+      tenantId: TENANT_ID,
+      sdkIntegrationId: "6a568e52e1cd8bd8164aa599",
+      title: "Welcome & Dashboard Tour",
+      description: "Learn how to navigate the Pristine workspace.",
+      type: "TOUR",
+      status: "LIVE",
+      theme: {},
+      priority: "MEDIUM",
+      targetingRules: {
+        id: "tr-1",
+        operator: "AND",
+        conditions: [
+          {
+            id: "tc-1",
+            type: "URL_CONTAINS",
+            operator: "CONTAINS",
+            value: "/dashboard",
+          },
+        ],
+      },
+      frequencyRules: { showOnceEver: false, showOncePerSession: false },
+      scheduleRules: {},
+      steps: [
         {
-          id: "tc-1",
-          type: "URL_CONTAINS",
-          operator: "CONTAINS",
-          value: "http://localhost:5174",
-        }
-      ]
+          id: "step-1",
+          title: "Dashboard Overview",
+          description:
+            "Access all your projects, tasks, and system activities from this central hub.",
+          selector: "#nav-dashboard",
+          placement: "RIGHT",
+          actionType: "NEXT",
+          nextStep: null,
+        },
+        {
+          id: "step-2",
+          title: "Todo Workspace",
+          description:
+            "Manage your daily tasks, filter by projects, and track dynamic priorities.",
+          selector: "#task-list-view",
+          placement: "TOP",
+          actionType: "NEXT",
+          nextStep: null,
+        },
+        {
+          id: "step-3",
+          title: "Create New Project",
+          description:
+            "Organize your workflow by creating focused projects here.",
+          selector: "#btn-new-project",
+          placement: "BOTTOM",
+          actionType: "NEXT",
+          nextStep: null,
+        },
+      ],
+      analytics: {},
+      metadata: {},
+      version: 1,
+      versions: [],
+      createdBy: "system",
+      createdAt: new Date(),
+      updatedAt: new Date(),
     },
-    frequencyRules: { showOnceEver: false, showOncePerSession: false },
-    scheduleRules: {},
-    steps: [
-      {
-        id: "step-1",
-        title: "Product Listing",
-        description: "This table lists all products in your inventory. You can monitor stock levels, quantities, and delete items from here.",
-        selector: "h2",
-        placement: "BOTTOM",
-        actionType: "NEXT",
-        nextStep: null,
-      }
-    ],
-    analytics: {},
-    metadata: {},
-    version: 1,
-    versions: [],
-    createdBy: "system",
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-  await db.collection("guides").insertOne(guide);
-  console.info("Guide seeded.");
+    {
+      _id: new mongoose.Types.ObjectId("6a568e52e1cd8bd8164aa602"),
+      tenantId: TENANT_ID,
+      sdkIntegrationId: "6a568e52e1cd8bd8164aa599",
+      title: "Semantic Intelligence Tour",
+      description: "Understand the AI-powered priority engine.",
+      type: "TOUR",
+      status: "LIVE",
+      theme: {},
+      priority: "MEDIUM",
+      targetingRules: {
+        id: "tr-2",
+        operator: "AND",
+        conditions: [
+          {
+            id: "tc-2",
+            type: "URL_CONTAINS",
+            operator: "CONTAINS",
+            value: "/intelligence",
+          },
+        ],
+      },
+      frequencyRules: { showOnceEver: false, showOncePerSession: false },
+      scheduleRules: {},
+      steps: [
+        {
+          id: "step-1",
+          title: "Semantic Intelligence",
+          description:
+            "Pristine has built-in AI reasoning capabilities to automatically prioritize and balance work.",
+          selector: "#nav-intelligence",
+          placement: "RIGHT",
+          actionType: "NEXT",
+          nextStep: null,
+        },
+        {
+          id: "step-2",
+          title: "Operational Reasoning",
+          description:
+            "Inspect how AI analyzes dependencies, assignee workload, and SLA deadlines to assign scores.",
+          selector: "#ai-reasoning-panel",
+          placement: "TOP",
+          actionType: "NEXT",
+          nextStep: null,
+        },
+      ],
+      analytics: {},
+      metadata: {},
+      version: 1,
+      versions: [],
+      createdBy: "system",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      _id: new mongoose.Types.ObjectId("6a568e52e1cd8bd8164aa603"),
+      tenantId: TENANT_ID,
+      sdkIntegrationId: "6a568e52e1cd8bd8164aa599",
+      title: "SDK Integrations Tour",
+      description: "Learn how to connect Zaikara SDK integrations.",
+      type: "TOUR",
+      status: "LIVE",
+      theme: {},
+      priority: "MEDIUM",
+      targetingRules: {
+        id: "tr-3",
+        operator: "AND",
+        conditions: [
+          {
+            id: "tc-3",
+            type: "URL_CONTAINS",
+            operator: "CONTAINS",
+            value: "/sdk-integrations",
+          },
+        ],
+      },
+      frequencyRules: { showOnceEver: false, showOncePerSession: false },
+      scheduleRules: {},
+      steps: [
+        {
+          id: "step-1",
+          title: "SDK Integrations",
+          description:
+            "Connect external systems to Pristine for automated event tracking.",
+          selector: "#nav-sdk-integrations",
+          placement: "RIGHT",
+          actionType: "NEXT",
+          nextStep: null,
+        },
+        {
+          id: "step-2",
+          title: "Integrations List",
+          description:
+            "Manage credentials and webhook configurations for all Zaikara SDK connections.",
+          selector: "#integrations-list",
+          placement: "TOP",
+          actionType: "NEXT",
+          nextStep: null,
+        },
+      ],
+      analytics: {},
+      metadata: {},
+      version: 1,
+      versions: [],
+      createdBy: "system",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      _id: new mongoose.Types.ObjectId("6a568e52e1cd8bd8164aa604"),
+      tenantId: TENANT_ID,
+      sdkIntegrationId: "6a568e52e1cd8bd8164aa599",
+      title: "SDK Documentation Tour",
+      description: "Explore the SDK installation guide.",
+      type: "TOUR",
+      status: "LIVE",
+      theme: {},
+      priority: "MEDIUM",
+      targetingRules: {
+        id: "tr-4",
+        operator: "AND",
+        conditions: [
+          {
+            id: "tc-4",
+            type: "URL_CONTAINS",
+            operator: "CONTAINS",
+            value: "/sdk-docs",
+          },
+        ],
+      },
+      frequencyRules: { showOnceEver: false, showOncePerSession: false },
+      scheduleRules: {},
+      steps: [
+        {
+          id: "step-1",
+          title: "SDK Documentation",
+          description:
+            "Read integration guides and API schemas to install the events tracker in your app.",
+          selector: "#nav-sdk-docs",
+          placement: "RIGHT",
+          actionType: "NEXT",
+          nextStep: null,
+        },
+      ],
+      analytics: {},
+      metadata: {},
+      version: 1,
+      versions: [],
+      createdBy: "system",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      _id: new mongoose.Types.ObjectId("6a568e52e1cd8bd8164aa605"),
+      tenantId: TENANT_ID,
+      sdkIntegrationId: "6a568e52e1cd8bd8164aa599",
+      title: "Settings Tour",
+      description: "Manage account and security credentials.",
+      type: "TOUR",
+      status: "LIVE",
+      theme: {},
+      priority: "MEDIUM",
+      targetingRules: {
+        id: "tr-5",
+        operator: "AND",
+        conditions: [
+          {
+            id: "tc-5",
+            type: "URL_CONTAINS",
+            operator: "CONTAINS",
+            value: "/settings",
+          },
+        ],
+      },
+      frequencyRules: { showOnceEver: false, showOncePerSession: false },
+      scheduleRules: {},
+      steps: [
+        {
+          id: "step-1",
+          title: "Portal Settings",
+          description:
+            "Manage your profile, security features, and AI credentials here.",
+          selector: "#nav-settings",
+          placement: "RIGHT",
+          actionType: "NEXT",
+          nextStep: null,
+        },
+        {
+          id: "step-2",
+          title: "Profile Details",
+          description: "Update your name and account info.",
+          selector: "#settings-profile",
+          placement: "TOP",
+          actionType: "NEXT",
+          nextStep: null,
+        },
+        {
+          id: "step-3",
+          title: "Global AI Credentials",
+          description:
+            "Securely save API keys for OpenAI, Anthropic, or Gemini.",
+          selector: "#settings-ai-keys",
+          placement: "TOP",
+          actionType: "NEXT",
+          nextStep: null,
+        },
+      ],
+      analytics: {},
+      metadata: {},
+      version: 1,
+      versions: [],
+      createdBy: "system",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  ];
+
+  await db.collection("guides").insertMany(guides);
+  console.info("Guides seeded.");
 
   // 1c. Seed Surveys
   console.info("Seeding Surveys...");
-  await db.collection("surveys").deleteMany({ tenantId: TENANT_ID });
+  const surveyIdObj = new mongoose.Types.ObjectId("6a4f8f67d9bd44b5e714b42b");
+  await db
+    .collection("surveys")
+    .deleteMany({ $or: [{ tenantId: TENANT_ID }, { _id: surveyIdObj }] });
   const survey = {
-    _id: new mongoose.Types.ObjectId("6a4f8f67d9bd44b5e714b42b"),
+    _id: surveyIdObj,
     tenantId: TENANT_ID,
     sdkIntegrationId: "6a568e52e1cd8bd8164aa599",
     title: "Customer Satisfaction Survey",
@@ -129,7 +382,7 @@ async function main() {
         min: 0,
         max: 10,
         options: [],
-      }
+      },
     ],
     targetingRules: {
       id: "tr-2",
@@ -140,8 +393,8 @@ async function main() {
           type: "URL_CONTAINS",
           operator: "CONTAINS",
           value: "http://localhost:5174",
-        }
-      ]
+        },
+      ],
     },
     triggerRules: null,
     frequencyRules: { showOnceEver: false, showOncePerSession: false },

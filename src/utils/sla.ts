@@ -11,10 +11,10 @@ export const DEFAULT_SLA_CONFIG: Record<
   TaskPriority,
   { responseTimeHours: number; resolutionTimeHours: number }
 > = {
-  LOW: { responseTimeHours: 24, resolutionTimeHours: 120 },
-  MEDIUM: { responseTimeHours: 8, resolutionTimeHours: 72 },
-  HIGH: { responseTimeHours: 2, resolutionTimeHours: 24 },
-  CRITICAL: { responseTimeHours: 0.5, resolutionTimeHours: 4 },
+  LOW: { responseTimeHours: 48, resolutionTimeHours: 120 },
+  MEDIUM: { responseTimeHours: 24, resolutionTimeHours: 72 },
+  HIGH: { responseTimeHours: 4, resolutionTimeHours: 24 },
+  CRITICAL: { responseTimeHours: 1, resolutionTimeHours: 4 },
 };
 
 export const SLA_NEAR_BREACH_RATIO = 0.2;

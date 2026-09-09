@@ -11,13 +11,43 @@ import {
   validateEngagementTrackDto,
   validateRuntimeEvaluationDto,
 } from "./validators.js";
+import logger from "../../lib/logger.js";
 
 class EngagementController {
   public runtime = async (req: Request, res: Response): Promise<void> => {
     try {
       const tenantId = getTenantIdFromRequest(req);
-      const sdkIntegrationId = req.sdkIntegration?._id?.toString() ?? "";
       const dto = validateRuntimeEvaluationDto(req.body);
+
+      // Resolve sdkIntegrationId: SDK key sets req.sdkIntegration directly.
+      // For JWT portal users, prefer body-supplied id then fall back to the
+      // tenant's first active integration so guides/surveys are always found.
+      let sdkIntegrationId =
+        req.sdkIntegration?._id?.toString() ??
+        (typeof dto.sdkIntegrationId === "string" ? dto.sdkIntegrationId : "");
+
+      if (!sdkIntegrationId) {
+        try {
+          const integrations =
+            await sdkIntegrationService.listByTenant(tenantId);
+          sdkIntegrationId = integrations[0]?._id?.toString() ?? "";
+          if (sdkIntegrationId) {
+            logger.info("Runtime: resolved sdkIntegrationId from tenant", {
+              tenantId,
+              sdkIntegrationId,
+            });
+          }
+        } catch (err) {
+          logger.warn(
+            "Runtime: failed to resolve sdkIntegrationId from tenant",
+            {
+              tenantId,
+              err: err instanceof Error ? err.message : String(err),
+            },
+          );
+        }
+      }
+
       const context = {
         userId: dto.userId ?? req.user?._id?.toString(),
         sessionId: dto.sessionId ?? req.auth?.sessionId ?? undefined,
@@ -36,7 +66,7 @@ class EngagementController {
         forceShowCompleted: dto.forceShowCompleted,
       };
 
-      if (dto.eventName) {
+      if (dto.eventName && sdkIntegrationId) {
         await checklistService.applyEvent(tenantId, sdkIntegrationId, {
           eventName: dto.eventName,
           userId: context.userId,
@@ -56,6 +86,7 @@ class EngagementController {
         userId: context.userId,
         sessionId: context.sessionId,
         experiences: rawExperiences,
+        forceShowCompleted: context.forceShowCompleted,
       });
 
       await engagementService.recordRuntimeDelivery({
@@ -92,16 +123,16 @@ class EngagementController {
     try {
       const tenantId = getTenantIdFromRequest(req);
       const integrations = await sdkIntegrationService.listByTenant(tenantId);
-      const sdkIntegrationId = req.sdkIntegration?._id?.toString() ?? integrations[0]?._id?.toString() ?? "";
+      const sdkIntegrationId =
+        req.sdkIntegration?._id?.toString() ??
+        integrations[0]?._id?.toString() ??
+        "";
       const now = new Date();
       const month =
         typeof req.query.month === "string"
           ? req.query.month
           : `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-      const count = await engagementService.countMtu(
-        sdkIntegrationId,
-        month,
-      );
+      const count = await engagementService.countMtu(sdkIntegrationId, month);
       res.status(200).json({ data: { month, mtu: count } });
     } catch (error) {
       this.respondError(res, error);

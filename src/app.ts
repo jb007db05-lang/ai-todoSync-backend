@@ -12,6 +12,7 @@ import { scheduleRolloverJob } from "./utils/rollover.js";
 import { scheduleSlaJob } from "./utils/sla-scheduler.js";
 import { schedulePriorityEngineJob } from "./utils/priority-engine-scheduler.js";
 import { scheduleSemanticRollupJob } from "./utils/semantic-rollup-scheduler.js";
+import { scheduleSdkAuthCleanupJob } from "./utils/sdk-auth-cleanup-scheduler.js";
 import chatSocketServer from "./socket/chat.socket.js";
 import { errorMiddleware } from "./middleware/error.middleware.js";
 import { AppError } from "./utils/app-error.js";
@@ -162,6 +163,7 @@ class App {
     scheduleSlaJob();
     schedulePriorityEngineJob();
     scheduleSemanticRollupJob();
+    scheduleSdkAuthCleanupJob();
   }
 
   private initializeSocketIO(): void {

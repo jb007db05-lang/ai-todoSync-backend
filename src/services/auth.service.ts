@@ -187,6 +187,13 @@ class AuthService {
       throw new HttpError(401, "Invalid credentials");
     }
 
+    if (user.authProvider === "google") {
+      throw new HttpError(
+        401,
+        "This account is registered via Google. Please sign in with Google.",
+      );
+    }
+
     const isMatch = await user.comparePassword(credentials.password);
 
     if (isMatch === false) {
