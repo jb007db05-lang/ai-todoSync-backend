@@ -1,4 +1,3 @@
-import env from "../../config/env.js";
 import logger from "../../lib/logger.js";
 
 export interface AIServiceMessage {
@@ -76,7 +75,12 @@ export interface AIProjectPlanResponse {
   }>;
   risks: Array<{
     title: string;
-    type: "TECHNICAL" | "INTEGRATION" | "REQUIREMENTS" | "TIMELINE" | "SCALABILITY";
+    type:
+      | "TECHNICAL"
+      | "INTEGRATION"
+      | "REQUIREMENTS"
+      | "TIMELINE"
+      | "SCALABILITY";
     severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
     mitigation: string;
   }>;
@@ -141,7 +145,7 @@ class AIService {
   }
 
   private getModel(userModel?: string): string {
-    return "gemini-3.6-flash";
+    return userModel || "gemini-3.6-flash";
   }
 
   public async generate(
@@ -155,7 +159,9 @@ class AIService {
     const model = this.getModel(rawModel);
 
     let url = options.baseUrl ? options.baseUrl.trim() : "";
-    let headers: Record<string, string> = { "Content-Type": "application/json" };
+    let headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
     let body: Record<string, unknown> = {};
 
     if (provider === "openai") {
@@ -181,7 +187,8 @@ class AIService {
       const userMsgs = messages
         .filter((m) => m.role !== "system")
         .map((m) => ({
-          role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
+          role:
+            m.role === "assistant" ? ("assistant" as const) : ("user" as const),
           content: m.content,
         }));
 
@@ -221,8 +228,12 @@ class AIService {
 
       if (!response.ok) {
         const errText = await response.text().catch(() => "");
-        logger.error(`AI API Error (${provider} ${response.status}): ${errText}`);
-        throw new Error(`AI generation failed with status ${response.status}: ${errText || response.statusText}`);
+        logger.error(
+          `AI API Error (${provider} ${response.status}): ${errText}`,
+        );
+        throw new Error(
+          `AI generation failed with status ${response.status}: ${errText || response.statusText}`,
+        );
       }
 
       const json = await response.json();
@@ -234,7 +245,9 @@ class AIService {
       }
 
       if (typeof content !== "string" || !content.trim()) {
-        throw new Error(`Invalid or empty response content from ${provider} AI`);
+        throw new Error(
+          `Invalid or empty response content from ${provider} AI`,
+        );
       }
       return content.trim();
     } catch (err: any) {
@@ -261,7 +274,10 @@ class AIService {
     );
 
     let cleaned = rawResponse.trim();
-    cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    cleaned = cleaned
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
 
     const firstBrace = cleaned.indexOf("{");
     const lastBrace = cleaned.lastIndexOf("}");
@@ -273,6 +289,7 @@ class AIService {
       return JSON.parse(cleaned) as T;
     } catch {
       try {
+        // eslint-disable-next-line no-control-regex
         const sanitized = cleaned.replace(/[\u0000-\u001F]/g, (char) => {
           if (char === "\n") return "\\n";
           if (char === "\r") return "\\r";
@@ -283,7 +300,9 @@ class AIService {
       } catch (parseError) {
         logger.error(
           `Failed to parse AI structured response JSON: ${rawResponse}`,
-          parseError instanceof Error ? parseError : new Error(String(parseError)),
+          parseError instanceof Error
+            ? parseError
+            : new Error(String(parseError)),
         );
         throw new Error("AI returned malformed structured output JSON");
       }
@@ -304,15 +323,36 @@ class AIService {
         tasks: [],
         dependencies: [],
         risks: [],
-        timeline: { totalEngineeringHours: 0, totalEngineeringDays: 0, estimatedCalendarWeeks: 0, confidence: "MEDIUM", assumptions: [], milestones: [] }
+        timeline: {
+          totalEngineeringHours: 0,
+          totalEngineeringDays: 0,
+          estimatedCalendarWeeks: 0,
+          confidence: "MEDIUM",
+          assumptions: [],
+          milestones: [],
+        },
       };
     }
 
     let plan = raw;
-    if (!plan.name && !plan.systemGoal && !plan.system_goal && !plan.modules && !plan.system) {
+    if (
+      !plan.name &&
+      !plan.systemGoal &&
+      !plan.system_goal &&
+      !plan.modules &&
+      !plan.system
+    ) {
       const keys = Object.keys(plan);
       for (const key of keys) {
-        if (plan[key] && typeof plan[key] === "object" && (plan[key].name || plan[key].systemGoal || plan[key].system_goal || plan[key].modules || plan[key].system)) {
+        if (
+          plan[key] &&
+          typeof plan[key] === "object" &&
+          (plan[key].name ||
+            plan[key].systemGoal ||
+            plan[key].system_goal ||
+            plan[key].modules ||
+            plan[key].system)
+        ) {
           plan = plan[key];
           break;
         }
@@ -320,14 +360,39 @@ class AIService {
     }
 
     return {
-      name: plan.name || plan.system || plan.title || "Generated System Blueprint",
-      description: plan.description || plan.overview || "AI Project Implementation Plan",
-      systemGoal: plan.systemGoal || plan.system_goal || plan.goal || plan.purpose || "Fulfill requested system requirements",
-      coreWorkflow: Array.isArray(plan.coreWorkflow || plan.core_workflow || plan.customerFlow || plan.workflow)
-        ? (plan.coreWorkflow || plan.core_workflow || plan.customerFlow || plan.workflow).map((w: any) => typeof w === "string" ? w : (w.action || w.name || w.step || JSON.stringify(w)))
+      name:
+        plan.name || plan.system || plan.title || "Generated System Blueprint",
+      description:
+        plan.description || plan.overview || "AI Project Implementation Plan",
+      systemGoal:
+        plan.systemGoal ||
+        plan.system_goal ||
+        plan.goal ||
+        plan.purpose ||
+        "Fulfill requested system requirements",
+      coreWorkflow: Array.isArray(
+        plan.coreWorkflow ||
+          plan.core_workflow ||
+          plan.customerFlow ||
+          plan.workflow,
+      )
+        ? (
+            plan.coreWorkflow ||
+            plan.core_workflow ||
+            plan.customerFlow ||
+            plan.workflow
+          ).map((w: any) =>
+            typeof w === "string"
+              ? w
+              : w.action || w.name || w.step || JSON.stringify(w),
+          )
         : [],
       actors: Array.isArray(plan.actors) ? plan.actors : [],
-      suggestedStates: Array.isArray(plan.suggestedStates || plan.suggested_states) ? (plan.suggestedStates || plan.suggested_states) : [],
+      suggestedStates: Array.isArray(
+        plan.suggestedStates || plan.suggested_states,
+      )
+        ? plan.suggestedStates || plan.suggested_states
+        : [],
       modules: Array.isArray(plan.modules) ? plan.modules : [],
       epics: Array.isArray(plan.epics) ? plan.epics : [],
       tasks: Array.isArray(plan.tasks) ? plan.tasks : [],
@@ -339,8 +404,8 @@ class AIService {
         estimatedCalendarWeeks: 2,
         confidence: "HIGH",
         assumptions: [],
-        milestones: []
-      }
+        milestones: [],
+      },
     };
   }
 
@@ -522,7 +587,13 @@ Return JSON:
   }
 
   public async planDailyWork(
-    taskSummaryList: Array<{ id: string; title: string; priority: string; dueDate?: string; isBlocked?: boolean }>,
+    taskSummaryList: Array<{
+      id: string;
+      title: string;
+      priority: string;
+      dueDate?: string;
+      isBlocked?: boolean;
+    }>,
     userWorkloadContext?: string,
     userApiKey?: string,
   ): Promise<AIDailyScheduleResponse> {
@@ -558,11 +629,11 @@ Return JSON:
 }`;
 
     const prompt = `Document Type: ${docType}\nDocument Title: ${title}\nProject Context:\n${projectContext}`;
-    return this.generateStructured<{ title: string; content: string; tags: string[] }>(
-      prompt,
-      systemPrompt,
-      userApiKey,
-    );
+    return this.generateStructured<{
+      title: string;
+      content: string;
+      tags: string[];
+    }>(prompt, systemPrompt, userApiKey);
   }
 
   public async generateMeetingNotes(

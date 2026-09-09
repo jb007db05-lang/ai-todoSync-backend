@@ -29,7 +29,11 @@ export interface ISemanticIntelligenceReport {
   }>;
   recommendations: Array<{
     id: string;
-    type: "REALLOCATE_TASK" | "ADJUST_SCHEDULE" | "UNBLOCK_DEPENDENCY" | "REDUCE_SCOPE";
+    type:
+      | "REALLOCATE_TASK"
+      | "ADJUST_SCHEDULE"
+      | "UNBLOCK_DEPENDENCY"
+      | "REDUCE_SCOPE";
     title: string;
     description: string;
     actionPayload?: any;
@@ -37,36 +41,54 @@ export interface ISemanticIntelligenceReport {
 }
 
 class SemanticIntelligenceService {
-  public async generateReport(projectId: string): Promise<ISemanticIntelligenceReport> {
-    const [project, canonicalPlan, tasks, states, dependencies] = await Promise.all([
-      projectService.getProjectById(projectId),
-      ProjectPlanModel.findOne({ projectId, status: "APPROVED" }).lean(),
-      TaskModel.find({ projectId }).lean(),
-      ProjectStateModel.find({ projectId }).lean(),
-      TaskDependencyModel.find({ projectId }).lean(),
-    ]);
+  public async generateReport(
+    projectId: string,
+  ): Promise<ISemanticIntelligenceReport> {
+    const [project, canonicalPlan, tasks, _states, _dependencies] =
+      await Promise.all([
+        projectService.getProjectById(projectId),
+        ProjectPlanModel.findOne({ projectId, status: "APPROVED" }).lean(),
+        TaskModel.find({ projectId }).lean(),
+        ProjectStateModel.find({ projectId }).lean(),
+        TaskDependencyModel.find({ projectId }).lean(),
+      ]);
 
     const projectName = project?.name || "Project";
     const totalTasks = tasks.length;
-    const completedTasks = tasks.filter((t: any) => t.status === "DONE" || String(t.status) === "COMPLETED").length;
-    const inProgressTasks = tasks.filter((t: any) => t.status === "IN_PROGRESS" || String(t.status) === "STARTED").length;
+    const completedTasks = tasks.filter(
+      (t: any) => t.status === "DONE" || String(t.status) === "COMPLETED",
+    ).length;
+    const inProgressTasks = tasks.filter(
+      (t: any) => t.status === "IN_PROGRESS" || String(t.status) === "STARTED",
+    ).length;
     const blockedTasks = tasks.filter((t: any) => t.isBlocked).length;
 
     const todayStr = new Date().toISOString().split("T")[0];
     const overdueTasks = tasks.filter(
-      (t: any) => t.date && t.date < todayStr && t.status !== "DONE" && String(t.status) !== "COMPLETED",
+      (t: any) =>
+        t.date &&
+        t.date < todayStr &&
+        t.status !== "DONE" &&
+        String(t.status) !== "COMPLETED",
     ).length;
 
     // Planned vs Actual hours calculation
-    const plannedHours = canonicalPlan?.timeline?.totalEngineeringHours ||
-      tasks.reduce((acc: number, t: any) => acc + (t.estimatedHours || 8), 0) || 80;
+    const plannedHours =
+      canonicalPlan?.timeline?.totalEngineeringHours ||
+      tasks.reduce((acc: number, t: any) => acc + (t.estimatedHours || 8), 0) ||
+      80;
 
     const completedHours = tasks
-      .filter((t: any) => t.status === "DONE" || String(t.status) === "COMPLETED")
+      .filter(
+        (t: any) => t.status === "DONE" || String(t.status) === "COMPLETED",
+      )
       .reduce((acc: number, t: any) => acc + (t.estimatedHours || 8), 0);
 
     const inProgressHours = tasks
-      .filter((t: any) => t.status === "IN_PROGRESS" || String(t.status) === "STARTED")
+      .filter(
+        (t: any) =>
+          t.status === "IN_PROGRESS" || String(t.status) === "STARTED",
+      )
       .reduce((acc: number, t: any) => acc + (t.estimatedHours || 8), 0);
 
     const remainingHours = Math.max(0, plannedHours - completedHours);
@@ -103,7 +125,8 @@ class SemanticIntelligenceService {
         risks.push({
           title: r.title,
           severity: r.severity || "MEDIUM",
-          impact: r.mitigation || "Plan risk identified during architecture phase.",
+          impact:
+            r.mitigation || "Plan risk identified during architecture phase.",
         });
       });
     }
@@ -115,7 +138,8 @@ class SemanticIntelligenceService {
         id: "rec-unblock-deps",
         type: "UNBLOCK_DEPENDENCY",
         title: "Prioritize Upstream Blocking Tasks",
-        description: "Focus dev effort on unblocking dependent tasks to restore project velocity.",
+        description:
+          "Focus dev effort on unblocking dependent tasks to restore project velocity.",
       });
     }
     if (overdueTasks > 0) {
@@ -123,7 +147,8 @@ class SemanticIntelligenceService {
         id: "rec-adjust-schedule",
         type: "ADJUST_SCHEDULE",
         title: "Re-align Target Schedule",
-        description: "Adjust due dates for overdue items or re-allocate available team capacity.",
+        description:
+          "Adjust due dates for overdue items or re-allocate available team capacity.",
       });
     }
     if (healthScore > 85) {
@@ -131,7 +156,8 @@ class SemanticIntelligenceService {
         id: "rec-healthy-velocity",
         type: "REALLOCATE_TASK",
         title: "Maintain Current Sprint Pace",
-        description: "Project execution velocity is on track with canonical plan guidelines.",
+        description:
+          "Project execution velocity is on track with canonical plan guidelines.",
       });
     }
 

@@ -15,15 +15,16 @@ import workspaceService from "../services/workspace.service.js";
 import env from "../config/env.js";
 
 async function assembleProjectKnowledge(projectId: string): Promise<string> {
-  const [project, canonicalPlan, tasks, states, epics, docs, notes] = await Promise.all([
-    projectService.getProjectById(projectId),
-    ProjectPlanModel.findOne({ projectId, status: "APPROVED" }).lean(),
-    TaskModel.find({ projectId }).lean(),
-    ProjectStateModel.find({ projectId }).sort({ position: 1 }).lean(),
-    EpicModel.find({ projectId }).lean(),
-    DocumentModel.find({ projectId }).lean(),
-    NoteModel.find({ projectId }).lean(),
-  ]);
+  const [project, canonicalPlan, tasks, states, epics, docs, notes] =
+    await Promise.all([
+      projectService.getProjectById(projectId),
+      ProjectPlanModel.findOne({ projectId, status: "APPROVED" }).lean(),
+      TaskModel.find({ projectId }).lean(),
+      ProjectStateModel.find({ projectId }).sort({ position: 1 }).lean(),
+      EpicModel.find({ projectId }).lean(),
+      DocumentModel.find({ projectId }).lean(),
+      NoteModel.find({ projectId }).lean(),
+    ]);
 
   const taskSummary = tasks
     .map(
@@ -32,9 +33,13 @@ async function assembleProjectKnowledge(projectId: string): Promise<string> {
     )
     .join("\n");
 
-  const stateSummary = states.map((s: any) => s.name).join(" -> ") || "Default Workflow";
+  const stateSummary =
+    states.map((s: any) => s.name).join(" -> ") || "Default Workflow";
   const epicSummary = epics.map((e: any) => `- Epic: ${e.name}`).join("\n");
-  const docSummary = docs.map((d: any) => `- Doc (${d.type}): ${d.title}`).join("\n");
+  const docSummary = docs
+    .map((d: any) => `- Doc (${d.type}): ${d.title}`)
+    .join("\n");
+  const noteSummary = notes.map((n: any) => `- Note: ${n.title}`).join("\n");
 
   const planSummary = canonicalPlan
     ? `Canonical Plan Goal: ${canonicalPlan.systemGoal}
@@ -55,7 +60,10 @@ Tasks (${tasks.length} total):
 ${taskSummary || "No tasks yet"}
 
 Documents:
-${docSummary || "None"}`;
+${docSummary || "None"}
+
+Notes:
+${noteSummary || "None"}`;
 }
 
 export const listWorkspacePlans = async (
@@ -64,14 +72,19 @@ export const listWorkspacePlans = async (
 ): Promise<void> => {
   try {
     const userId = req.user!._id.toString();
-    const workspaceId = typeof req.query.workspaceId === "string" ? req.query.workspaceId : undefined;
+    const workspaceId =
+      typeof req.query.workspaceId === "string"
+        ? req.query.workspaceId
+        : undefined;
 
     const query: any = { createdBy: userId };
     if (workspaceId) {
       query.workspaceId = workspaceId;
     }
 
-    const plans = await ProjectPlanModel.find(query).sort({ updatedAt: -1 }).lean();
+    const plans = await ProjectPlanModel.find(query)
+      .sort({ updatedAt: -1 })
+      .lean();
     res.status(200).json({ plans });
   } catch (error: any) {
     res.status(error.statusCode || 500).json({ error: error.message });
@@ -97,7 +110,8 @@ const resolveAiConfigForUserOrProject = async (
   projectId?: string,
   overrides?: { provider?: string; modelName?: string; apiKey?: string },
 ): Promise<ResolvedAiConfig> => {
-  let provider: "gemini" | "openai" | "anthropic" = (overrides?.provider as any) || "gemini";
+  let provider: "gemini" | "openai" | "anthropic" =
+    (overrides?.provider as any) || "gemini";
   let modelName = overrides?.modelName || "gemini-3.6-flash";
   let baseUrl = "";
   let apiKey = overrides?.apiKey?.trim() || "";
@@ -106,8 +120,10 @@ const resolveAiConfigForUserOrProject = async (
   if (!apiKey && projectId && mongoose.Types.ObjectId.isValid(projectId)) {
     const config = await ProjectAiConfigModel.findOne({ projectId }).exec();
     if (config) {
-      if (!overrides?.provider && config.provider) provider = config.provider as any;
-      if (!overrides?.modelName && config.modelName) modelName = config.modelName;
+      if (!overrides?.provider && config.provider)
+        provider = config.provider as any;
+      if (!overrides?.modelName && config.modelName)
+        modelName = config.modelName;
       if (config.baseUrl) baseUrl = config.baseUrl;
       if (config.apiKey && config.apiKey.trim()) {
         apiKey = config.apiKey.trim();
@@ -117,7 +133,9 @@ const resolveAiConfigForUserOrProject = async (
 
   // 2. Resolve API Key from UserModel DB for selected provider
   if (!apiKey && req.user) {
-    const userId = req.user._id ? req.user._id.toString() : (req.user as any).id;
+    const userId = req.user._id
+      ? req.user._id.toString()
+      : (req.user as any).id;
     if (userId && mongoose.Types.ObjectId.isValid(userId)) {
       const userDoc = await UserModel.findById(userId).exec();
       if (userDoc) {
@@ -128,15 +146,24 @@ const resolveAiConfigForUserOrProject = async (
         } else if (userDoc.geminiApiKey) {
           apiKey = userDoc.geminiApiKey.trim();
         } else {
-          apiKey = (userDoc.geminiApiKey || userDoc.openaiApiKey || userDoc.anthropicApiKey || "").trim();
+          apiKey = (
+            userDoc.geminiApiKey ||
+            userDoc.openaiApiKey ||
+            userDoc.anthropicApiKey ||
+            ""
+          ).trim();
         }
       }
       if (!apiKey) {
-        const anyConfig = await ProjectAiConfigModel.findOne({ apiKey: { $exists: true, $ne: "" } }).exec();
+        const anyConfig = await ProjectAiConfigModel.findOne({
+          apiKey: { $exists: true, $ne: "" },
+        }).exec();
         if (anyConfig?.apiKey && anyConfig.apiKey.trim()) {
           apiKey = anyConfig.apiKey.trim();
-          if (!overrides?.provider && anyConfig.provider) provider = anyConfig.provider as any;
-          if (!overrides?.modelName && anyConfig.modelName) modelName = anyConfig.modelName;
+          if (!overrides?.provider && anyConfig.provider)
+            provider = anyConfig.provider as any;
+          if (!overrides?.modelName && anyConfig.modelName)
+            modelName = anyConfig.modelName;
         }
       }
     }
@@ -163,13 +190,30 @@ export const generateProjectPlan = async (
   res: Response,
 ): Promise<void> => {
   try {
-    const { prompt, context, sessionId, workspaceId, projectId, provider, modelName, apiKey } = req.body;
+    const {
+      prompt,
+      context,
+      sessionId,
+      workspaceId,
+      projectId,
+      provider,
+      modelName,
+      apiKey,
+    } = req.body;
     if (!prompt?.trim()) {
-      throw new AppError(400, "Project requirements prompt is required", "BAD_REQUEST");
+      throw new AppError(
+        400,
+        "Project requirements prompt is required",
+        "BAD_REQUEST",
+      );
     }
 
     const userId = req.user!._id.toString();
-    const aiConfig = await resolveAiConfigForUserOrProject(req, projectId, { provider, modelName, apiKey });
+    const aiConfig = await resolveAiConfigForUserOrProject(req, projectId, {
+      provider,
+      modelName,
+      apiKey,
+    });
 
     const plan = await aiService.planProject(prompt, context, aiConfig.apiKey, {
       modelName: aiConfig.modelName,
@@ -179,7 +223,10 @@ export const generateProjectPlan = async (
 
     // Persist to session history if sessionId is provided
     if (sessionId && mongoose.Types.ObjectId.isValid(sessionId)) {
-      const session = await AiPlanningSessionModel.findOne({ _id: sessionId, createdBy: userId });
+      const session = await AiPlanningSessionModel.findOne({
+        _id: sessionId,
+        createdBy: userId,
+      });
       if (session) {
         const targetWsId = session.workspaceId || workspaceId || null;
 
@@ -217,7 +264,11 @@ export const generateProjectPlan = async (
     res.status(200).json({ plan });
   } catch (error: any) {
     const status = error.status || error.statusCode || 500;
-    res.status(status).json({ error: error.message || "An error occurred during AI plan generation" });
+    res
+      .status(status)
+      .json({
+        error: error.message || "An error occurred during AI plan generation",
+      });
   }
 };
 
@@ -226,23 +277,48 @@ export const modifyProjectPlan = async (
   res: Response,
 ): Promise<void> => {
   try {
-    const { existingPlan, changeRequest, sessionId, workspaceId, projectId, provider, modelName, apiKey } = req.body;
+    const {
+      existingPlan,
+      changeRequest,
+      sessionId,
+      workspaceId,
+      projectId,
+      provider,
+      modelName,
+      apiKey,
+    } = req.body;
     if (!existingPlan || !changeRequest?.trim()) {
-      throw new AppError(400, "existingPlan and changeRequest are required", "BAD_REQUEST");
+      throw new AppError(
+        400,
+        "existingPlan and changeRequest are required",
+        "BAD_REQUEST",
+      );
     }
 
     const userId = req.user!._id.toString();
-    const aiConfig = await resolveAiConfigForUserOrProject(req, projectId, { provider, modelName, apiKey });
-
-    const result = await aiService.modifyProjectPlan(existingPlan, changeRequest, aiConfig.apiKey, {
-      modelName: aiConfig.modelName,
-      provider: aiConfig.provider,
-      baseUrl: aiConfig.baseUrl,
+    const aiConfig = await resolveAiConfigForUserOrProject(req, projectId, {
+      provider,
+      modelName,
+      apiKey,
     });
+
+    const result = await aiService.modifyProjectPlan(
+      existingPlan,
+      changeRequest,
+      aiConfig.apiKey,
+      {
+        modelName: aiConfig.modelName,
+        provider: aiConfig.provider,
+        baseUrl: aiConfig.baseUrl,
+      },
+    );
 
     // Persist change request to session history
     if (sessionId && mongoose.Types.ObjectId.isValid(sessionId)) {
-      const session = await AiPlanningSessionModel.findOne({ _id: sessionId, createdBy: userId });
+      const session = await AiPlanningSessionModel.findOne({
+        _id: sessionId,
+        createdBy: userId,
+      });
       if (session) {
         const targetWsId = session.workspaceId || workspaceId || null;
 
@@ -291,13 +367,18 @@ export const confirmProjectPlan = async (
     const { workspaceId, plan } = req.body;
 
     if (!plan || !plan.name) {
-      throw new AppError(400, "Valid project plan object is required", "BAD_REQUEST");
+      throw new AppError(
+        400,
+        "Valid project plan object is required",
+        "BAD_REQUEST",
+      );
     }
 
     // Resolve or get default workspace
     let targetWorkspaceId = workspaceId;
     if (!targetWorkspaceId) {
-      const defaultWs = await workspaceService.getOrCreateDefaultWorkspace(userId);
+      const defaultWs =
+        await workspaceService.getOrCreateDefaultWorkspace(userId);
       targetWorkspaceId = defaultWs._id.toString();
     } else {
       await workspaceService.assertMembership(userId, targetWorkspaceId);
@@ -315,7 +396,10 @@ export const confirmProjectPlan = async (
     // Persist Canonical Approved Plan
     const totalEstHours =
       plan.timeline?.totalEngineeringHours ||
-      (plan.tasks || []).reduce((sum: number, t: any) => sum + (t.estimatedHours || 8), 0);
+      (plan.tasks || []).reduce(
+        (sum: number, t: any) => sum + (t.estimatedHours || 8),
+        0,
+      );
 
     const canonicalPlanDoc = await ProjectPlanModel.create({
       projectId,
@@ -342,7 +426,10 @@ export const confirmProjectPlan = async (
 
     // Create Custom Project States
     const stateMap = new Map<number, string>();
-    if (Array.isArray(plan.suggestedStates) && plan.suggestedStates.length > 0) {
+    if (
+      Array.isArray(plan.suggestedStates) &&
+      plan.suggestedStates.length > 0
+    ) {
       for (let i = 0; i < plan.suggestedStates.length; i++) {
         const st = plan.suggestedStates[i];
         const createdState = await ProjectStateModel.create({
@@ -396,7 +483,8 @@ export const confirmProjectPlan = async (
       const today = new Date().toISOString().split("T")[0];
       for (let i = 0; i < plan.tasks.length; i++) {
         const t = plan.tasks[i];
-        const epicId = t.epicIndex !== undefined ? epicMap.get(t.epicIndex) : undefined;
+        const epicId =
+          t.epicIndex !== undefined ? epicMap.get(t.epicIndex) : undefined;
 
         const createdTask = await taskService.createTask({
           userId,
@@ -481,7 +569,8 @@ ${(plan.risks || []).map((r: any) => `- [${r.severity}] **${r.title}**: ${r.miti
     });
 
     res.status(201).json({
-      message: "Project plan confirmed, materialized, and persisted successfully",
+      message:
+        "Project plan confirmed, materialized, and persisted successfully",
       project,
       canonicalPlanId: canonicalPlanDoc._id,
     });
@@ -560,11 +649,19 @@ export const generateDocument = async (
   try {
     const { projectId, docType, title } = req.body;
     if (!projectId || !docType || !title) {
-      throw new AppError(400, "projectId, docType, and title are required", "BAD_REQUEST");
+      throw new AppError(
+        400,
+        "projectId, docType, and title are required",
+        "BAD_REQUEST",
+      );
     }
 
     const projectKnowledge = await assembleProjectKnowledge(projectId);
-    const draft = await aiService.generateDocument(docType, title, projectKnowledge);
+    const draft = await aiService.generateDocument(
+      docType,
+      title,
+      projectKnowledge,
+    );
 
     res.status(200).json({ draft });
   } catch (error: any) {
@@ -579,7 +676,11 @@ export const generateNotes = async (
   try {
     const { projectId, transcript } = req.body;
     if (!transcript?.trim()) {
-      throw new AppError(400, "Meeting transcript or notes content is required", "BAD_REQUEST");
+      throw new AppError(
+        400,
+        "Meeting transcript or notes content is required",
+        "BAD_REQUEST",
+      );
     }
 
     let knowledge = "N/A";
@@ -587,7 +688,10 @@ export const generateNotes = async (
       knowledge = await assembleProjectKnowledge(projectId);
     }
 
-    const notesDraft = await aiService.generateMeetingNotes(transcript, knowledge);
+    const notesDraft = await aiService.generateMeetingNotes(
+      transcript,
+      knowledge,
+    );
     res.status(200).json({ notesDraft });
   } catch (error: any) {
     res.status(error.statusCode || 500).json({ error: error.message });
@@ -601,7 +705,11 @@ export const chatWithProjectAssistant = async (
   try {
     const { projectId, message, chatHistory } = req.body;
     if (!projectId || !message?.trim()) {
-      throw new AppError(400, "projectId and message are required", "BAD_REQUEST");
+      throw new AppError(
+        400,
+        "projectId and message are required",
+        "BAD_REQUEST",
+      );
     }
 
     const knowledge = await assembleProjectKnowledge(projectId);

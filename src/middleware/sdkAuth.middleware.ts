@@ -129,7 +129,7 @@ export class ServerSdkAuthStrategy implements SdkAuthStrategy {
   }
 }
 
-const authStrategies: SdkAuthStrategy[] = [
+export const authStrategies: SdkAuthStrategy[] = [
   new BrowserSdkAuthStrategy(),
   new ServerSdkAuthStrategy(),
 ];

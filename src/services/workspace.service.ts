@@ -1,5 +1,9 @@
-import WorkspaceModel, { IWorkspaceDocument } from "../models/workspace.model.js";
-import WorkspaceMemberModel, { WorkspaceRole } from "../models/workspace-member.model.js";
+import WorkspaceModel, {
+  IWorkspaceDocument,
+} from "../models/workspace.model.js";
+import WorkspaceMemberModel, {
+  WorkspaceRole,
+} from "../models/workspace-member.model.js";
 import UserModel from "../models/user.model.js";
 import ProjectModel from "../models/project.model.js";
 import { AppError } from "../utils/app-error.js";
@@ -10,8 +14,8 @@ function slugify(text: string): string {
     .toLowerCase()
     .trim()
     .replace(/\s+/g, "-")
-    .replace(/[^\w\-]+/g, "")
-    .replace(/\-\-+/g, "-")
+    .replace(/[^\w-]+/g, "")
+    .replace(/--+/g, "-")
     .replace(/^-+/, "")
     .replace(/^-+$/, "workspace");
 }
@@ -53,7 +57,9 @@ class WorkspaceService {
       .lean();
 
     if (existingMember) {
-      const workspace = await WorkspaceModel.findById(existingMember.workspaceId).lean();
+      const workspace = await WorkspaceModel.findById(
+        existingMember.workspaceId,
+      ).lean();
       if (workspace) return workspace;
     }
 
@@ -114,7 +120,7 @@ class WorkspaceService {
   public async listUserWorkspaces(userId: string) {
     const memberships = await WorkspaceMemberModel.find({ userId }).lean();
     const workspaceIds = memberships.map((m) => m.workspaceId);
-    
+
     if (workspaceIds.length === 0) {
       // Auto-initialize default workspace if none
       const defaultWs = await this.getOrCreateDefaultWorkspace(userId);
@@ -152,16 +158,21 @@ class WorkspaceService {
   }
 
   public async getWorkspaceDetails(userId: string, workspaceId: string) {
-    const { workspace, member } = await this.assertMembership(userId, workspaceId);
-    
+    const { workspace, member } = await this.assertMembership(
+      userId,
+      workspaceId,
+    );
+
     const members = await WorkspaceMemberModel.find({ workspaceId })
-      .populate<{ userId: { _id: any; name?: string; email: string } }>(
-        "userId",
-        "name email",
-      )
+      .populate<{
+        userId: { _id: any; name?: string; email: string };
+      }>("userId", "name email")
       .lean();
 
-    const projects = await ProjectModel.find({ workspaceId, isArchived: { $ne: true } })
+    const projects = await ProjectModel.find({
+      workspaceId,
+      isArchived: { $ne: true },
+    })
       .sort({ updatedAt: -1 })
       .lean();
 
@@ -210,9 +221,13 @@ class WorkspaceService {
       updates.settings = payload.settings;
     }
 
-    const updated = await WorkspaceModel.findByIdAndUpdate(workspaceId, updates, {
-      new: true,
-    }).lean();
+    const updated = await WorkspaceModel.findByIdAndUpdate(
+      workspaceId,
+      updates,
+      {
+        new: true,
+      },
+    ).lean();
 
     if (!updated) {
       throw new AppError(404, "Workspace not found", "NOT_FOUND");
@@ -237,7 +252,11 @@ class WorkspaceService {
     }).lean();
 
     if (!targetUser) {
-      throw new AppError(404, `User with email ${payload.email} not found`, "NOT_FOUND");
+      throw new AppError(
+        404,
+        `User with email ${payload.email} not found`,
+        "NOT_FOUND",
+      );
     }
 
     const existingMember = await WorkspaceMemberModel.findOne({

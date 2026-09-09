@@ -5,7 +5,8 @@ const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12;
 
 const getCipherKey = (): Buffer => {
-  const secret = env.ENCRYPTION_KEY || "default_fallback_encryption_key_32bytes";
+  const secret =
+    env.ENCRYPTION_KEY || "default_fallback_encryption_key_32bytes";
   // Always produce an exact 32-byte key buffer for AES-256-GCM
   return crypto.createHash("sha256").update(secret).digest();
 };
@@ -51,7 +52,7 @@ export const decrypt = (encryptedText: string): string => {
     decrypted += decipher.final("utf8");
 
     return decrypted;
-  } catch (error) {
+  } catch (_error) {
     return encryptedText;
   }
 };
@@ -62,8 +63,5 @@ export const decrypt = (encryptedText: string): string => {
  */
 export const deterministicHash = (text: string): string => {
   if (!text) return "";
-  return crypto
-    .createHmac("sha256", getCipherKey())
-    .update(text)
-    .digest("hex");
+  return crypto.createHmac("sha256", getCipherKey()).update(text).digest("hex");
 };

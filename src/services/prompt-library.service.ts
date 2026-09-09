@@ -1,7 +1,5 @@
 import crypto from "crypto";
-import type { Types } from "mongoose";
 import PromptLibraryModel, {
-  type IPromptLibrary,
   type IPromptMessage,
   type IPromptVariable,
 } from "../models/prompt-library.model.js";

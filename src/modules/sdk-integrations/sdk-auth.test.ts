@@ -14,7 +14,7 @@ test("SdkAuthService: authenticate generates session with valid inputs", async (
 
   let createdSession: any = null;
 
-  sdkIntegrationService.resolveByKeyHash = async (hash) => {
+  sdkIntegrationService.resolveByKeyHash = async (_hash) => {
     return {
       _id: "integration_123",
       status: "active",
@@ -38,6 +38,7 @@ test("SdkAuthService: authenticate generates session with valid inputs", async (
       "sdk_test_key_123",
       "https://example.com",
     );
+    assert.ok(createdSession);
     assert.ok(session);
     assert.equal(session.sessionId.length, 36); // UUID length
     assert.equal(session.sessionSecret.length, 64); // Hex 32-byte secret (restored unencrypted in return value)
@@ -72,7 +73,7 @@ test("SdkAuthService: verifySignature checks signature correctly", async () => {
     save: async () => {},
   };
 
-  sdkIntegrationService.resolveByKeyHash = async (hash) => {
+  sdkIntegrationService.resolveByKeyHash = async (_hash) => {
     return {
       _id: "integration_123",
       status: "active",
@@ -158,7 +159,7 @@ test("SdkAuthService: verifySignature fails on clock skew", async () => {
     save: async () => {},
   };
 
-  sdkIntegrationService.resolveByKeyHash = async (hash) => {
+  sdkIntegrationService.resolveByKeyHash = async (_hash) => {
     return {
       _id: "integration_123",
       status: "active",
@@ -243,7 +244,7 @@ test("SdkAuthService: verifySignature fails on reused nonce", async () => {
     save: async () => {},
   };
 
-  sdkIntegrationService.resolveByKeyHash = async (hash) => {
+  sdkIntegrationService.resolveByKeyHash = async (_hash) => {
     return {
       _id: "integration_123",
       status: "active",
@@ -334,7 +335,7 @@ test("SdkAuthService: verifySignature fails when absolute lifetime is exceeded",
     save: async () => {},
   };
 
-  sdkIntegrationService.resolveByKeyHash = async (hash) => {
+  sdkIntegrationService.resolveByKeyHash = async (_hash) => {
     return {
       _id: "integration_123",
       status: "active",
@@ -418,7 +419,7 @@ test("SdkAuthService: verifySignature fails on unsupported signature version", a
     save: async () => {},
   };
 
-  sdkIntegrationService.resolveByKeyHash = async (hash) => {
+  sdkIntegrationService.resolveByKeyHash = async (_hash) => {
     return {
       _id: "integration_123",
       status: "active",
