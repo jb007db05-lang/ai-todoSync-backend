@@ -8,8 +8,9 @@
  */
 
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 
-const BASE = "http://localhost:4000/api";
+const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3000/api";
 const EMAIL = process.env.TEST_EMAIL ?? `test_e2e_${Date.now()}@example.com`;
 const PASSWORD = process.env.TEST_PASSWORD ?? "password123";
 
@@ -56,19 +57,115 @@ async function authedFetch(
   });
 }
 
+function canonicalJsonStringify(obj: any): string {
+  if (obj === null || obj === undefined) return "";
+  if (typeof obj !== "object") return String(obj);
+
+  const sortKeys = (o: any): any => {
+    if (Array.isArray(o)) {
+      return o.map(sortKeys);
+    } else if (o !== null && typeof o === "object") {
+      return Object.keys(o)
+        .sort()
+        .reduce((result: any, key: string) => {
+          result[key] = sortKeys(o[key]);
+          return result;
+        }, {});
+    }
+    return o;
+  };
+
+  return JSON.stringify(sortKeys(obj));
+}
+
+const sessionCache = new Map<
+  string,
+  { sessionId: string; sessionSecret: string }
+>();
+
 async function sdkFetch(
   method: string,
   path: string,
   body?: unknown,
   key = sdkKey,
+  customOrigin = "http://localhost:5174",
 ): Promise<Response> {
+  if (!key) {
+    return fetch(`${BASE}${path}`, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  }
+
+  let session = sessionCache.get(key);
+  if (!session) {
+    const authRes = await fetch(`${BASE}/sdk/authenticate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: customOrigin,
+      },
+      body: JSON.stringify({
+        sdkKey: key,
+        origin: customOrigin,
+      }),
+    });
+
+    if (!authRes.ok) {
+      return authRes;
+    }
+
+    const authData = (await authRes.json()) as any;
+    session = {
+      sessionId: authData.sessionId,
+      sessionSecret: authData.sessionSecret,
+    };
+    sessionCache.set(key, session);
+  }
+
+  const timestamp = Date.now().toString();
+  const nonce = crypto.randomBytes(16).toString("hex");
+  const bodyStr = body ? canonicalJsonStringify(body) : "";
+  const bodyHash = crypto.createHash("sha256").update(bodyStr).digest("hex");
+
+  const url = new URL(`${BASE}${path}`);
+  let pathname = url.pathname;
+  if (pathname.length > 1 && pathname.endsWith("/")) {
+    pathname = pathname.slice(0, -1);
+  }
+  pathname = decodeURIComponent(pathname);
+  url.searchParams.sort();
+  const queryString = url.searchParams.toString();
+
+  const sigVersion = "1";
+  const canonicalString = `${method.toUpperCase()}${pathname}${queryString}${bodyHash}${timestamp}${nonce}${sigVersion}${key}`;
+
+  const signature = crypto
+    .createHmac("sha256", session.sessionSecret)
+    .update(canonicalString)
+    .digest("hex");
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-SDK-Key": key,
+    "X-Session-Id": session.sessionId,
+    "X-Timestamp": timestamp,
+    "X-Nonce": nonce,
+    "X-Body-SHA256": bodyHash,
+    "X-Signature": signature,
+    "X-Signature-Version": sigVersion,
+  };
+
+  if (customOrigin) {
+    headers["Origin"] = customOrigin;
+  }
+
   return fetch(`${BASE}${path}`, {
     method,
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": key,
-      Origin: "http://localhost:5174",
-    },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
 }
@@ -100,7 +197,8 @@ async function login() {
     body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
   });
   const data = await json(r);
-  const token = ((data.data as any)?.token || (data.data as any)?.accessToken) as string;
+  const token = ((data.data as any)?.token ||
+    (data.data as any)?.accessToken) as string;
   if (!token)
     throw new Error(`Login failed. Response: ${JSON.stringify(data)}`);
   authToken = token;
@@ -295,20 +393,18 @@ async function testSdkKeyAuth() {
       const prodId = (createData.data as any)?.integration?.id as string;
 
       // Request with mismatched origin
-      const r = await fetch(`${BASE}/engagement/runtime`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": prodKey,
-          Origin: "https://evil.attacker.com",
-        },
-        body: JSON.stringify({
+      const r = await sdkFetch(
+        "POST",
+        "/engagement/runtime",
+        {
           userId: "u1",
           sessionId: "s1",
           properties: {},
           context: {},
-        }),
-      });
+        },
+        prodKey,
+        "https://evil.attacker.com",
+      );
       assert.equal(r.status, 403, `expected 403, got ${r.status}`);
 
       // Clean up
@@ -379,8 +475,6 @@ async function testLifecycleActions() {
   );
 
   await runTest("Old key invalid after regeneration → 401", async () => {
-    // Temporarily store old key
-    const oldKey = sdkKey; // sdkKey was updated above so this is already the new key
     // We need the *truly* old key — it was captured before regeneration so we use a fake one
     const r = await sdkFetch(
       "POST",

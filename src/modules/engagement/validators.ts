@@ -36,6 +36,10 @@ export const validateRuntimeEvaluationDto = (
 
   return {
     tenantId: asOptionalString(record.tenantId, "tenantId") ?? "",
+    sdkIntegrationId: asOptionalString(
+      record.sdkIntegrationId,
+      "sdkIntegrationId",
+    ),
     userId: asOptionalString(record.userId, "userId"),
     sessionId: asOptionalString(record.sessionId, "sessionId"),
     url: asOptionalString(record.url, "url"),
@@ -61,6 +65,10 @@ export const validateRuntimeEvaluationDto = (
       typeof record.eventProperties === "object" &&
       record.eventProperties != null
         ? (record.eventProperties as Record<string, unknown>)
+        : undefined,
+    forceShowCompleted:
+      typeof record.forceShowCompleted === "boolean"
+        ? record.forceShowCompleted
         : undefined,
   };
 };

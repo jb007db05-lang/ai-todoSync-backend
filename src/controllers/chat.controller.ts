@@ -495,6 +495,80 @@ class ChatController {
       res.status(status).json({ error: (error as Error).message });
     }
   };
+
+  /**
+   * Share a message across projects
+   */
+  public shareMessage = async (
+    req: AuthenticatedRequestWithProject,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const user = req.user;
+      const { messageId } = req.params as Record<string, string>;
+      const { targetProjectId } = req.body;
+
+      if (!user) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+      if (!messageId || !targetProjectId) {
+        res.status(400).json({ error: "messageId and targetProjectId are required" });
+        return;
+      }
+
+      const sharedMessage = await chatService.shareMessageToProject(
+        user._id.toString(),
+        messageId,
+        targetProjectId,
+      );
+
+      res.status(201).json({
+        message: "Message shared successfully",
+        data: { message: sharedMessage },
+      });
+    } catch (error) {
+      const status = (error as { status?: number }).status || 500;
+      res.status(status).json({ error: (error as Error).message });
+    }
+  };
+
+  /**
+   * Create a task directly from a chat message
+   */
+  public createTaskFromMessage = async (
+    req: AuthenticatedRequestWithProject,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const user = req.user;
+      const { messageId } = req.params as Record<string, string>;
+      const { title, priority } = req.body;
+
+      if (!user) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+      if (!messageId) {
+        res.status(400).json({ error: "messageId is required" });
+        return;
+      }
+
+      const result = await chatService.createTaskFromMessage(
+        user._id.toString(),
+        messageId,
+        { title, priority },
+      );
+
+      res.status(201).json({
+        message: "Task created from message successfully",
+        data: result,
+      });
+    } catch (error) {
+      const status = (error as { status?: number }).status || 500;
+      res.status(status).json({ error: (error as Error).message });
+    }
+  };
 }
 
 const chatController = new ChatController();

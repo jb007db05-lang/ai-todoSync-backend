@@ -1,6 +1,5 @@
 import type { Request, Response } from "express";
 import { isAppError } from "../../utils/app-error.js";
-import { getTenantIdFromRequest } from "./permissions.js";
 import guideAnalyticsService from "./service.js";
 import { validateGuideAnalyticsQueryDto } from "./validators.js";
 

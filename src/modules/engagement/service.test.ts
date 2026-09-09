@@ -77,8 +77,8 @@ test("recordRuntimeDelivery stores survey exposure under canonical survey id", a
   });
 
   assert.equal(upserts.length, 1);
-  assert.equal(upserts[0][0].guideId, "survey-raw-id");
-  assert.equal(upserts[0][1].incrementDisplay, true);
+  assert.equal(upserts[0][0].guideId, "survey:survey-raw-id");
+  assert.equal(upserts[0][1].incrementDisplay, false);
   assert.equal(mtuInputs.length, 1);
   assert.equal(mtuInputs[0].guideId, undefined);
   assert.equal(mtuInputs[0].surveyId, "survey-raw-id");
@@ -120,5 +120,5 @@ test("recordRuntimeDelivery stores checklist exposure under canonical checklist 
   });
 
   assert.equal(upserts.length, 1);
-  assert.equal(upserts[0][0].guideId, "checklist-raw-id");
+  assert.equal(upserts[0][0].guideId, "checklist:checklist-raw-id");
 });

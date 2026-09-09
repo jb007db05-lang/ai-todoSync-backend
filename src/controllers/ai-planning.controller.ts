@@ -51,6 +51,95 @@ class AiPlanningController {
     }));
   };
 
+  public listWorkspaceSessions = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+      const rawWsId = (req.query.workspaceId as string) || (req.params as any)?.workspaceId;
+      const workspaceId = typeof rawWsId === "string" && rawWsId.trim() ? rawWsId.trim() : undefined;
+      const sessions = await aiPlanningService.listWorkspaceSessions(
+        req.user._id.toString(),
+        workspaceId,
+      );
+      res.status(200).json({ message: "Workspace sessions fetched", data: { sessions } });
+    } catch (error: any) {
+      res.status(error.status || 500).json({ error: error.message });
+    }
+  };
+
+  public createWorkspaceSession = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+      const { workspaceId: rawWsId, title } = req.body;
+      const workspaceId = typeof rawWsId === "string" && rawWsId.trim() ? rawWsId.trim() : undefined;
+      const session = await aiPlanningService.createWorkspaceSession(
+        req.user._id.toString(),
+        workspaceId,
+        { title },
+      );
+      res.status(201).json({ message: "Workspace planning session created", data: { session } });
+    } catch (error: any) {
+      res.status(error.status || 500).json({ error: error.message });
+    }
+  };
+
+  public getWorkspaceSession = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+      const rawWsId = (req.query.workspaceId as string) || (req.params as any)?.workspaceId;
+      const workspaceId = typeof rawWsId === "string" && rawWsId.trim() ? rawWsId.trim() : undefined;
+      const sessionId = getParam(req.params.sessionId);
+      const result = await aiPlanningService.getWorkspaceSession(
+        req.user._id.toString(),
+        workspaceId,
+        sessionId,
+      );
+      res.status(200).json({ message: "Workspace session details fetched", data: result });
+    } catch (error: any) {
+      res.status(error.status || 500).json({ error: error.message });
+    }
+  };
+
+  public deleteWorkspaceSession = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+      const rawWsId = (req.query.workspaceId as string) || (req.params as any)?.workspaceId;
+      const workspaceId = typeof rawWsId === "string" && rawWsId.trim() ? rawWsId.trim() : undefined;
+      const sessionId = getParam(req.params.sessionId);
+      await aiPlanningService.deleteWorkspaceSession(
+        req.user._id.toString(),
+        workspaceId,
+        sessionId,
+      );
+      res.status(200).json({ message: "Workspace session deleted successfully" });
+    } catch (error: any) {
+      res.status(error.status || 500).json({ error: error.message });
+    }
+  };
+
   public listSessions = async (
     req: AuthenticatedRequest,
     res: Response,

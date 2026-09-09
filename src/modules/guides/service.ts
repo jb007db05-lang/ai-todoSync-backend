@@ -40,7 +40,12 @@ class GuideService {
     createdBy: string,
     dto: CreateGuideDto,
   ) {
-    return guideRepository.createGuide(tenantId, sdkIntegrationId, createdBy, dto);
+    return guideRepository.createGuide(
+      tenantId,
+      sdkIntegrationId,
+      createdBy,
+      dto,
+    );
   }
 
   public async updateGuide(
@@ -110,7 +115,29 @@ class GuideService {
     sdkIntegrationId: string,
     context: Omit<TargetingRuntimeContext, "tenantId">,
   ): Promise<RuntimeGuideDto[]> {
-    const guides = await guideRepository.listLiveGuides(tenantId, sdkIntegrationId);
+    const manualTourId = context.eventProperties?.tourId;
+    if (
+      context.eventName === "manual_tour" &&
+      typeof manualTourId === "string"
+    ) {
+      const guide = await guideRepository
+        .getGuide(tenantId, sdkIntegrationId, manualTourId)
+        .catch(() => null);
+      if (guide) {
+        return [
+          this.toRuntimeDto(guide, {
+            reasons: ["Manual tour trigger"],
+            matchedConditions: [],
+            failedConditions: [],
+          }),
+        ];
+      }
+    }
+
+    const guides = await guideRepository.listLiveGuides(
+      tenantId,
+      sdkIntegrationId,
+    );
     const contextWithTenant = { ...context, tenantId };
     const evaluated = await Promise.all(
       guides.map(async (guide) => {

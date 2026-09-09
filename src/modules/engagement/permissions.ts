@@ -51,7 +51,10 @@ export const optionalEngagementAuth = async (
   const hasSdkKey =
     typeof authorizationHeader === "string" ||
     typeof req.headers["x-api-key"] === "string" ||
-    (typeof req.body === "object" && req.body != null && ("apiKey" in req.body || "sdkKey" in req.body));
+    typeof req.headers["x-sdk-key"] === "string" ||
+    (typeof req.body === "object" &&
+      req.body != null &&
+      ("apiKey" in req.body || "sdkKey" in req.body));
 
   if (hasSdkKey) {
     await validateSdkKeyUnified(req, res, next);

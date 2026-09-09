@@ -43,6 +43,24 @@ export const normalizeOrigin = (originStr: string): string => {
   }
 };
 
+export const matchOrigin = (origin: string, pattern: string): boolean => {
+  const normOrigin = normalizeOrigin(origin);
+  const normPattern = normalizeOrigin(pattern);
+
+  if (normPattern.includes("*")) {
+    const escaped = normPattern.replace(/[.+*^${}()|[\]\\]/g, "\\$&");
+    const regexStr = "^" + escaped.replace(/\\\*\\\./g, "([a-zA-Z0-9.-]+\\.)?").replace(/\\\*/g, "[a-zA-Z0-9.-]*") + "$";
+    try {
+      const regex = new RegExp(regexStr);
+      return regex.test(normOrigin);
+    } catch {
+      return normOrigin === normPattern;
+    }
+  }
+
+  return normOrigin === normPattern;
+};
+
 class SdkIntegrationService {
   /** Create a new integration + auto-generate SDK key */
   async create(input: CreateIntegrationInput): Promise<{
@@ -224,10 +242,23 @@ class SdkIntegrationService {
     if (cached !== null) return cached;
 
     const SdkIntegrationModel = (await import("./model.js")).default;
-    const integration = await SdkIntegrationModel.findOne({
+    let integration = await SdkIntegrationModel.findOne({
       $or: [{ domain: normalized }, { allowedOrigins: normalized }],
       status: { $in: ["connected", "pending"] },
     });
+
+    if (!integration) {
+      const allIntegrations = await SdkIntegrationModel.find({
+        status: { $in: ["connected", "pending"] },
+      });
+      integration = allIntegrations.find((it) => {
+        if (it.domain && matchOrigin(normalized, it.domain)) return true;
+        if (Array.isArray(it.allowedOrigins)) {
+          return it.allowedOrigins.some((o) => matchOrigin(normalized, o));
+        }
+        return false;
+      }) as any;
+    }
 
     if (integration) {
       sdkIntegrationCache.setOriginAllowed(normalized, true);
@@ -239,10 +270,19 @@ class SdkIntegrationService {
       const AnalyticsKeyModel = (
         await import("../../models/analytics-key.model.js")
       ).default;
-      const keyDoc = await AnalyticsKeyModel.findOne({
+      let keyDoc = await AnalyticsKeyModel.findOne({
         allowedOrigins: normalized,
         status: "active",
       });
+      if (!keyDoc) {
+        const allKeys = await AnalyticsKeyModel.find({ status: "active" });
+        keyDoc = allKeys.find((k) => {
+          if (Array.isArray(k.allowedOrigins)) {
+            return k.allowedOrigins.some((o) => matchOrigin(normalized, o));
+          }
+          return false;
+        }) as any;
+      }
       const allowed = !!keyDoc;
       sdkIntegrationCache.setOriginAllowed(normalized, allowed);
       return allowed;

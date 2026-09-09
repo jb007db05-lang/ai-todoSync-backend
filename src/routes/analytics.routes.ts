@@ -1,13 +1,17 @@
 import { Router } from "express";
 import { Routes } from "../interfaces/routes.interface.js";
 import authMiddleware from "../middleware/auth.middleware.js";
-import { validateSdkKeyUnified } from "../middleware/sdkAuth.middleware.js";
+import {
+  validateSdkKeyUnified,
+  sdkAuthHandshakeLimiter,
+} from "../middleware/sdkAuth.middleware.js";
 import { requireSdkIntegrationAccess } from "../middleware/sdkIntegrationAuth.middleware.js";
 import apiKeyController from "../controllers/apiKey.controller.js";
 import trackingController from "../controllers/tracking.controller.js";
 import analyticsDataController from "../controllers/analyticsData.controller.js";
 import semanticAnalyticsController from "../controllers/semantic-analytics.controller.js";
 import mcpController from "../controllers/mcp.controller.js";
+import sdkAuthController from "../controllers/sdkAuth.controller.js";
 
 class AnalyticsRoutes implements Routes {
   public path = "/api"; // Using /api as the base path for these routes
@@ -18,6 +22,23 @@ class AnalyticsRoutes implements Routes {
   }
 
   private initializeRoutes(): void {
+    // 0. SDK AUTHENTICATION & SESSION MANAGEMENT
+    this.router.post(
+      "/sdk/authenticate",
+      sdkAuthHandshakeLimiter,
+      sdkAuthController.authenticate,
+    );
+    this.router.post(
+      "/sdk/session/renew",
+      validateSdkKeyUnified,
+      sdkAuthController.renew,
+    );
+    this.router.post(
+      "/sdk/session/revoke",
+      validateSdkKeyUnified,
+      sdkAuthController.revoke,
+    );
+
     // 1. API KEY MANAGEMENT (Protected by JWT)
     this.router.post("/keys", authMiddleware, apiKeyController.createKey);
     this.router.get("/keys", authMiddleware, apiKeyController.listKeys);
@@ -38,7 +59,11 @@ class AnalyticsRoutes implements Routes {
       validateSdkKeyUnified,
       trackingController.identifyTrack,
     );
-    this.router.get("/config", validateSdkKeyUnified, trackingController.config);
+    this.router.get(
+      "/config",
+      validateSdkKeyUnified,
+      trackingController.config,
+    );
 
     // 3. DATA FETCHING — Legacy (apiKeyId-scoped, kept for backward compat)
     this.router.get(
@@ -173,6 +198,11 @@ class AnalyticsRoutes implements Routes {
       "/analytics/simulate",
       authMiddleware,
       semanticAnalyticsController.simulate,
+    );
+    this.router.get(
+      "/analytics/projects/:projectId/report",
+      authMiddleware,
+      semanticAnalyticsController.getProjectReport,
     );
 
     // 5. MCP-COMPATIBLE AI TOOL LAYER (Protected by JWT, AI-safe only)

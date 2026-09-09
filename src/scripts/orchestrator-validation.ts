@@ -424,7 +424,7 @@ async function runValidation() {
       const memBefore = process.memoryUsage().heapUsed;
       const start = performance.now();
 
-      const result = await experienceOrchestrator.orchestrate({
+      await experienceOrchestrator.orchestrate({
         tenantId: "tenant-1",
         userId: "user-perf",
         experiences: perfExps,

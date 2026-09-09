@@ -345,10 +345,28 @@ class AuthController {
       const redirectUri = req.query.redirect_uri as string | undefined;
       const gptState = req.query.state as string | undefined;
 
+      let origin =
+        (req.query.origin as string) ||
+        (req.headers.referer
+          ? new URL(req.headers.referer).origin
+          : env.FRONTEND_BASE_URL);
+      const allowedOrigins = [env.FRONTEND_BASE_URL, ...env.ALLOWED_ORIGINS];
+      const isAllowed = allowedOrigins.some((allowed) => {
+        try {
+          return new URL(allowed).origin === new URL(origin).origin;
+        } catch {
+          return false;
+        }
+      });
+      if (!isAllowed) {
+        origin = env.FRONTEND_BASE_URL;
+      }
+
       const state = signState({
         redirectTo: safeRedirect,
         redirectUri: redirectUri || null,
         gptState: gptState || null,
+        origin,
       });
 
       const authorizationUrl = authService.getGoogleAuthorizationUrl(state);
@@ -408,14 +426,33 @@ class AuthController {
         userAgent: req.get("user-agent") ?? null,
       });
 
-      const finalRedirectUrl = new URL(env.FRONTEND_BASE_URL);
+      const finalRedirectUrl = new URL(
+        decodedState.origin || env.FRONTEND_BASE_URL,
+      );
       finalRedirectUrl.pathname = decodedState.redirectTo || "/";
       finalRedirectUrl.searchParams.set("token", authResult.accessToken);
 
       logger.info(`Final redirect URL: ${finalRedirectUrl.toString()}`);
       res.redirect(finalRedirectUrl.toString());
     } catch (error) {
-      this.respondWithError(res, error);
+      logger.error("Google OAuth Callback Error: " + JSON.stringify(error));
+      let targetOrigin = env.FRONTEND_BASE_URL;
+      try {
+        const state = req.query.state;
+        if (state) {
+          const decodedState = verifyState(state as string);
+          if (decodedState.origin) {
+            targetOrigin = decodedState.origin;
+          }
+        }
+      } catch {
+        // Fallback to default redirect options on decryption error
+      }
+      const errMsg =
+        error instanceof Error ? error.message : "Google authentication failed";
+      res.redirect(
+        `${targetOrigin.replace(/\/$/, "")}/login?error=${encodeURIComponent(errMsg)}`,
+      );
     }
   };
 
@@ -606,6 +643,7 @@ const verifyState = (state?: string) => {
       mode?: string;
       redirectUri?: string | null;
       gptState?: string | null;
+      origin?: string;
     };
 
     return {
@@ -613,6 +651,7 @@ const verifyState = (state?: string) => {
       mode: parsed.mode ?? "web",
       redirectUri: parsed.redirectUri ?? null,
       gptState: parsed.gptState ?? null,
+      origin: parsed.origin ?? env.FRONTEND_BASE_URL,
     };
   } catch {
     return { redirectTo: "/", mode: "web", redirectUri: null, gptState: null };

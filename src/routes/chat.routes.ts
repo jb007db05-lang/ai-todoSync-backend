@@ -43,6 +43,10 @@ class ChatRoutes implements Routes {
     this.router.post("/messages/read", chatController.markMessagesAsRead);
     this.router.get("/messages/unread-count", chatController.getUnreadCount);
 
+    // Cross-project sharing & task creation
+    this.router.post("/messages/:messageId/share", chatController.shareMessage);
+    this.router.post("/messages/:messageId/create-task", chatController.createTaskFromMessage);
+
     // Search
     this.router.get("/search", chatController.searchMessages);
   }

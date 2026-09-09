@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 const MONGODB_URI =
-  process.env.MONGODB_URI || "mongodb://localhost:27017/ai-todosync";
+  process.env.MONGODB_URI || "mongodb://localhost:27017/pristine";
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "";
 
 if (!ENCRYPTION_KEY) {
@@ -41,7 +41,7 @@ function deterministicHash(text: string): string {
 
 async function run() {
   console.log("Connecting to MongoDB pristine...");
-  await mongoose.connect("mongodb://localhost:27017/pristine");
+  await mongoose.connect(MONGODB_URI);
   console.log("Connected.");
 
   const tenantId = "6a55f1af89f6d79a68903914"; // nairaditya2003@gmail.com

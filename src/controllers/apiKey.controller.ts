@@ -25,7 +25,7 @@ class ApiKeyController {
         ) {
           await (AnalyticsKeyModel as any).dropLegacyIndexes();
         }
-      } catch (err) {
+      } catch (_err) {
         // Ignore errors if index doesn't exist
       }
 

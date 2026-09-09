@@ -21,7 +21,7 @@ export async function runInTransaction<T>(
       topologyType === "ReplicaSetWithPrimary" ||
       topologyType === "Sharded" ||
       topologyType === "ReplicaSetNoPrimary";
-  } catch (err) {
+  } catch (_err) {
     logger.warn(
       "Could not determine MongoDB topology, defaulting to non-transactional mode",
     );

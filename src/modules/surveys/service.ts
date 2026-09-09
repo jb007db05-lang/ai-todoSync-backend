@@ -146,6 +146,26 @@ class SurveyService {
     sdkIntegrationId: string,
     context: Omit<TargetingRuntimeContext, "tenantId">,
   ): Promise<RuntimeGuideDto[]> {
+    const manualTourId = context.eventProperties?.tourId;
+    if (
+      context.eventName === "manual_tour" &&
+      typeof manualTourId === "string"
+    ) {
+      const cleanTourId = manualTourId.replace(/^survey:/, "");
+      const survey = await surveyRepository
+        .getSurvey(tenantId, sdkIntegrationId, cleanTourId)
+        .catch(() => null);
+      if (survey) {
+        return [
+          this.toRuntimeDto(survey, {
+            reasons: ["Manual tour trigger"],
+            matchedConditions: [],
+            failedConditions: [],
+          }),
+        ];
+      }
+    }
+
     const surveys = await surveyRepository.listLiveSurveys(
       tenantId,
       sdkIntegrationId,
@@ -366,7 +386,11 @@ class SurveyService {
       targetingRules: survey.targetingRules,
       frequencyRules: survey.frequencyRules as Record<string, unknown>,
       scheduleRules: survey.scheduleRules as Record<string, unknown>,
-      metadata: { ...survey.metadata, surveyId: survey._id.toString() },
+      metadata: {
+        ...survey.metadata,
+        surveyId: survey._id.toString(),
+        sdkIntegrationId: survey.sdkIntegrationId,
+      },
       eligibility,
     };
   }

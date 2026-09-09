@@ -517,6 +517,120 @@ class ChatService {
       sender: this.toSenderDto(msg.senderId),
     };
   }
+  /**
+   * Share a message from one project to another project
+   */
+  public async shareMessageToProject(
+    userId: string,
+    sourceMessageId: string,
+    targetProjectId: string,
+  ): Promise<MessageDto> {
+    const sourceMessage = await chatRepository.getMessageById(sourceMessageId);
+    if (!sourceMessage || sourceMessage.isDeleted) {
+      throw new HttpError(404, "Source message not found");
+    }
+
+    const sourceProjectId = sourceMessage.projectId.toString();
+    const sourceMembership = await projectMemberRepository.getProjectMembership(
+      sourceProjectId,
+      userId,
+    );
+    if (!sourceMembership) {
+      throw new HttpError(403, "Access denied to source project");
+    }
+
+    const targetMembership = await projectMemberRepository.getProjectMembership(
+      targetProjectId,
+      userId,
+    );
+    if (!targetMembership) {
+      throw new HttpError(403, "Access denied to target project");
+    }
+
+    const sharedContent = `[Shared from Project]: ${sourceMessage.content}`;
+    const sharedMessage = await this.sendMessage(
+      targetProjectId,
+      userId,
+      sharedContent,
+      {
+        type: MessageType.TEXT,
+        metadata: {
+          sharedFrom: {
+            sourceProjectId,
+            sourceMessageId,
+            sharedByUserId: userId,
+            createdAt: new Date(),
+          },
+        },
+      },
+    );
+
+    const MessageShareModel = (await import("../models/message-share.model.js")).default;
+    await MessageShareModel.create({
+      sourceProjectId,
+      targetProjectId,
+      sourceMessageId,
+      targetMessageId: sharedMessage.id,
+      sharedByUserId: userId,
+    });
+
+    return sharedMessage;
+  }
+
+  /**
+   * Create a task directly from a chat message
+   */
+  public async createTaskFromMessage(
+    userId: string,
+    messageId: string,
+    options?: { title?: string; priority?: any },
+  ): Promise<{ taskId: string; message: MessageDto }> {
+    const message = await chatRepository.getMessageById(messageId);
+    if (!message || message.isDeleted) {
+      throw new HttpError(404, "Message not found");
+    }
+
+    const projectId = message.projectId.toString();
+    const membership = await projectMemberRepository.getProjectMembership(
+      projectId,
+      userId,
+    );
+    if (!membership) {
+      throw new HttpError(403, "Access denied to project");
+    }
+
+    const taskService = (await import("./task.service.js")).default;
+    const taskTitle = options?.title?.trim() || message.content.slice(0, 80);
+    const today = new Date().toISOString().split("T")[0];
+
+    const task = await taskService.createTask({
+      userId,
+      assignedTo: userId,
+      title: taskTitle,
+      description: `Created from Chat Message: "${message.content}"`,
+      date: today,
+      priority: options?.priority || "MEDIUM",
+      source: "chat",
+      projectId,
+    });
+
+    // Post a system message in project chat acknowledging task creation
+    const sysMsg = await this.sendMessage(
+      projectId,
+      userId,
+      `Created task "${task.title}" from message.`,
+      {
+        type: MessageType.SYSTEM,
+        metadata: {
+          action: "task_created",
+          entityId: task.id,
+          entityType: "task",
+        },
+      },
+    );
+
+    return { taskId: task.id, message: sysMsg };
+  }
 }
 
 const chatService = new ChatService();

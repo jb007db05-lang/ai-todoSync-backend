@@ -56,6 +56,7 @@ class EngagementService {
     }
 
     if (experienceId) {
+      const isRuntimeDelivery = input.dto.properties?.source === "runtime_delivery";
       await engagementRepository.upsertExposure(
         {
           tenantId: input.tenantId,
@@ -68,7 +69,7 @@ class EngagementService {
           status: this.resolveExposureStatus(input.dto.eventName),
           stepId: input.dto.stepId,
           metadata: input.dto.properties,
-          incrementDisplay: input.dto.eventName === "guide_shown",
+          incrementDisplay: !isRuntimeDelivery && input.dto.eventName === "guide_shown",
         },
       );
     }

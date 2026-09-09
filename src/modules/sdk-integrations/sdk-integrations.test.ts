@@ -14,7 +14,7 @@ import crypto from "crypto";
 // Helper — lightweight mock for MongoDB model methods
 // ──────────────────────────────────────────────────────────────────────────────
 
-function makeModelMock(returnValue: unknown) {
+function _makeModelMock(returnValue: unknown) {
   return {
     exec: async () => returnValue,
     lean: () => ({ exec: async () => returnValue }),
@@ -214,7 +214,7 @@ import { normalizeOrigin } from "../../middleware/sdkAuth.middleware.js";
 const validateOriginFn = (
   origin: string | undefined,
   registeredDomain: string,
-  environment: string,
+  _environment: string,
 ): string | null => {
   if (!origin) {
     return "Origin header is required";
@@ -391,6 +391,37 @@ test("Auth: validates origin matches primary domain or allowed origins list", as
 
   // Mismatch
   const err = validateIntegrationOrigin("https://third.domain.com", mockIntegration);
+  assert.ok(err?.includes("not allowed"), `expected rejection message, got: ${err}`);
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 8b. Wildcard Domain / Dynamic CORS Validation Tests
+// ──────────────────────────────────────────────────────────────────────────────
+
+test("Auth: validates origin against wildcard domain and allowed origins patterns", async () => {
+  const { validateIntegrationOrigin } = await import("../../middleware/sdkAuth.middleware.js");
+  const { matchOrigin } = await import("./service.js");
+
+  // Verify matchOrigin helper logic directly
+  assert.equal(matchOrigin("https://sub.domain.com", "https://*.domain.com"), true);
+  assert.equal(matchOrigin("https://domain.com", "https://*.domain.com"), true);
+  assert.equal(matchOrigin("https://other.com", "https://*.domain.com"), false);
+
+  const mockWildcardIntegration = {
+    domain: "https://*.wildcard-app.com",
+    allowedOrigins: ["https://*.partner.com", "https://custom-domain.com"],
+  };
+
+  // Match wildcard domain
+  assert.equal(validateIntegrationOrigin("https://sub.wildcard-app.com", mockWildcardIntegration), null);
+  assert.equal(validateIntegrationOrigin("https://another.sub.wildcard-app.com", mockWildcardIntegration), null);
+
+  // Match wildcard allowedOrigins list
+  assert.equal(validateIntegrationOrigin("https://tenant1.partner.com", mockWildcardIntegration), null);
+  assert.equal(validateIntegrationOrigin("https://custom-domain.com", mockWildcardIntegration), null);
+
+  // Mismatch
+  const err = validateIntegrationOrigin("https://evil.com", mockWildcardIntegration);
   assert.ok(err?.includes("not allowed"), `expected rejection message, got: ${err}`);
 });
 
