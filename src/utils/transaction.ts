@@ -8,6 +8,8 @@ import logger from "../lib/logger.js";
  * MongoDB transactions require a replica set. Standalone instances (common in local dev)
  * do not support them and throw "Transaction numbers are only allowed on a replica set member or mongos".
  */
+let fallbackLock = Promise.resolve();
+
 export async function runInTransaction<T>(
   callback: (session: ClientSession | undefined) => Promise<T>,
 ): Promise<T> {
@@ -33,7 +35,12 @@ export async function runInTransaction<T>(
         `MongoDB transactions not supported (topology: ${topologyType}). Using fallback.`,
       );
     }
-    return callback(undefined);
+    const resultPromise = fallbackLock.then(() => callback(undefined));
+    fallbackLock = resultPromise.then(
+      () => {},
+      () => {},
+    );
+    return resultPromise;
   }
 
   const session = await mongoose.startSession();

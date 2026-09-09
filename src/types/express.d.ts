@@ -1,9 +1,9 @@
-import type { ICompanionDeviceDocument } from "../models/companion-device.model.js";
-import type { IDeviceSessionDocument } from "../models/device-session.model.js";
-import type { IProjectDocument } from "../models/project.model.js";
-import type { ProjectRole } from "../models/project-member.model.js";
-import type { IUserDocument } from "../models/user.model.js";
-import type { IAnalyticsKeyDocument } from "../models/analytics-key.model.js";
+import type { ICompanionDeviceDocument } from "../modules/ai/models/companion-device.model.js";
+import type { IDeviceSessionDocument } from "../modules/auth/models/device-session.model.js";
+import type { IProjectDocument } from "../modules/project/models/project.model.js";
+import type { ProjectRole } from "../modules/project/models/project-member.model.js";
+import type { IUserDocument } from "../modules/auth/models/user.model.js";
+import type { IAnalyticsKeyDocument } from "../modules/analytics/models/analytics-key.model.js";
 import type { ISdkIntegrationDocument } from "../modules/sdk-integrations/model.js";
 import type { SessionDeviceContext } from "./auth.js";
 

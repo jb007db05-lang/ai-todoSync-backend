@@ -1,0 +1,89 @@
+import type { Response } from "express";
+import type { AuthenticatedRequest } from "../../../types/auth.js";
+import workspaceService from "../services/workspace.service.js";
+
+export const listWorkspaces = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const userId = req.user!._id.toString();
+    const workspaces = await workspaceService.listUserWorkspaces(userId);
+    res.status(200).json({ workspaces });
+  } catch (error: any) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+};
+
+export const createWorkspace = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const userId = req.user!._id.toString();
+    const workspace = await workspaceService.createWorkspace(userId, req.body);
+    res.status(201).json({ workspace });
+  } catch (error: any) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+};
+
+export const getWorkspaceDetails = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const userId = req.user!._id.toString();
+    const { id } = req.params as Record<string, string>;
+    const workspace = await workspaceService.getWorkspaceDetails(userId, id);
+    res.status(200).json({ workspace });
+  } catch (error: any) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+};
+
+export const updateWorkspace = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const userId = req.user!._id.toString();
+    const { id } = req.params as Record<string, string>;
+    const workspace = await workspaceService.updateWorkspace(
+      userId,
+      id,
+      req.body,
+    );
+    res.status(200).json({ workspace });
+  } catch (error: any) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+};
+
+export const inviteMember = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const userId = req.user!._id.toString();
+    const { id } = req.params as Record<string, string>;
+    const member = await workspaceService.inviteMember(userId, id, req.body);
+    res.status(201).json({ member });
+  } catch (error: any) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+};
+
+export const removeMember = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const userId = req.user!._id.toString();
+    const { id, memberUserId } = req.params as Record<string, string>;
+    await workspaceService.removeMember(userId, id, memberUserId);
+    res.status(200).json({ message: "Member removed successfully" });
+  } catch (error: any) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+};

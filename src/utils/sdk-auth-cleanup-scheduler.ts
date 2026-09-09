@@ -1,8 +1,7 @@
 import cron from "node-cron";
 import logger from "../lib/logger.js";
-import { SdkAuthService } from "../services/sdkAuth.service.js";
+import { SdkAuthService } from "../modules/sdk/services/sdkAuth.service.js";
 
-// Run cleanup every 10 minutes
 const CRON_EXPRESSION = "*/10 * * * *";
 
 export const scheduleSdkAuthCleanupJob = (): cron.ScheduledTask => {

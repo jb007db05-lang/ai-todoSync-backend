@@ -3,7 +3,7 @@ import { deterministicHash } from "../../utils/encryption.js";
 import * as repo from "./repository.js";
 import type { ISdkIntegrationDocument, SdkEnvironment } from "./model.js";
 import { sdkIntegrationCache } from "./cache.js";
-import type { IUserDocument } from "../../models/user.model.js";
+import type { IUserDocument } from "../auth/models/user.model.js";
 
 const generateSdkKey = (): string =>
   `sdk_${crypto.randomBytes(24).toString("hex")}`;
@@ -49,7 +49,12 @@ export const matchOrigin = (origin: string, pattern: string): boolean => {
 
   if (normPattern.includes("*")) {
     const escaped = normPattern.replace(/[.+*^${}()|[\]\\]/g, "\\$&");
-    const regexStr = "^" + escaped.replace(/\\\*\\\./g, "([a-zA-Z0-9.-]+\\.)?").replace(/\\\*/g, "[a-zA-Z0-9.-]*") + "$";
+    const regexStr =
+      "^" +
+      escaped
+        .replace(/\\\*\\\./g, "([a-zA-Z0-9.-]+\\.)?")
+        .replace(/\\\*/g, "[a-zA-Z0-9.-]*") +
+      "$";
     try {
       const regex = new RegExp(regexStr);
       return regex.test(normOrigin);
@@ -216,7 +221,7 @@ class SdkIntegrationService {
     const cached = sdkIntegrationCache.getTenant(tenantId);
     if (cached) return cached;
 
-    const UserModel = (await import("../../models/user.model.js")).default;
+    const UserModel = (await import("../auth/models/user.model.js")).default;
     const user = await UserModel.findById(tenantId);
     if (user) {
       sdkIntegrationCache.setTenant(tenantId, user);
@@ -268,7 +273,7 @@ class SdkIntegrationService {
     // Also check legacy AnalyticsKey model
     try {
       const AnalyticsKeyModel = (
-        await import("../../models/analytics-key.model.js")
+        await import("../analytics/models/analytics-key.model.js")
       ).default;
       let keyDoc = await AnalyticsKeyModel.findOne({
         allowedOrigins: normalized,

@@ -1,7 +1,7 @@
 import type { NextFunction, Response } from "express";
 
-import type { ProjectRole } from "../models/project-member.model.js";
-import projectService from "../services/project.service.js";
+import type { ProjectRole } from "../interfaces/project/project.interface.js";
+import projectService from "../modules/project/services/project.service.js";
 import type { AuthenticatedRequest } from "../types/auth.js";
 
 const getProjectIdFromRequest = (

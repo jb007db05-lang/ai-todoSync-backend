@@ -1,14 +1,14 @@
 import { NextFunction, Request, Response } from "express";
 
 import logger from "../lib/logger.js";
-import type { IUserDocument } from "../models/user.model.js";
-import { findCompanionDeviceById } from "../repositories/companion-device.repository.js";
+import type { IUserDocument } from "../modules/auth/models/user.model.js";
+import { findCompanionDeviceById } from "../modules/ai/repositories/companion-device.repository.js";
 import {
   findUserById,
   findUserBySyncApiKey,
-} from "../repositories/auth.repository.js";
-import { findActiveDeviceSessionById } from "../repositories/device-session.repository.js";
-import authService from "../services/auth.service.js";
+} from "../modules/auth/repositories/auth.repository.js";
+import { findActiveDeviceSessionById } from "../modules/auth/repositories/device-session.repository.js";
+import authService from "../modules/auth/services/auth.service.js";
 import type { AuthenticatedRequest } from "../types/auth.js";
 
 const respondUnauthorized = (res: Response): Response =>

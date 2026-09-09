@@ -2,7 +2,7 @@ import mongoose, { Types } from "mongoose";
 
 import { connectDatabase } from "../../config/db.config.js";
 import env from "../../config/env.js";
-import NoteModel from "../../models/note.model.js";
+import NoteModel from "../../modules/note/models/note.model.js";
 
 const toStoredParentId = (value: unknown): unknown => {
   if (typeof value === "string" && Types.ObjectId.isValid(value)) {

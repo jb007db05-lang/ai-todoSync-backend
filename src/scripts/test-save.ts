@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import UserModel from "../models/user.model.js";
+import UserModel from "../modules/auth/models/user.model.js";
 import env from "../config/env.js";
 
 async function test() {

@@ -1,4 +1,7 @@
-import type { TaskPriority, TaskSlaState } from "../models/task.model.js";
+import type {
+  TaskPriority,
+  TaskSlaState,
+} from "../interfaces/task/task.interface.js";
 
 export const SLA_PRIORITIES: TaskPriority[] = [
   "LOW",

@@ -2,10 +2,12 @@ import type { Server as HTTPServer } from "http";
 import { Server, type Socket } from "socket.io";
 import jwt from "jsonwebtoken";
 
-import UserModel, { type IUserDocument } from "../models/user.model.js";
-import ProjectMemberModel from "../models/project-member.model.js";
-import authService from "../services/auth.service.js";
-import chatService from "../services/chat.service.js";
+import UserModel, {
+  type IUserDocument,
+} from "../modules/auth/models/user.model.js";
+import ProjectMemberModel from "../modules/project/models/project-member.model.js";
+import authService from "../modules/auth/services/auth.service.js";
+import chatService from "../modules/chat/services/chat.service.js";
 import env from "../config/env.js";
 import logger from "../lib/logger.js";
 
@@ -107,7 +109,10 @@ class ChatSocketServer {
     this.io = new Server(server, {
       cors: {
         origin: (requestOrigin, callback) => {
-          if (!requestOrigin || allowedOrigins.includes(requestOrigin.replace(/\/$/, ""))) {
+          if (
+            !requestOrigin ||
+            allowedOrigins.includes(requestOrigin.replace(/\/$/, ""))
+          ) {
             callback(null, true);
           } else {
             callback(null, true); // Allow dev origins gracefully
@@ -150,13 +155,16 @@ class ChatSocketServer {
       } catch {
         // Fall back to direct JWT verification
         try {
-          const decoded = jwt.verify(token, env.JWT_SECRET) as { userId: string };
+          const decoded = jwt.verify(token, env.JWT_SECRET) as {
+            userId: string;
+          };
           if (decoded?.userId) {
             user = await UserModel.findById(decoded.userId);
           }
         } catch {
           // Fall back to Sync API key verification
-          const { findUserBySyncApiKey } = await import("../repositories/auth.repository.js");
+          const { findUserBySyncApiKey } =
+            await import("../modules/auth/repositories/auth.repository.js");
           user = await findUserBySyncApiKey(token);
         }
       }
@@ -384,7 +392,10 @@ class ChatSocketServer {
 
       // Verify user is in the project room or auto-join if member
       if (socket.currentProjectId !== projectId) {
-        const membership = await ProjectMemberModel.findOne({ projectId, userId });
+        const membership = await ProjectMemberModel.findOne({
+          projectId,
+          userId,
+        });
         if (!membership) {
           socket.emit("error", { message: "Not a project member" });
           return;

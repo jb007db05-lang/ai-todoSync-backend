@@ -1,6 +1,6 @@
 import { connectDatabase, disconnectDatabase } from "../../config/db.config.js";
-import TaskModel from "../../models/task.model.js";
-import SlaConfigModel from "../../models/sla-config.model.js";
+import TaskModel from "../../modules/task/models/task.model.js";
+import SlaConfigModel from "../../modules/task/models/sla-config.model.js";
 import {
   DEFAULT_SLA_CONFIG,
   SLA_PRIORITIES,

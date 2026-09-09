@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import crypto from "crypto";
-import { SdkAuthService } from "../../services/sdkAuth.service.js";
-import SdkSessionModel from "../../models/sdk-session.model.js";
-import SdkNonceModel from "../../models/sdk-nonce.model.js";
+import { SdkAuthService } from "../sdk/services/sdkAuth.service.js";
+import SdkSessionModel from "../sdk/models/sdk-session.model.js";
+import SdkNonceModel from "../sdk/models/sdk-nonce.model.js";
 import sdkIntegrationService from "../sdk-integrations/service.js";
 import { deterministicHash, encrypt } from "../../utils/encryption.js";
 

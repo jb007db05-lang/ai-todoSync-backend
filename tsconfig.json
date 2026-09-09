@@ -2,7 +2,8 @@
   "compilerOptions": {
     "target": "ES2020",
     "module": "NodeNext",
-    "moduleResolution": "nodenext",
+    "moduleResolution": "NodeNext",
+    "moduleDetection": "force",
     "paths": {
       "@/*": ["./src/*"]
     },

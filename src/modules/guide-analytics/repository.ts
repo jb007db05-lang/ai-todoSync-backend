@@ -1,5 +1,5 @@
-import AnalyticsEventRegistryModel from "../../models/analytics-event-registry.model.js";
-import AnalyticsLogModel from "../../models/analytics-log.model.js";
+import AnalyticsEventRegistryModel from "../analytics/models/analytics-event-registry.model.js";
+import AnalyticsLogModel from "../analytics/models/analytics-log.model.js";
 import {
   GuideExposureModel,
   MonthlyTargetedUserModel,
@@ -14,7 +14,10 @@ class GuideAnalyticsRepository {
   }
 
   public countLiveGuides(sdkIntegrationId: string) {
-    return GuideModel.countDocuments({ sdkIntegrationId, status: "LIVE" }).exec();
+    return GuideModel.countDocuments({
+      sdkIntegrationId,
+      status: "LIVE",
+    }).exec();
   }
 
   public listExposures(sdkIntegrationId: string) {
@@ -30,7 +33,10 @@ class GuideAnalyticsRepository {
   }
 
   public countMtu(sdkIntegrationId: string, month: string) {
-    return MonthlyTargetedUserModel.countDocuments({ sdkIntegrationId, month }).exec();
+    return MonthlyTargetedUserModel.countDocuments({
+      sdkIntegrationId,
+      month,
+    }).exec();
   }
 
   public async aggregateEngagementEvents(sdkIntegrationId: string) {

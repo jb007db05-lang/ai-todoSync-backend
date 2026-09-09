@@ -1,6 +1,6 @@
 import { connectDatabase, disconnectDatabase } from "../config/db.config.js";
 import { GuideExposureModel } from "../modules/engagement/model.js";
-import AnalyticsKeyModel from "../models/analytics-key.model.js";
+import AnalyticsKeyModel from "../modules/analytics/models/analytics-key.model.js";
 import experienceOrchestrator from "../modules/engagement/orchestrator.js";
 import engagementService from "../modules/engagement/service.js";
 import type { RuntimeGuideDto } from "../modules/engagement/dtos.js";

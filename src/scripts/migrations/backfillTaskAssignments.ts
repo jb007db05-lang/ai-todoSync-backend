@@ -1,6 +1,6 @@
 import { connectDatabase, disconnectDatabase } from "../../config/db.config.js";
 import logger from "../../lib/logger.js";
-import TaskModel from "../../models/task.model.js";
+import TaskModel from "../../modules/task/models/task.model.js";
 
 const backfillTaskAssignments = async (): Promise<void> => {
   await connectDatabase();

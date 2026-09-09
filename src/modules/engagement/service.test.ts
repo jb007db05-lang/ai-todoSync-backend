@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import AnalyticsKeyModel from "../../models/analytics-key.model.js";
-import trackingService from "../../services/tracking.service.js";
+import AnalyticsKeyModel from "../analytics/models/analytics-key.model.js";
+import trackingService from "../analytics/services/tracking.service.js";
 import engagementRepository from "./repository.js";
 import engagementService from "./service.js";
 import type { RuntimeGuideDto } from "./dtos.js";

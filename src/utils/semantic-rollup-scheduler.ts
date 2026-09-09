@@ -1,7 +1,7 @@
 import cron from "node-cron";
 
 import logger from "../lib/logger.js";
-import semanticOperationalIntelligenceService from "../services/semantic-operational-intelligence.service.js";
+import semanticOperationalIntelligenceService from "../modules/analytics/services/semantic-operational-intelligence.service.js";
 
 const SEMANTIC_ROLLUP_CRON_EXPRESSION = "17 * * * *";
 
