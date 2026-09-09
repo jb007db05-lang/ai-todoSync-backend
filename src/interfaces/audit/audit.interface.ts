@@ -39,11 +39,12 @@ export interface IActivityLog {
   createdAt: Date;
 }
 
+/** @deprecated Retention policy is now embedded as Project.audit — no separate collection. */
 export interface IAuditRetentionPolicy {
   projectId: Types.ObjectId | string;
   retentionDays: number;
   legalHold: boolean;
-  updatedBy: Types.ObjectId | string;
+  updatedBy?: Types.ObjectId | string;
   createdAt?: Date;
   updatedAt?: Date;
 }

@@ -3,10 +3,9 @@ import ActivityLogModel, {
   type ActionType,
   type IFieldChange,
 } from "../../../modules/audit/models/activity-log.model.js";
-import AuditRetentionPolicyModel from "../models/audit-retention-policy.model.js";
+import ProjectModel from "../../project/models/project.model.js";
 import logger from "../../../lib/logger.js";
 import { createHash } from "crypto";
-import { buildRefMatch, buildSafeRefMatch } from "../../../utils/mongo-ref.js";
 import projectService from "../../project/services/project.service.js";
 
 interface LogActivityParams {
@@ -79,16 +78,15 @@ class ActivityLogService {
   }
 
   async getRetentionPolicy(projectId: string) {
-    const policy = await AuditRetentionPolicyModel.findOne({
-      ...buildRefMatch("projectId", projectId),
-    }).lean();
+    const project = await ProjectModel.findById(projectId).lean();
+    const audit = project?.audit;
 
     return {
       projectId,
-      retentionDays: policy?.retentionDays ?? 2555,
-      legalHold: policy?.legalHold ?? false,
-      updatedBy: policy?.updatedBy?.toString() ?? null,
-      updatedAt: policy?.updatedAt?.toISOString() ?? null,
+      retentionDays: audit?.retentionDays ?? 2555,
+      legalHold: audit?.legalHold ?? false,
+      updatedBy: audit?.updatedBy?.toString() ?? null,
+      updatedAt: null,
     };
   }
 
@@ -116,18 +114,24 @@ class ActivityLogService {
     const legalHold =
       typeof payload.legalHold === "boolean" ? payload.legalHold : false;
 
-    const policy = await AuditRetentionPolicyModel.findOneAndUpdate(
-      { ...buildSafeRefMatch("projectId", projectId) },
-      { projectId, retentionDays, legalHold, updatedBy },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
+    const project = await ProjectModel.findByIdAndUpdate(
+      projectId,
+      {
+        $set: {
+          "audit.retentionDays": retentionDays,
+          "audit.legalHold": legalHold,
+          "audit.updatedBy": updatedBy,
+        },
+      },
+      { new: true },
     ).lean();
 
     return {
       projectId,
-      retentionDays: policy?.retentionDays ?? retentionDays,
-      legalHold: policy?.legalHold ?? legalHold,
+      retentionDays: project?.audit?.retentionDays ?? retentionDays,
+      legalHold: project?.audit?.legalHold ?? legalHold,
       updatedBy,
-      updatedAt: policy?.updatedAt?.toISOString() ?? new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
   }
 

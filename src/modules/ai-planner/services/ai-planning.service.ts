@@ -4,7 +4,7 @@ import AiPlanningDraftModel, {
 } from "../../../modules/ai-planner/models/ai-planning-draft.model.js";
 import AiPlanningMessageModel from "../models/ai-planning-message.model.js";
 import AiPlanningSessionModel from "../models/ai-planning-session.model.js";
-import ProjectAiConfigModel from "../../project/models/project-ai-config.model.js";
+import ProjectModel from "../../project/models/project.model.js";
 import EpicModel from "../../epic/models/epic.model.js";
 import NoteModel from "../../note/models/note.model.js";
 import TaskModel from "../../task/models/task.model.js";
@@ -175,7 +175,8 @@ class AiPlanningService {
       .sort({ createdAt: 1, _id: 1 })
       .lean();
 
-    const config = await ProjectAiConfigModel.findOne({ projectId }).exec();
+    const projectDoc = await ProjectModel.findById(projectId).lean();
+    const config = projectDoc?.ai ?? null;
     const assistantContent = await this.generateAssistantReply(
       userId,
       projectId,
@@ -225,7 +226,8 @@ class AiPlanningService {
     }
 
     const context = await this.getContext(userId, projectId);
-    const config = await ProjectAiConfigModel.findOne({ projectId }).exec();
+    const projectDoc2 = await ProjectModel.findById(projectId).lean();
+    const config = projectDoc2?.ai ?? null;
     const plan = await this.generatePlan(
       userId,
       projectId,
@@ -482,7 +484,8 @@ class AiPlanningService {
 
   public async getSettings(userId: string, projectId: string) {
     await projectService.assertProjectMembership(userId, projectId);
-    const config = await ProjectAiConfigModel.findOne({ projectId }).exec();
+    const project = await ProjectModel.findById(projectId).lean();
+    const config = project?.ai ?? null;
 
     const user = await UserModel.findById(userId).exec();
     const provider = config?.provider || "gemini";
@@ -493,13 +496,13 @@ class AiPlanningService {
       if (provider === "gemini") hasGlobalKey = !!user.geminiApiKey;
     }
 
-    if (!config) {
+    if (!config || !config.enabled) {
       return {
         enabled: false,
-        provider: "gemini",
+        provider: config?.provider ?? "gemini",
         apiKey: hasGlobalKey ? "••••••••" : "",
-        baseUrl: "",
-        modelName: "Gemini 3.6 Flash",
+        baseUrl: config?.baseUrl ?? "",
+        modelName: config?.modelName ?? "Gemini 3.6 Flash",
       };
     }
     return {
@@ -513,7 +516,6 @@ class AiPlanningService {
 
   public async updateSettings(userId: string, projectId: string, payload: any) {
     await projectService.assertProjectRole(userId, projectId, "ADMIN");
-    let config = await ProjectAiConfigModel.findOne({ projectId }).exec();
 
     const enabled = !!payload.enabled;
     const provider = payload.provider || "gemini";
@@ -526,11 +528,9 @@ class AiPlanningService {
 
     if (enabled) {
       const supportedProviders = ["openai", "anthropic", "gemini"];
-
       if (!supportedProviders.includes(provider)) {
         throw new Error(`Unsupported AI provider: ${provider}`);
       }
-
       const user = await UserModel.findById(userId).exec();
       const hasGlobalKey =
         user &&
@@ -544,80 +544,53 @@ class AiPlanningService {
       }
     }
 
-    if (!config) {
-      config = new ProjectAiConfigModel({
-        projectId,
-        enabled,
+    const oldProject = await ProjectModel.findById(projectId).lean();
+    const oldAi = oldProject?.ai;
+
+    const updatedProject = await ProjectModel.findByIdAndUpdate(
+      projectId,
+      {
+        $set: {
+          "ai.enabled": enabled,
+          "ai.provider": provider,
+          "ai.apiKey": "",
+          "ai.baseUrl": baseUrl,
+          "ai.modelName": modelName,
+        },
+      },
+      { new: true },
+    ).lean();
+
+    // Activity log events
+    if (!oldAi?.enabled && enabled) {
+      await this.logProjectEvent(userId, projectId, "updated", "AI Enabled", {
         provider,
-        apiKey: "",
-        baseUrl,
         modelName,
       });
-      if (enabled) {
-        await this.logProjectEvent(userId, projectId, "updated", "AI Enabled", {
-          provider,
-          modelName,
-        });
-      } else {
-        await this.logProjectEvent(
-          userId,
-          projectId,
-          "updated",
-          "AI Disabled",
-          { provider, modelName },
-        );
-      }
-    } else {
-      const oldEnabled = config.enabled;
-      const oldProvider = config.provider;
-      const oldModelName = config.modelName;
-
-      config.enabled = enabled;
-      config.provider = provider;
-      config.apiKey = "";
-      config.baseUrl = baseUrl;
-      config.modelName = modelName;
-
-      if (oldEnabled !== enabled) {
-        if (enabled) {
-          await this.logProjectEvent(
-            userId,
-            projectId,
-            "updated",
-            "AI Enabled",
-            { provider, modelName },
-          );
-        } else {
-          await this.logProjectEvent(
-            userId,
-            projectId,
-            "updated",
-            "AI Disabled",
-            { provider, modelName },
-          );
-        }
-      }
-      if (oldProvider !== provider) {
-        await this.logProjectEvent(
-          userId,
-          projectId,
-          "updated",
-          "Provider Changed",
-          { oldProvider, newProvider: provider },
-        );
-      }
-      if (oldModelName !== modelName) {
-        await this.logProjectEvent(
-          userId,
-          projectId,
-          "updated",
-          "Model Changed",
-          { oldModelName, newModelName: modelName },
-        );
-      }
+    } else if (oldAi?.enabled && !enabled) {
+      await this.logProjectEvent(userId, projectId, "updated", "AI Disabled", {
+        provider,
+        modelName,
+      });
     }
-
-    await config.save();
+    if (oldAi?.provider && oldAi.provider !== provider) {
+      await this.logProjectEvent(
+        userId,
+        projectId,
+        "updated",
+        "Provider Changed",
+        { oldProvider: oldAi.provider, newProvider: provider },
+      );
+    }
+    if (oldAi?.modelName && oldAi.modelName !== modelName) {
+      await this.logProjectEvent(
+        userId,
+        projectId,
+        "updated",
+        "Model Changed",
+        { oldModelName: oldAi.modelName, newModelName: modelName },
+      );
+    }
 
     const user = await UserModel.findById(userId).exec();
     let hasGlobalKey = false;
@@ -627,12 +600,13 @@ class AiPlanningService {
       if (provider === "gemini") hasGlobalKey = !!user.geminiApiKey;
     }
 
+    const savedAi = updatedProject?.ai;
     return {
-      enabled: config.enabled,
-      provider: config.provider,
+      enabled: savedAi?.enabled ?? enabled,
+      provider: savedAi?.provider ?? provider,
       apiKey: hasGlobalKey ? "••••••••" : "",
-      baseUrl: config.baseUrl || "",
-      modelName: config.modelName,
+      baseUrl: savedAi?.baseUrl ?? baseUrl,
+      modelName: savedAi?.modelName ?? modelName,
     };
   }
 

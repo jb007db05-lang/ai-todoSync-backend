@@ -3,6 +3,8 @@ import { Schema, model, type Document } from "mongoose";
 export interface IAnalyticsLog {
   eventId: string;
   eventRef?: string;
+  /** Event name — added to eliminate AnalyticsEventRegistry collection */
+  eventName?: string;
   apiKeyId?: string;
   sdkIntegrationId: string;
   userIdentifier?: string;
@@ -17,6 +19,7 @@ const analyticsLogSchema = new Schema<IAnalyticsLogDocument>(
   {
     eventId: { type: String, required: true, index: true },
     eventRef: { type: String, index: true },
+    eventName: { type: String, index: true },
     apiKeyId: { type: String, required: false, index: true },
     sdkIntegrationId: { type: String, required: true, index: true },
     userIdentifier: { type: String, index: true },
@@ -35,6 +38,12 @@ analyticsLogSchema.index(
       eventId: { $type: "string" },
     },
   },
+);
+
+// Sparse index for event-name-seen queries (replaces AnalyticsEventRegistry)
+analyticsLogSchema.index(
+  { eventName: 1, sdkIntegrationId: 1 },
+  { sparse: true },
 );
 
 const AnalyticsLogModel = model<IAnalyticsLogDocument>(

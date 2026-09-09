@@ -44,19 +44,9 @@ export interface IChatMessage {
   updatedAt?: Date;
 }
 
-export interface ITypingIndicator {
-  projectId: Types.ObjectId;
-  userId: Types.ObjectId;
-  updatedAt: Date;
-  expireAt: Date;
-}
-
 export interface IMessageMention {
-  messageId: Types.ObjectId | string;
-  projectId: Types.ObjectId | string;
-  mentionedUserId: Types.ObjectId | string;
-  mentionedByUserId: Types.ObjectId | string;
-  createdAt?: Date;
+  userId: Types.ObjectId | string;
+  mentionedBy: Types.ObjectId | string;
 }
 
 export interface IMessageShare {

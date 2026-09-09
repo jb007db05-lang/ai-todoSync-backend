@@ -6,7 +6,7 @@ import taskService from "../../task/services/task.service.js";
 import TaskModel from "../../task/models/task.model.js";
 import NoteModel from "../../note/models/note.model.js";
 import EpicModel from "../../epic/models/epic.model.js";
-import ProjectStateModel from "../../project/models/project-state.model.js";
+import mongoose from "mongoose";
 import DocumentModel from "../../document/models/document.model.js";
 import TaskDependencyModel from "../../task/models/task-dependency.model.js";
 import ProjectPlanModel from "../../project/models/project-plan.model.js";
@@ -15,16 +15,18 @@ import workspaceService from "../../workspace/services/workspace.service.js";
 import env from "../../../config/env.js";
 
 async function assembleProjectKnowledge(projectId: string): Promise<string> {
-  const [project, canonicalPlan, tasks, states, epics, docs, notes] =
-    await Promise.all([
+  const [project, canonicalPlan, tasks, epics, docs, notes] = await Promise.all(
+    [
       projectService.getProjectById(projectId),
       ProjectPlanModel.findOne({ projectId, status: "APPROVED" }).lean(),
       TaskModel.find({ projectId }).lean(),
-      ProjectStateModel.find({ projectId }).sort({ position: 1 }).lean(),
       EpicModel.find({ projectId }).lean(),
       DocumentModel.find({ projectId }).lean(),
       NoteModel.find({ projectId }).lean(),
-    ]);
+    ],
+  );
+
+  const states = (project as any)?.states ?? [];
 
   const taskSummary = tasks
     .map(
@@ -91,8 +93,7 @@ export const listWorkspacePlans = async (
   }
 };
 
-import mongoose from "mongoose";
-import ProjectAiConfigModel from "../../project/models/project-ai-config.model.js";
+import ProjectModel from "../../project/models/project.model.js";
 import UserModel from "../../auth/models/user.model.js";
 import AiPlanningSessionModel from "../../ai-planner/models/ai-planning-session.model.js";
 import AiPlanningMessageModel from "../../ai-planner/models/ai-planning-message.model.js";
@@ -118,7 +119,8 @@ const resolveAiConfigForUserOrProject = async (
 
   // 1. Check Project AI Config if projectId provided
   if (!apiKey && projectId && mongoose.Types.ObjectId.isValid(projectId)) {
-    const config = await ProjectAiConfigModel.findOne({ projectId }).exec();
+    const projectDoc = await ProjectModel.findById(projectId).lean();
+    const config = projectDoc?.ai;
     if (config) {
       if (!overrides?.provider && config.provider)
         provider = config.provider as any;
@@ -154,18 +156,7 @@ const resolveAiConfigForUserOrProject = async (
           ).trim();
         }
       }
-      if (!apiKey) {
-        const anyConfig = await ProjectAiConfigModel.findOne({
-          apiKey: { $exists: true, $ne: "" },
-        }).exec();
-        if (anyConfig?.apiKey && anyConfig.apiKey.trim()) {
-          apiKey = anyConfig.apiKey.trim();
-          if (!overrides?.provider && anyConfig.provider)
-            provider = anyConfig.provider as any;
-          if (!overrides?.modelName && anyConfig.modelName)
-            modelName = anyConfig.modelName;
-        }
-      }
+      // No per-project API key fallback (embedded ai.apiKey is empty string by default)
     }
   }
 
@@ -422,23 +413,22 @@ export const confirmProjectPlan = async (
       createdBy: userId,
     });
 
-    // Create Custom Project States
+    // Create Custom Project States (embedded into Project.states)
     const stateMap = new Map<number, string>();
+    const statesToEmbed: any[] = [];
     if (
       Array.isArray(plan.suggestedStates) &&
       plan.suggestedStates.length > 0
     ) {
       for (let i = 0; i < plan.suggestedStates.length; i++) {
         const st = plan.suggestedStates[i];
-        const createdState = await ProjectStateModel.create({
-          projectId,
+        statesToEmbed.push({
           name: st.name,
           color: st.color || "#3B82F6",
           category: st.category || "STARTED",
           position: i,
           isDefault: i === 0,
         });
-        stateMap.set(i, createdState._id.toString());
       }
     } else {
       const defaults = [
@@ -448,16 +438,24 @@ export const confirmProjectPlan = async (
         { name: "Done", category: "COMPLETED", color: "#10B981", pos: 3 },
       ];
       for (const d of defaults) {
-        const created = await ProjectStateModel.create({
-          projectId,
+        statesToEmbed.push({
           name: d.name,
           color: d.color,
           category: d.category as any,
           position: d.pos,
           isDefault: d.pos === 0,
         });
-        stateMap.set(d.pos, created._id.toString());
       }
+    }
+    if (statesToEmbed.length > 0) {
+      const updatedProj = await ProjectModel.findByIdAndUpdate(
+        projectId,
+        { $push: { states: { $each: statesToEmbed } } },
+        { new: true },
+      ).lean();
+      (updatedProj?.states ?? []).forEach((s: any, idx: number) => {
+        stateMap.set(idx, s._id?.toString() ?? "");
+      });
     }
 
     // Create Epics

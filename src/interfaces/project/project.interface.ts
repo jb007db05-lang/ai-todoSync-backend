@@ -21,6 +21,9 @@ export interface IProject {
   tags?: string[];
   customFields?: IProjectCustomField[];
   isArchived?: boolean;
+  ai?: IProjectAi;
+  audit?: IProjectAudit;
+  states?: IProjectState[];
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -36,16 +39,36 @@ export interface IProjectMember {
   updatedAt?: Date;
 }
 
+export type ProjectStateCategory =
+  | "BACKLOG"
+  | "UNSTARTED"
+  | "STARTED"
+  | "COMPLETED"
+  | "CANCELED";
+
 export interface IProjectState {
-  workspaceId: Types.ObjectId | string;
-  projectId: Types.ObjectId | string;
-  key: string;
+  _id?: any;
   name: string;
+  description?: string;
+  color: string;
   position: number;
-  color?: string;
-  isCompleted?: boolean;
-  createdAt?: Date;
-  updatedAt?: Date;
+  category: ProjectStateCategory;
+  isDefault?: boolean;
+  isTerminal?: boolean;
+}
+
+export interface IProjectAi {
+  enabled: boolean;
+  provider: "gemini" | "openai" | "anthropic";
+  apiKey?: string | null;
+  baseUrl?: string;
+  modelName: string;
+}
+
+export interface IProjectAudit {
+  retentionDays: number;
+  legalHold: boolean;
+  updatedBy?: Types.ObjectId | string | null;
 }
 
 export interface IActorDefinition {
@@ -145,15 +168,16 @@ export interface IProjectPlan {
   updatedAt?: Date;
 }
 
+/** Legacy interface — project AI config is now embedded in IProject.ai */
 export interface IProjectAiConfig {
   projectId: Types.ObjectId | string;
-  workspaceId: Types.ObjectId | string;
+  workspaceId?: Types.ObjectId | string;
   customTechStack?: string[];
   codingConventions?: string[];
   architecturalRules?: string[];
   prohibitedDependencies?: string[];
   customInstructions?: string;
-  updatedBy: Types.ObjectId | string;
+  updatedBy?: Types.ObjectId | string;
   createdAt?: Date;
   updatedAt?: Date;
 }

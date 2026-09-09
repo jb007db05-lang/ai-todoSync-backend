@@ -53,6 +53,11 @@ export interface IMessageReaction {
  * Chat Message Interface
  * Designed for extensibility with message types, threading, and reactions
  */
+export interface IMessageMention {
+  userId: Types.ObjectId | string;
+  mentionedBy: Types.ObjectId | string;
+}
+
 export interface IChatMessage {
   projectId: Types.ObjectId;
   /** Sender ID - null for SYSTEM messages */
@@ -67,6 +72,8 @@ export interface IChatMessage {
   readBy: Types.ObjectId[];
   /** Reactions on this message */
   reactions: IMessageReaction[];
+  /** Embedded mentions (formerly MessageMention collection) */
+  mentions: IMessageMention[];
   /** Whether the message has been edited */
   isEdited: boolean;
   /** Soft delete flag */
@@ -136,6 +143,17 @@ const chatMessageSchema = new Schema<IChatMessageDocument>(
       },
     ],
     reactions: [messageReactionSchema],
+    mentions: [
+      {
+        userId: { type: Schema.Types.ObjectId, required: true, ref: "User" },
+        mentionedBy: {
+          type: Schema.Types.ObjectId,
+          required: true,
+          ref: "User",
+        },
+        _id: false,
+      },
+    ],
     isEdited: {
       type: Boolean,
       default: false,
@@ -156,14 +174,15 @@ const chatMessageSchema = new Schema<IChatMessageDocument>(
 // Compound indexes for efficient querying
 // Messages by project, sorted by creation time (for chat history)
 chatMessageSchema.index({ projectId: 1, createdAt: -1 });
-// Messages by project and type (for filtering)
 chatMessageSchema.index({ projectId: 1, type: 1, createdAt: -1 });
-// Thread replies
 chatMessageSchema.index({ replyToId: 1, createdAt: 1 });
-// Unread messages for a user
 chatMessageSchema.index({ projectId: 1, senderId: 1, createdAt: -1 });
-// Full-text search on content
 chatMessageSchema.index({ content: "text" });
+// Mention lookup: find messages where a specific user was mentioned
+chatMessageSchema.index(
+  { "mentions.userId": 1, createdAt: -1 },
+  { sparse: true },
+);
 
 const ChatMessageModel = model<IChatMessageDocument>(
   "ChatMessage",

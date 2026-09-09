@@ -1,8 +1,7 @@
 import ProjectPlanModel from "../../project/models/project-plan.model.js";
 import TaskModel from "../../task/models/task.model.js";
-import ProjectStateModel from "../../project/models/project-state.model.js";
+import ProjectModel from "../../project/models/project.model.js";
 import TaskDependencyModel from "../../task/models/task-dependency.model.js";
-import projectService from "../../project/services/project.service.js";
 
 export interface ISemanticIntelligenceReport {
   projectId: string;
@@ -44,14 +43,13 @@ class SemanticIntelligenceService {
   public async generateReport(
     projectId: string,
   ): Promise<ISemanticIntelligenceReport> {
-    const [project, canonicalPlan, tasks, _states, _dependencies] =
-      await Promise.all([
-        projectService.getProjectById(projectId),
-        ProjectPlanModel.findOne({ projectId, status: "APPROVED" }).lean(),
-        TaskModel.find({ projectId }).lean(),
-        ProjectStateModel.find({ projectId }).lean(),
-        TaskDependencyModel.find({ projectId }).lean(),
-      ]);
+    const [canonicalPlan, tasks, _dependencies] = await Promise.all([
+      ProjectPlanModel.findOne({ projectId, status: "APPROVED" }).lean(),
+      TaskModel.find({ projectId }).lean(),
+      TaskDependencyModel.find({ projectId }).lean(),
+    ]);
+    const project = await ProjectModel.findById(projectId).lean();
+    const _states = project?.states ?? [];
 
     const projectName = project?.name || "Project";
     const totalTasks = tasks.length;
