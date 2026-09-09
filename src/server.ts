@@ -26,9 +26,11 @@ import InvitationRoutes from "./routes/invitation.routes.js";
 import WorkspaceRoutes from "./routes/workspace.routes.js";
 import CentralizedAiRoutes from "./routes/ai.routes.js";
 import DocumentRoutes from "./routes/document.routes.js";
+import PromptLibraryRoutes from "./routes/prompt-library.routes.js";
 import logger from "./lib/logger.js";
 
 const server = new App([
+  new PromptLibraryRoutes(),
   new DocumentRoutes(),
   new CentralizedAiRoutes(),
   new WorkspaceRoutes(),
