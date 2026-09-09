@@ -353,6 +353,32 @@ class PromptLibraryController {
       next(err);
     }
   };
+
+  public runPlayground = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = req.params.promptId;
+
+      const payload = {
+        ...req.body,
+        promptId: promptId || req.body.promptId,
+      };
+
+      const result = await promptLibraryService.runPlayground(
+        workspaceId,
+        userId,
+        payload,
+      );
+      res.status(200).json({ status: "success", data: result });
+    } catch (err) {
+      next(err);
+    }
+  };
 }
 
 export default new PromptLibraryController();

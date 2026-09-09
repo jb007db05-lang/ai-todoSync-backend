@@ -7,11 +7,8 @@ function walk(dir: string): string[] {
   return fs.readdirSync(dir).flatMap((file) => {
     const fullPath = path.join(dir, file);
 
-    if (
-      IGNORE_FOLDERS.some((folder) =>
-        fullPath.replace(/\\\\/g, "/").includes(folder),
-      )
-    ) {
+    const normalized = fullPath.replace(/\\/g, "/");
+    if (IGNORE_FOLDERS.some((folder) => normalized.includes(folder))) {
       return [];
     }
 

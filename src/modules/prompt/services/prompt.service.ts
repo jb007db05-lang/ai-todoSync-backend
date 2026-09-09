@@ -11,6 +11,7 @@ import promptFolderService from "./prompt-folder.service.js";
 import promptFavoriteService from "./prompt-favorite.service.js";
 import promptVersionService from "./prompt-version.service.js";
 import promptQueryService from "./prompt-query.service.js";
+import promptPlaygroundService from "./prompt-playground.service.js";
 import type {
   CreatePromptPayload,
   UpdatePromptPayload,
@@ -46,6 +47,7 @@ export class PromptService {
   public toggleFavorite = promptFavoriteService.toggleFavorite;
   public getPromptVersions = promptVersionService.getPromptVersions;
   public comparePromptVersions = promptVersionService.comparePromptVersions;
+  public runPlayground = promptPlaygroundService.runPlayground;
 
   // Core Prompt CRUD Operations
   public async createPrompt(

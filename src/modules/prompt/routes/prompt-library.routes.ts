@@ -50,6 +50,13 @@ class PromptLibraryRoutes implements Routes {
     );
     this.router.post("/:promptId/render", promptLibraryController.renderPrompt);
 
+    // Playground Execution Engine
+    this.router.post("/playground/run", promptLibraryController.runPlayground);
+    this.router.post(
+      "/:promptId/playground/run",
+      promptLibraryController.runPlayground,
+    );
+
     // Favorites
     this.router.post(
       "/:promptId/favorite",
