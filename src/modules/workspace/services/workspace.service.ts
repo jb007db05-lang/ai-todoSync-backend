@@ -343,7 +343,7 @@ class WorkspaceService {
     targetUserId: string,
     role: WorkspaceRole,
   ) {
-    const { workspace, member: actorMember } = await this.assertMembership(
+    const { member: actorMember } = await this.assertMembership(
       userId,
       workspaceId,
       ["OWNER", "ADMIN"],
@@ -403,9 +403,7 @@ class WorkspaceService {
   }
 
   public async deleteWorkspace(userId: string, workspaceId: string) {
-    const { workspace } = await this.assertMembership(userId, workspaceId, [
-      "OWNER",
-    ]);
+    await this.assertMembership(userId, workspaceId, ["OWNER"]);
 
     // Delete all members
     await WorkspaceMemberModel.deleteMany({ workspaceId });
