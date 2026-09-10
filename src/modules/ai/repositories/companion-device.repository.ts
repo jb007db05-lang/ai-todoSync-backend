@@ -9,8 +9,18 @@ export const createCompanionDevice = async (
 
 export const countActiveCompanionDevices = async (
   userId: string,
-): Promise<number> =>
-  CompanionDeviceModel.countDocuments({ userId, status: "active" }).exec();
+  workspaceId?: string | null,
+): Promise<number> => {
+  const query: Record<string, unknown> = { userId, status: "active" };
+  if (workspaceId) {
+    query.$or = [
+      { workspaceId },
+      { workspaceId: null },
+      { workspaceId: { $exists: false } },
+    ];
+  }
+  return CompanionDeviceModel.countDocuments(query).exec();
+};
 
 export const findCompanionDeviceById = async (
   deviceId: string,
@@ -20,33 +30,80 @@ export const findCompanionDeviceById = async (
 export const findCompanionDeviceByIdForUser = async (
   userId: string,
   deviceId: string,
-): Promise<ICompanionDeviceDocument | null> =>
-  CompanionDeviceModel.findOne({ _id: deviceId, userId }).exec();
+  workspaceId?: string | null,
+): Promise<ICompanionDeviceDocument | null> => {
+  const query: Record<string, unknown> = { _id: deviceId, userId };
+  if (workspaceId) {
+    query.$or = [
+      { workspaceId },
+      { workspaceId: null },
+      { workspaceId: { $exists: false } },
+    ];
+  }
+  return CompanionDeviceModel.findOne(query).exec();
+};
 
 export const listCompanionDevicesByUser = async (
   userId: string,
-): Promise<ICompanionDeviceDocument[]> =>
-  CompanionDeviceModel.find({ userId, status: "active" })
+  workspaceId?: string | null,
+): Promise<ICompanionDeviceDocument[]> => {
+  const query: Record<string, unknown> = {
+    userId,
+    status: { $in: ["active", "pending"] },
+  };
+  if (workspaceId) {
+    query.$or = [
+      { workspaceId },
+      { workspaceId: null },
+      { workspaceId: { $exists: false } },
+    ];
+  }
+  return CompanionDeviceModel.find(query)
     .sort({ updatedAt: -1, createdAt: -1 })
     .exec();
+};
 
 export const revokeCompanionDevice = async (
   userId: string,
   deviceId: string,
   revokedAt: Date,
-): Promise<ICompanionDeviceDocument | null> =>
-  CompanionDeviceModel.findOneAndUpdate(
-    { _id: deviceId, userId, status: "active" },
+  workspaceId?: string | null,
+): Promise<ICompanionDeviceDocument | null> => {
+  const query: Record<string, unknown> = {
+    _id: deviceId,
+    userId,
+    status: { $ne: "revoked" },
+  };
+  if (workspaceId) {
+    query.$or = [
+      { workspaceId },
+      { workspaceId: null },
+      { workspaceId: { $exists: false } },
+    ];
+  }
+  return CompanionDeviceModel.findOneAndUpdate(
+    query,
     { status: "revoked", revokedAt },
     { new: true },
   ).exec();
+};
 
 export const updateCompanionDevice = async (
   userId: string,
   deviceId: string,
   updates: Partial<Pick<ICompanionDevice, "deviceName" | "deviceType">>,
-): Promise<ICompanionDeviceDocument | null> =>
-  CompanionDeviceModel.findOneAndUpdate({ _id: deviceId, userId }, updates, {
+  workspaceId?: string | null,
+): Promise<ICompanionDeviceDocument | null> => {
+  const query: Record<string, unknown> = { _id: deviceId, userId };
+  if (workspaceId) {
+    query.$or = [
+      { workspaceId },
+      { workspaceId: null },
+      { workspaceId: { $exists: false } },
+    ];
+  }
+  return CompanionDeviceModel.findOneAndUpdate(query, updates, {
     new: true,
     runValidators: true,
   }).exec();
+};
