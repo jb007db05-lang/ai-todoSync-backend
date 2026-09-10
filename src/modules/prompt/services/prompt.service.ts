@@ -87,10 +87,22 @@ export class PromptService {
       messages,
       payload.variables,
     );
+    const newProvider = payload.provider || "gemini";
+    const newModelName = payload.modelName || "gemini-3.6-flash";
+    const newParameters = payload.parameters || {
+      temperature: 0.7,
+      maxTokens: 2048,
+      topP: 0.95,
+      responseFormat: "text",
+    };
+
     const hash = promptHashService.generateCanonicalHash(
       bodyText,
       messages,
       syncedVariables,
+      newProvider,
+      newModelName,
+      newParameters,
     );
     const slug = promptHashService.generateSlug(payload.name);
 
@@ -121,10 +133,13 @@ export class PromptService {
               body: bodyText,
               messages,
               variables: syncedVariables,
+              provider: newProvider,
+              modelName: newModelName,
+              parameters: newParameters,
               folderId: payload.folderId || null,
               visibility: payload.visibility || "organization",
               createdBy: userId,
-              version: 1,
+              version: 0,
               hash,
               isLatest: true,
               isTemplate: payload.isTemplate || false,
@@ -133,25 +148,7 @@ export class PromptService {
           { session },
         );
 
-        const prompt = promptDocs[0];
-
-        await PromptVersionModel.create(
-          [
-            {
-              promptId: prompt._id,
-              version: 1,
-              hash,
-              body: bodyText,
-              messages,
-              variables: syncedVariables,
-              changedBy: userId,
-              changeNote: "Initial prompt creation (v1)",
-            },
-          ],
-          { session },
-        );
-
-        return prompt;
+        return promptDocs[0];
       });
     } catch (err: any) {
       if (err.code === 11000 && err.keyPattern?.slug) {
@@ -230,13 +227,34 @@ export class PromptService {
           ? payload.variables
           : existing.variables,
       );
+      const newProvider =
+        payload.provider !== undefined
+          ? payload.provider
+          : existing.provider || "gemini";
+      const newModelName =
+        payload.modelName !== undefined
+          ? payload.modelName
+          : existing.modelName || "gemini-3.6-flash";
+      const newParameters =
+        payload.parameters !== undefined
+          ? payload.parameters
+          : existing.parameters || {
+              temperature: 0.7,
+              maxTokens: 2048,
+              topP: 0.95,
+              responseFormat: "text",
+            };
 
       const newHash = promptHashService.generateCanonicalHash(
         newBody,
         newMessages,
         syncedVars,
+        newProvider,
+        newModelName,
+        newParameters,
       );
-      const contentChanged = newHash !== existing.hash;
+      const contentChanged =
+        existing.version === 0 || newHash !== existing.hash;
 
       if (contentChanged) {
         const latestVersionRecord = await PromptVersionModel.findOne({
@@ -246,7 +264,9 @@ export class PromptService {
           .session(session || null);
 
         const newVersionNum =
-          (latestVersionRecord?.version || existing.version) + 1;
+          existing.version === 0
+            ? 1
+            : (latestVersionRecord?.version || existing.version) + 1;
 
         const updateRes = await PromptLibraryModel.updateOne(
           { _id: existing._id, isLatest: true },
@@ -299,6 +319,9 @@ export class PromptService {
               body: newBody,
               messages: newMessages,
               variables: syncedVars,
+              provider: newProvider,
+              modelName: newModelName,
+              parameters: newParameters,
               folderId:
                 payload.folderId !== undefined
                   ? payload.folderId
@@ -324,6 +347,9 @@ export class PromptService {
               body: newBody,
               messages: newMessages,
               variables: syncedVars,
+              provider: newProvider,
+              modelName: newModelName,
+              parameters: newParameters,
               changedBy: userId,
               changeNote:
                 payload.changeNote || `Updated prompt to v${newVersionNum}`,

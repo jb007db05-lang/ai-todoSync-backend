@@ -27,9 +27,11 @@ import WorkspaceRoutes from "./modules/workspace/routes/workspace.routes.js";
 import CentralizedAiRoutes from "./modules/ai/routes/ai.routes.js";
 import DocumentRoutes from "./modules/document/routes/document.routes.js";
 import PromptLibraryRoutes from "./modules/prompt/routes/prompt-library.routes.js";
+import CompanionRoutes from "./modules/companion/routes/companion.routes.js";
 import logger from "./lib/logger.js";
 
 const server = new App([
+  new CompanionRoutes(),
   new PromptLibraryRoutes(),
   new DocumentRoutes(),
   new CentralizedAiRoutes(),

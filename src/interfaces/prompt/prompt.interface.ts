@@ -43,6 +43,13 @@ export interface IPromptVariable {
   regex?: string;
 }
 
+export interface IPromptParameters {
+  temperature: number;
+  maxTokens: number;
+  topP: number;
+  responseFormat: "text" | "json";
+}
+
 export interface IPromptLibrary {
   workspaceId?: Types.ObjectId | string | null;
   projectId?: Types.ObjectId | string | null;
@@ -55,6 +62,9 @@ export interface IPromptLibrary {
   body: string; // fallback string representation
   messages?: IPromptMessage[]; // multi-role block support
   variables: IPromptVariable[];
+  provider?: string;
+  modelName?: string;
+  parameters?: IPromptParameters;
   visibility: PromptVisibility;
   createdBy: Types.ObjectId | string;
   version: number;
@@ -86,6 +96,9 @@ export interface IPromptVersion {
   body: string;
   messages?: IPromptMessage[];
   variables?: IPromptVariable[];
+  provider?: string;
+  modelName?: string;
+  parameters?: IPromptParameters;
   changedBy: Types.ObjectId | string;
   changeNote?: string;
   createdAt?: Date;
@@ -108,6 +121,9 @@ export interface CreatePromptPayload {
   body: string;
   messages?: IPromptMessage[];
   variables?: IPromptVariable[];
+  provider?: string;
+  modelName?: string;
+  parameters?: IPromptParameters;
   folderId?: string | null;
   projectId?: string | null;
   visibility?: PromptVisibility;
@@ -122,6 +138,9 @@ export interface UpdatePromptPayload {
   body?: string;
   messages?: IPromptMessage[];
   variables?: IPromptVariable[];
+  provider?: string;
+  modelName?: string;
+  parameters?: IPromptParameters;
   folderId?: string | null;
   projectId?: string | null;
   visibility?: PromptVisibility;

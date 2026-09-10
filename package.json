@@ -30,8 +30,8 @@
     "type-check": "tsc --noEmit",
     "depcheck": "depcheck",
     "jscpd": "jscpd",
-    "precommit": "npm run check:console && npm run check:env && lint-staged",
-    "prepush": "npm run type-check && npm run build && npm run check:all"
+    "precommit": "npm run check:console && npm run check:env && lint-staged && npm run lint",
+    "prepush": "npm run type-check && npm run build && npm run check:all && npm run lint"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

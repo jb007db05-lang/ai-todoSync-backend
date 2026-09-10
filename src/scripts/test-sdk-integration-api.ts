@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 
-const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3000/api";
+const BASE = process.env.TEST_BASE_URL ?? "http://localhost:4000/api";
 const EMAIL = process.env.TEST_EMAIL ?? `test_e2e_${Date.now()}@example.com`;
 const PASSWORD = process.env.TEST_PASSWORD ?? "password123";
 

@@ -7,6 +7,7 @@ import WorkspaceMemberModel, {
 import UserModel from "../../auth/models/user.model.js";
 import ProjectModel from "../../project/models/project.model.js";
 import { AppError } from "../../../utils/app-error.js";
+import { countOwnersByWorkspace } from "../repositories/workspace-member.repository.js";
 
 function slugify(text: string): string {
   return text
@@ -209,13 +210,23 @@ class WorkspaceService {
   public async updateWorkspace(
     userId: string,
     workspaceId: string,
-    payload: { name?: string; settings?: any },
+    payload: { name?: string; slug?: string; settings?: any },
   ) {
     await this.assertMembership(userId, workspaceId, ["OWNER", "ADMIN"]);
 
     const updates: Partial<IWorkspaceDocument> = {};
     if (payload.name?.trim()) {
       updates.name = payload.name.trim();
+    }
+    if (payload.slug?.trim()) {
+      const candidateSlug = payload.slug.trim();
+      const existing = await WorkspaceModel.findOne({
+        slug: candidateSlug,
+      }).lean();
+      if (existing && existing._id.toString() !== workspaceId) {
+        throw new AppError(409, "Workspace slug is already taken", "CONFLICT");
+      }
+      updates.slug = candidateSlug;
     }
     if (payload.settings) {
       updates.settings = payload.settings;
@@ -303,6 +314,110 @@ class WorkspaceService {
       workspaceId,
       userId: targetUserId,
     });
+
+    return { success: true };
+  }
+
+  public async listMembers(userId: string, workspaceId: string) {
+    await this.assertMembership(userId, workspaceId);
+    const members = await WorkspaceMemberModel.find({ workspaceId })
+      .populate<{
+        userId: { _id: any; name?: string | null; email: string };
+      }>("userId", "name email")
+      .sort({ joinedAt: 1 })
+      .lean();
+
+    return members.map((m) => ({
+      id: m._id.toString(),
+      userId: m.userId?._id?.toString() ?? "",
+      name: m.userId?.name || "Unknown",
+      email: m.userId?.email || "",
+      role: m.role,
+      joinedAt: m.joinedAt,
+    }));
+  }
+
+  public async updateMemberRole(
+    userId: string,
+    workspaceId: string,
+    targetUserId: string,
+    role: WorkspaceRole,
+  ) {
+    const { workspace, member: actorMember } = await this.assertMembership(
+      userId,
+      workspaceId,
+      ["OWNER", "ADMIN"],
+    );
+
+    // Cannot change own role
+    if (userId === targetUserId) {
+      throw new AppError(400, "Cannot change your own role", "BAD_REQUEST");
+    }
+
+    // Only OWNER can grant OWNER role
+    if (role === "OWNER" && actorMember.role !== "OWNER") {
+      throw new AppError(
+        403,
+        "Only an OWNER can assign the OWNER role",
+        "FORBIDDEN",
+      );
+    }
+
+    const targetMember = await WorkspaceMemberModel.findOne({
+      workspaceId,
+      userId: targetUserId,
+    }).lean();
+
+    if (!targetMember) {
+      throw new AppError(404, "Member not found", "NOT_FOUND");
+    }
+
+    // ADMIN cannot change an OWNER's role
+    if (targetMember.role === "OWNER" && actorMember.role !== "OWNER") {
+      throw new AppError(
+        403,
+        "Cannot change role of workspace owner",
+        "FORBIDDEN",
+      );
+    }
+
+    // Ensure at least one OWNER remains
+    if (targetMember.role === "OWNER" && role !== "OWNER") {
+      const ownerCount = await countOwnersByWorkspace(workspaceId);
+      if (ownerCount <= 1) {
+        throw new AppError(
+          400,
+          "Workspace must have at least one owner",
+          "BAD_REQUEST",
+        );
+      }
+    }
+
+    const updated = await WorkspaceMemberModel.findOneAndUpdate(
+      { workspaceId, userId: targetUserId },
+      { role },
+      { new: true },
+    ).lean();
+
+    return updated;
+  }
+
+  public async deleteWorkspace(userId: string, workspaceId: string) {
+    const { workspace } = await this.assertMembership(userId, workspaceId, [
+      "OWNER",
+    ]);
+
+    // Delete all members
+    await WorkspaceMemberModel.deleteMany({ workspaceId });
+
+    // Soft-disassociate projects (preserve them, just unlink from workspace)
+    await ProjectModel.updateMany(
+      { workspaceId },
+      { $set: { workspaceId: null } },
+    );
+
+    // Delete the workspace itself
+    await WorkspaceModel.findByIdAndDelete(workspaceId);
 
     return { success: true };
   }
