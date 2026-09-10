@@ -1,10 +1,11 @@
 import type { Document, Types } from "mongoose";
 import { Schema, model } from "mongoose";
 
-export type CompanionDeviceStatus = "active" | "revoked";
+export type CompanionDeviceStatus = "pending" | "active" | "revoked";
 
 export interface ICompanionDevice {
   userId: Types.ObjectId | string;
+  workspaceId?: Types.ObjectId | string | null;
   deviceName: string;
   deviceType: string;
   slot: number;
@@ -23,6 +24,11 @@ const companionDeviceSchema = new Schema<ICompanionDeviceDocument>(
       required: true,
       ref: "User",
     },
+    workspaceId: {
+      type: Schema.Types.ObjectId,
+      default: null,
+      ref: "Workspace",
+    },
     deviceName: {
       type: String,
       required: true,
@@ -40,7 +46,7 @@ const companionDeviceSchema = new Schema<ICompanionDeviceDocument>(
     },
     status: {
       type: String,
-      enum: ["active", "revoked"],
+      enum: ["pending", "active", "revoked"],
       default: "active",
     },
     revokedAt: {
@@ -51,7 +57,12 @@ const companionDeviceSchema = new Schema<ICompanionDeviceDocument>(
   { timestamps: true },
 );
 
-companionDeviceSchema.index({ userId: 1, status: 1, updatedAt: -1 });
+companionDeviceSchema.index({
+  userId: 1,
+  workspaceId: 1,
+  status: 1,
+  updatedAt: -1,
+});
 companionDeviceSchema.index(
   { userId: 1, slot: 1 },
   {

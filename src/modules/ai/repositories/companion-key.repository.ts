@@ -4,6 +4,7 @@ import CompanionKeyModel, {
 
 interface CreateCompanionKeyPayload {
   userId: string;
+  workspaceId?: string | null;
   keyHash: string;
   deviceName?: string | null;
   deviceType?: string | null;
@@ -29,6 +30,35 @@ export const consumeCompanionKey = async (
     { new: true },
   ).exec();
 
+export const setCompanionKeyQrToken = async (
+  keyId: string,
+  userId: string,
+  qrToken: string,
+  qrExpiresAt: Date,
+): Promise<ICompanionKeyDocument | null> =>
+  CompanionKeyModel.findOneAndUpdate(
+    { _id: keyId, userId, isUsed: false },
+    { qrToken, qrExpiresAt },
+    { new: true },
+  ).exec();
+
+export const consumeCompanionKeyByQrToken = async (
+  qrToken: string,
+  now: Date,
+): Promise<ICompanionKeyDocument | null> =>
+  CompanionKeyModel.findOneAndUpdate(
+    {
+      qrToken,
+      isUsed: false,
+      qrExpiresAt: { $gt: now },
+    },
+    {
+      isUsed: true,
+      usedAt: now,
+    },
+    { new: true },
+  ).exec();
+
 export const deleteUsedCompanionKeys = async (
   userId: string,
 ): Promise<void> => {
@@ -40,13 +70,18 @@ export const deleteUsedCompanionKeys = async (
 
 export const listUnusedCompanionKeysByUser = async (
   userId: string,
-): Promise<ICompanionKeyDocument[]> =>
-  CompanionKeyModel.find({
-    userId,
-    isUsed: false,
-  })
-    .sort({ createdAt: -1 })
-    .exec();
+  workspaceId?: string | null,
+): Promise<ICompanionKeyDocument[]> => {
+  const query: Record<string, unknown> = { userId, isUsed: false };
+  if (workspaceId) {
+    query.$or = [
+      { workspaceId },
+      { workspaceId: null },
+      { workspaceId: { $exists: false } },
+    ];
+  }
+  return CompanionKeyModel.find(query).sort({ createdAt: -1 }).exec();
+};
 
 export const deleteCompanionKeyById = async (
   userId: string,

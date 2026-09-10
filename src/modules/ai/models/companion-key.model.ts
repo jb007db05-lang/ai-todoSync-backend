@@ -3,9 +3,12 @@ import { Schema, model } from "mongoose";
 
 export interface ICompanionKey {
   userId: Types.ObjectId | string;
+  workspaceId?: Types.ObjectId | string | null;
   keyHash: string;
   deviceName?: string | null;
   deviceType?: string | null;
+  qrToken?: string | null;
+  qrExpiresAt?: Date | null;
   isUsed: boolean;
   usedAt?: Date | null;
   createdAt?: Date;
@@ -20,6 +23,11 @@ const companionKeySchema = new Schema<ICompanionKeyDocument>(
       type: Schema.Types.ObjectId,
       required: true,
       ref: "User",
+    },
+    workspaceId: {
+      type: Schema.Types.ObjectId,
+      default: null,
+      ref: "Workspace",
     },
     keyHash: {
       type: String,
@@ -36,6 +44,15 @@ const companionKeySchema = new Schema<ICompanionKeyDocument>(
       default: null,
       trim: true,
     },
+    qrToken: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    qrExpiresAt: {
+      type: Date,
+      default: null,
+    },
     isUsed: {
       type: Boolean,
       default: false,
@@ -48,7 +65,12 @@ const companionKeySchema = new Schema<ICompanionKeyDocument>(
   { timestamps: true },
 );
 
-companionKeySchema.index({ userId: 1, isUsed: 1, createdAt: -1 });
+companionKeySchema.index({
+  userId: 1,
+  workspaceId: 1,
+  isUsed: 1,
+  createdAt: -1,
+});
 
 const CompanionKeyModel = model<ICompanionKeyDocument>(
   "CompanionKey",

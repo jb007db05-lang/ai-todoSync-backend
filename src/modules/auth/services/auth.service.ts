@@ -516,6 +516,47 @@ class AuthService {
     return this.buildAuthResult(user, issued, companionDevice);
   }
 
+  public async loginCompanionDeviceWithQr(input: {
+    userId: string;
+    workspaceId?: string | null;
+    deviceName: string;
+    deviceType: string;
+    userAgent?: string | null;
+  }): Promise<AuthResult> {
+    const user = await findUserById(input.userId);
+
+    if (user == null) {
+      throw new HttpError(404, "User not found");
+    }
+
+    const activeCount = await countActiveCompanionDevices(
+      user._id.toString(),
+      input.workspaceId,
+    );
+
+    if (activeCount >= env.MAX_COMPANION_DEVICES) {
+      throw new HttpError(409, "Maximum active companion devices reached");
+    }
+
+    const companionDevice = await this.createActiveCompanionDevice(
+      user._id.toString(),
+      {
+        deviceName: input.deviceName,
+        deviceType: input.deviceType,
+      },
+    );
+
+    const issued = await this.issueSessionForDevice(user, {
+      deviceId: companionDevice._id.toString(),
+      deviceType: "companion",
+      deviceName: companionDevice.deviceName,
+      companionDeviceType: companionDevice.deviceType,
+      userAgent: this.normalizeOptionalText(input.userAgent),
+    });
+
+    return this.buildAuthResult(user, issued, companionDevice);
+  }
+
   public async listCompanionDevices(
     userId: string,
   ): Promise<CompanionDeviceSummary[]> {
