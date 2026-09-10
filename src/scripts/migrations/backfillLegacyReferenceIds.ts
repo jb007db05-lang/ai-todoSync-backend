@@ -1,11 +1,11 @@
 import mongoose, { Model, Types } from "mongoose";
 import env from "../../config/env.js";
 import { connectDatabase } from "../../config/db.config.js";
-import CommentModel from "../../models/comment.model.js";
-import EpicModel from "../../models/epic.model.js";
-import NoteModel from "../../models/note.model.js";
-import ProjectMemberModel from "../../models/project-member.model.js";
-import TaskModel from "../../models/task.model.js";
+import CommentModel from "../../modules/comment/models/comment.model.js";
+import EpicModel from "../../modules/epic/models/epic.model.js";
+import NoteModel from "../../modules/note/models/note.model.js";
+import ProjectMemberModel from "../../modules/project/models/project-member.model.js";
+import TaskModel from "../../modules/task/models/task.model.js";
 
 const convertField = async (
   model: Model<any>,

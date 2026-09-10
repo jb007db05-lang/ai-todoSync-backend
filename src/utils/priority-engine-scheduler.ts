@@ -1,7 +1,7 @@
 import cron from "node-cron";
 
 import logger from "../lib/logger.js";
-import priorityEngineService from "../services/priority-engine.service.js";
+import priorityEngineService from "../modules/task/services/priority-engine.service.js";
 
 const PRIORITY_ENGINE_CRON_EXPRESSION = "*/10 * * * *";
 

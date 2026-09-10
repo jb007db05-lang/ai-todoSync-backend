@@ -1,11 +1,14 @@
 import crypto from "crypto";
 import { connectDatabase, disconnectDatabase } from "../../config/db.config.js";
 import GuideModel from "../../modules/guides/model.js";
-import { SurveyModel, SurveyResponseModel } from "../../modules/surveys/model.js";
-import AnalyticsEventRegistryModel from "../../models/analytics-event-registry.model.js";
-import AnalyticsLogModel from "../../models/analytics-log.model.js";
+import {
+  SurveyModel,
+  SurveyResponseModel,
+} from "../../modules/surveys/model.js";
+import AnalyticsEventRegistryModel from "../../modules/analytics/models/analytics-event-registry.model.js";
+import AnalyticsLogModel from "../../modules/analytics/models/analytics-log.model.js";
 import SdkIntegrationModel from "../../modules/sdk-integrations/model.js";
-import AnalyticsKeyModel from "../../models/analytics-key.model.js";
+import AnalyticsKeyModel from "../../modules/analytics/models/analytics-key.model.js";
 import { deterministicHash } from "../../utils/encryption.js";
 import logger from "../../lib/logger.js";
 
@@ -58,7 +61,9 @@ async function runMigration() {
         sdkKeyHash: keyHash,
         connectionCount: 0,
       });
-      logger.info(`Created default integration ID ${integration._id} for tenant ${tenantId}.`);
+      logger.info(
+        `Created default integration ID ${integration._id} for tenant ${tenantId}.`,
+      );
     }
     tenantIntegrationMap.set(tenantId, integration._id.toString());
   }
@@ -81,11 +86,13 @@ async function runMigration() {
       if (integrationId) {
         await GuideModel.updateOne(
           { _id: guide._id },
-          { $set: { sdkIntegrationId: integrationId } }
+          { $set: { sdkIntegrationId: integrationId } },
         );
         guideCount++;
       } else {
-        logger.warn(`Could not resolve integration for Guide ${guide._id} (tenant ${guide.tenantId})`);
+        logger.warn(
+          `Could not resolve integration for Guide ${guide._id} (tenant ${guide.tenantId})`,
+        );
       }
     }
   }
@@ -100,11 +107,13 @@ async function runMigration() {
       if (integrationId) {
         await SurveyModel.updateOne(
           { _id: survey._id },
-          { $set: { sdkIntegrationId: integrationId } }
+          { $set: { sdkIntegrationId: integrationId } },
         );
         surveyCount++;
       } else {
-        logger.warn(`Could not resolve integration for Survey ${survey._id} (tenant ${survey.tenantId})`);
+        logger.warn(
+          `Could not resolve integration for Survey ${survey._id} (tenant ${survey.tenantId})`,
+        );
       }
     }
   }
@@ -120,7 +129,7 @@ async function runMigration() {
       if (integrationId) {
         await SurveyResponseModel.updateOne(
           { _id: response._id },
-          { $set: { sdkIntegrationId: integrationId } }
+          { $set: { sdkIntegrationId: integrationId } },
         );
         surveyResponseCount++;
       }
@@ -130,7 +139,9 @@ async function runMigration() {
 
   // 5. Migrate Event Registry
   logger.info("Migrating Event Registry...");
-  const registryEvents = await AnalyticsEventRegistryModel.find({}).lean().exec();
+  const registryEvents = await AnalyticsEventRegistryModel.find({})
+    .lean()
+    .exec();
   let registryCount = 0;
   for (const event of registryEvents) {
     if (!event.sdkIntegrationId) {
@@ -138,12 +149,14 @@ async function runMigration() {
       if (integrationId) {
         await AnalyticsEventRegistryModel.updateOne(
           { _id: event._id },
-          { $set: { sdkIntegrationId: integrationId } }
+          { $set: { sdkIntegrationId: integrationId } },
         );
         registryCount++;
       } else {
         // Fallback: check if we can map by owner (though registry doesn't have tenantId directly)
-        logger.warn(`Could not resolve integration for Event Registry ${event._id} (apiKeyId ${event.apiKeyId})`);
+        logger.warn(
+          `Could not resolve integration for Event Registry ${event._id} (apiKeyId ${event.apiKeyId})`,
+        );
       }
     }
   }
@@ -159,11 +172,13 @@ async function runMigration() {
       if (integrationId) {
         await AnalyticsLogModel.updateOne(
           { _id: log._id },
-          { $set: { sdkIntegrationId: integrationId } }
+          { $set: { sdkIntegrationId: integrationId } },
         );
         logCount++;
       } else {
-        logger.warn(`Could not resolve integration for Log ${log._id} (apiKeyId ${log.apiKeyId})`);
+        logger.warn(
+          `Could not resolve integration for Log ${log._id} (apiKeyId ${log.apiKeyId})`,
+        );
       }
     }
   }

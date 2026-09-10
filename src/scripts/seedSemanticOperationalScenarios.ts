@@ -3,7 +3,7 @@ import logger from "../lib/logger.js";
 import OperationalAnalyticsEventModel, {
   type OperationalEntityType,
   type OperationalEventName,
-} from "../models/operational-analytics-event.model.js";
+} from "../modules/analytics/models/operational-analytics-event.model.js";
 
 interface ScenarioEvent {
   eventName: OperationalEventName;

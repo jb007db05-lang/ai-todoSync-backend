@@ -1,8 +1,8 @@
 import { createHash } from "crypto";
 
 import { connectDatabase, disconnectDatabase } from "../../config/db.config.js";
-import ActivityLogModel from "../../models/activity-log.model.js";
-import TaskModel from "../../models/task.model.js";
+import ActivityLogModel from "../../modules/audit/models/activity-log.model.js";
+import TaskModel from "../../modules/task/models/task.model.js";
 
 const hashActivity = (input: Record<string, unknown>): string =>
   createHash("sha256").update(JSON.stringify(input)).digest("hex");

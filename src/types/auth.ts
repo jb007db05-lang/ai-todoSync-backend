@@ -1,13 +1,15 @@
 import type { Request } from "express";
 
-import type { ICompanionDeviceDocument } from "../models/companion-device.model.js";
+import type { ICompanionDeviceDocument } from "../modules/ai/models/companion-device.model.js";
 import type {
   IDeviceSessionDocument,
   SessionDeviceKind,
-} from "../models/device-session.model.js";
-import type { IProjectDocument } from "../models/project.model.js";
-import type { ProjectRole } from "../models/project-member.model.js";
-import type { IUserDocument } from "../models/user.model.js";
+} from "../modules/auth/models/device-session.model.js";
+import type { IProjectDocument } from "../modules/project/models/project.model.js";
+import type { ProjectRole } from "../interfaces/project/project.interface.js";
+import type { IUserDocument } from "../modules/auth/models/user.model.js";
+import type { IWorkspaceDocument } from "../modules/workspace/models/workspace.model.js";
+import type { IWorkspaceMemberDocument } from "../modules/workspace/models/workspace-member.model.js";
 
 export interface AuthProfile {
   id: string;
@@ -51,5 +53,9 @@ export interface AuthenticatedRequest extends Request {
   projectAccess?: {
     project: IProjectDocument;
     role: ProjectRole;
+  };
+  workspaceAccess?: {
+    workspace: IWorkspaceDocument;
+    member: IWorkspaceMemberDocument;
   };
 }

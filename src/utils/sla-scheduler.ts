@@ -1,7 +1,7 @@
 import cron from "node-cron";
 
 import logger from "../lib/logger.js";
-import slaService from "../services/sla.service.js";
+import slaService from "../modules/task/services/sla.service.js";
 
 const SLA_CRON_EXPRESSION = "*/5 * * * *";
 

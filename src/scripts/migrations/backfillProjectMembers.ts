@@ -1,7 +1,7 @@
 import { connectDatabase, disconnectDatabase } from "../../config/db.config.js";
 import logger from "../../lib/logger.js";
-import ProjectModel from "../../models/project.model.js";
-import ProjectMemberModel from "../../models/project-member.model.js";
+import ProjectModel from "../../modules/project/models/project.model.js";
+import ProjectMemberModel from "../../modules/project/models/project-member.model.js";
 
 const backfillProjectMembers = async (): Promise<void> => {
   await connectDatabase();

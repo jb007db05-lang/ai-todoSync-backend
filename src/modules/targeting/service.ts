@@ -1,6 +1,6 @@
-import AnalyticsEventRegistryModel from "../../models/analytics-event-registry.model.js";
-import AnalyticsKeyModel from "../../models/analytics-key.model.js";
-import AnalyticsLogModel from "../../models/analytics-log.model.js";
+import AnalyticsEventRegistryModel from "../analytics/models/analytics-event-registry.model.js";
+import AnalyticsKeyModel from "../analytics/models/analytics-key.model.js";
+import AnalyticsLogModel from "../analytics/models/analytics-log.model.js";
 import { AppError } from "../../utils/app-error.js";
 import { GuideExposureModel } from "../engagement/model.js";
 import type {
@@ -522,7 +522,10 @@ class TargetingService {
     );
 
     if (input.forceShowCompleted) {
-      return { matched: true, reason: "Bypassed frequency evaluation due to forceShowCompleted flag" };
+      return {
+        matched: true,
+        reason: "Bypassed frequency evaluation due to forceShowCompleted flag",
+      };
     }
 
     if (!exposure) {

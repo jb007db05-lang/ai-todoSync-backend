@@ -185,7 +185,7 @@ class App {
       // Start background worker for project invitations
       try {
         const { startInvitationWorker } =
-          await import("./services/invitation-queue.service.js");
+          await import("./modules/workspace/services/invitation-queue.service.js");
         startInvitationWorker();
         logger.info(`BullMQ invitation worker started`);
       } catch (workerError) {

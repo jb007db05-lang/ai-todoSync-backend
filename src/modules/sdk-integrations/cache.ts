@@ -1,5 +1,5 @@
 import type { ISdkIntegrationDocument } from "./model.js";
-import type { IUserDocument } from "../../models/user.model.js";
+import type { IUserDocument } from "../auth/models/user.model.js";
 
 interface CacheEntry<T> {
   data: T;
@@ -7,14 +7,22 @@ interface CacheEntry<T> {
 }
 
 class SdkIntegrationCache {
-  private integrationsByKeyHash = new Map<string, CacheEntry<ISdkIntegrationDocument>>();
-  private integrationsById = new Map<string, CacheEntry<ISdkIntegrationDocument>>();
+  private integrationsByKeyHash = new Map<
+    string,
+    CacheEntry<ISdkIntegrationDocument>
+  >();
+  private integrationsById = new Map<
+    string,
+    CacheEntry<ISdkIntegrationDocument>
+  >();
   private tenantsById = new Map<string, CacheEntry<IUserDocument>>();
   private allowedOrigins = new Map<string, CacheEntry<boolean>>();
 
   private defaultTtl = 5 * 60 * 1000; // 5 minutes
 
-  public getIntegrationByKeyHash(keyHash: string): ISdkIntegrationDocument | null {
+  public getIntegrationByKeyHash(
+    keyHash: string,
+  ): ISdkIntegrationDocument | null {
     const entry = this.integrationsByKeyHash.get(keyHash);
     if (entry && entry.expiry > Date.now()) {
       return entry.data;

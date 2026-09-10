@@ -1,5 +1,5 @@
-import AnalyticsKeyModel from "../../models/analytics-key.model.js";
-import trackingService from "../../services/tracking.service.js";
+import AnalyticsKeyModel from "../analytics/models/analytics-key.model.js";
+import trackingService from "../analytics/services/tracking.service.js";
 import engagementRepository from "./repository.js";
 import type { EngagementTrackDto, RuntimeGuideDto } from "./dtos.js";
 import type { EngagementEventName } from "./types.js";
@@ -56,7 +56,8 @@ class EngagementService {
     }
 
     if (experienceId) {
-      const isRuntimeDelivery = input.dto.properties?.source === "runtime_delivery";
+      const isRuntimeDelivery =
+        input.dto.properties?.source === "runtime_delivery";
       await engagementRepository.upsertExposure(
         {
           tenantId: input.tenantId,
@@ -69,7 +70,8 @@ class EngagementService {
           status: this.resolveExposureStatus(input.dto.eventName),
           stepId: input.dto.stepId,
           metadata: input.dto.properties,
-          incrementDisplay: !isRuntimeDelivery && input.dto.eventName === "guide_shown",
+          incrementDisplay:
+            !isRuntimeDelivery && input.dto.eventName === "guide_shown",
         },
       );
     }

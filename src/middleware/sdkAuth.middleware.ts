@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { rateLimit } from "express-rate-limit";
-import AnalyticsKeyModel from "../models/analytics-key.model.js";
+import AnalyticsKeyModel from "../modules/analytics/models/analytics-key.model.js";
 import { deterministicHash } from "../utils/encryption.js";
 import sdkIntegrationService, {
   normalizeOrigin,
@@ -9,7 +9,7 @@ import sdkIntegrationService, {
 } from "../modules/sdk-integrations/service.js";
 export { normalizeOrigin, matchOrigin };
 import logger from "../lib/logger.js";
-import { SdkAuthService } from "../services/sdkAuth.service.js";
+import { SdkAuthService } from "../modules/sdk/services/sdkAuth.service.js";
 import { sdkAuthConfig } from "../config/sdkAuth.config.js";
 
 // ---------------------------------------------------------------------------
@@ -221,7 +221,8 @@ export const validateSdkApiKey = async (
       }
     }
 
-    const UserModel = (await import("../models/user.model.js")).default;
+    const UserModel = (await import("../modules/auth/models/user.model.js"))
+      .default;
     const user = await UserModel.findById(keyDoc.userId);
     if (!user) {
       logSecurityEvent("Legacy Owner Not Found", req, rawKey);
