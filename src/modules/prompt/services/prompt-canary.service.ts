@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import PromptCanaryDeploymentModel, {
   type IPromptCanaryDeploymentDocument,
 } from "../models/prompt-canary-deployment.model.js";

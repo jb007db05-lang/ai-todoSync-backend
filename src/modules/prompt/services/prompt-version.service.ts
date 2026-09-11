@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import PromptLibraryModel from "../models/prompt-library.model.js";
 import PromptVersionModel from "../models/prompt-version.model.js";
 import PromptCanaryDeploymentModel from "../models/prompt-canary-deployment.model.js";
