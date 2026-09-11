@@ -68,6 +68,9 @@ export interface IPromptLibrary {
   visibility: PromptVisibility;
   createdBy: Types.ObjectId | string;
   version: number;
+  productionVersion?: number;
+  isProductionPublished?: boolean;
+  publishedAt?: Date;
   hash?: string; // SHA-256 canonical hash
   isLatest: boolean;
   parentId?: Types.ObjectId | string | null; // points to root prompt for versions
@@ -92,6 +95,7 @@ export interface IPromptFolder {
 export interface IPromptVersion {
   promptId: Types.ObjectId | string;
   version: number;
+  environment?: "development" | "staging" | "production" | "canary";
   hash: string;
   body: string;
   messages?: IPromptMessage[];

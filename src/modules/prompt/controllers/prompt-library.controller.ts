@@ -379,6 +379,296 @@ class PromptLibraryController {
       next(err);
     }
   };
+
+  public publishProductionVersion = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = this.getParam(req, "promptId");
+      const versionNumber = Number(req.body.versionNumber || req.body.version);
+
+      if (!versionNumber || isNaN(versionNumber)) {
+        throw new HttpError(400, "Valid versionNumber is required.");
+      }
+
+      const result = await promptLibraryService.publishProductionVersion(
+        workspaceId,
+        userId,
+        promptId,
+        versionNumber,
+      );
+      res.status(200).json({ status: "success", data: result });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public moveToStaging = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = this.getParam(req, "promptId");
+      const versionNumber = Number(req.params.version || req.body.version);
+
+      if (!versionNumber || isNaN(versionNumber)) {
+        throw new HttpError(400, "Valid version number is required.");
+      }
+
+      const result = await promptLibraryService.moveToStaging(
+        workspaceId,
+        userId,
+        promptId,
+        versionNumber,
+      );
+      res.status(200).json({ status: "success", data: result });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public moveToDevelopment = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = this.getParam(req, "promptId");
+      const versionNumber = Number(req.params.version || req.body.version);
+
+      if (!versionNumber || isNaN(versionNumber)) {
+        throw new HttpError(400, "Valid version number is required.");
+      }
+
+      const result = await promptLibraryService.moveToDevelopment(
+        workspaceId,
+        userId,
+        promptId,
+        versionNumber,
+      );
+      res.status(200).json({ status: "success", data: result });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public deployDirectToProduction = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = this.getParam(req, "promptId");
+      const versionNumber = Number(req.body.versionNumber || req.body.version);
+
+      if (!versionNumber || isNaN(versionNumber)) {
+        throw new HttpError(400, "Valid versionNumber is required.");
+      }
+
+      const result = await promptLibraryService.deployDirectToProduction(
+        workspaceId,
+        userId,
+        promptId,
+        versionNumber,
+      );
+      res.status(200).json({ status: "success", data: result });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public startCanary = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = this.getParam(req, "promptId");
+      const candidateVersion = Number(req.body.candidateVersion);
+
+      if (!candidateVersion || isNaN(candidateVersion)) {
+        throw new HttpError(400, "Valid candidateVersion is required.");
+      }
+
+      const canary = await promptLibraryService.startCanary(
+        workspaceId,
+        userId,
+        promptId,
+        {
+          candidateVersion,
+          minRequests: req.body.minRequests,
+          errorThreshold: req.body.errorThreshold,
+        },
+      );
+      res.status(201).json({ status: "success", data: canary });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public advanceCanary = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = this.getParam(req, "promptId");
+
+      const canary = await promptLibraryService.advanceCanary(
+        workspaceId,
+        userId,
+        promptId,
+      );
+      res.status(200).json({ status: "success", data: canary });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public pauseCanary = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = this.getParam(req, "promptId");
+
+      const canary = await promptLibraryService.pauseCanary(
+        workspaceId,
+        userId,
+        promptId,
+      );
+      res.status(200).json({ status: "success", data: canary });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public resumeCanary = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = this.getParam(req, "promptId");
+
+      const canary = await promptLibraryService.resumeCanary(
+        workspaceId,
+        userId,
+        promptId,
+      );
+      res.status(200).json({ status: "success", data: canary });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public rollbackCanary = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = this.getParam(req, "promptId");
+      const reason = req.body.reason || "Manual rollback";
+
+      const canary = await promptLibraryService.rollbackCanary(
+        workspaceId,
+        userId,
+        promptId,
+        reason,
+      );
+      res.status(200).json({ status: "success", data: canary });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public cancelCanary = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = this.getParam(req, "promptId");
+      const reason = req.body.reason || "Cancelled by user";
+
+      const canary = await promptLibraryService.cancelCanary(
+        workspaceId,
+        userId,
+        promptId,
+        reason,
+      );
+      res.status(200).json({ status: "success", data: canary });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public completeCanary = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = this.getParam(req, "promptId");
+
+      const canary = await promptLibraryService.completeCanary(
+        workspaceId,
+        userId,
+        promptId,
+      );
+      res.status(200).json({ status: "success", data: canary });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public getCanaryDeployment = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = this.getParam(req, "promptId");
+
+      const canary = await promptLibraryService.getCanaryDeployment(
+        workspaceId,
+        userId,
+        promptId,
+      );
+      res.status(200).json({ status: "success", data: canary });
+    } catch (err) {
+      next(err);
+    }
+  };
 }
 
 export default new PromptLibraryController();

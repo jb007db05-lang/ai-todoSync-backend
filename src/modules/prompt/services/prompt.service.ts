@@ -12,6 +12,7 @@ import promptFavoriteService from "./prompt-favorite.service.js";
 import promptVersionService from "./prompt-version.service.js";
 import promptQueryService from "./prompt-query.service.js";
 import promptPlaygroundService from "./prompt-playground.service.js";
+import promptCanaryService from "./prompt-canary.service.js";
 import type {
   CreatePromptPayload,
   UpdatePromptPayload,
@@ -47,6 +48,28 @@ export class PromptService {
   public toggleFavorite = promptFavoriteService.toggleFavorite;
   public getPromptVersions = promptVersionService.getPromptVersions;
   public comparePromptVersions = promptVersionService.comparePromptVersions;
+  public publishProductionVersion =
+    promptVersionService.publishProductionVersion;
+  public moveToStaging = promptVersionService.moveToStaging;
+  public moveToDevelopment = promptVersionService.moveToDevelopment;
+  public deployDirectToProduction =
+    promptVersionService.deployDirectToProduction;
+  public startCanary =
+    promptCanaryService.startCanary.bind(promptCanaryService);
+  public advanceCanary =
+    promptCanaryService.advanceCanary.bind(promptCanaryService);
+  public pauseCanary =
+    promptCanaryService.pauseCanary.bind(promptCanaryService);
+  public resumeCanary =
+    promptCanaryService.resumeCanary.bind(promptCanaryService);
+  public rollbackCanary =
+    promptCanaryService.rollbackCanary.bind(promptCanaryService);
+  public cancelCanary =
+    promptCanaryService.cancelCanary.bind(promptCanaryService);
+  public completeCanary =
+    promptCanaryService.completeCanary.bind(promptCanaryService);
+  public getCanaryDeployment =
+    promptCanaryService.getCanaryDeployment.bind(promptCanaryService);
   public runPlayground = promptPlaygroundService.runPlayground;
 
   // Core Prompt CRUD Operations
@@ -139,7 +162,7 @@ export class PromptService {
               folderId: payload.folderId || null,
               visibility: payload.visibility || "organization",
               createdBy: userId,
-              version: 0,
+              version: 1,
               hash,
               isLatest: true,
               isTemplate: payload.isTemplate || false,
@@ -148,7 +171,30 @@ export class PromptService {
           { session },
         );
 
-        return promptDocs[0];
+        const newPrompt = promptDocs[0];
+
+        // Create initial version 1 document with environment: development
+        await PromptVersionModel.create(
+          [
+            {
+              promptId: newPrompt._id,
+              version: 1,
+              environment: "development",
+              hash,
+              body: bodyText,
+              messages,
+              variables: syncedVariables,
+              provider: newProvider,
+              modelName: newModelName,
+              parameters: newParameters,
+              changedBy: userId,
+              changeNote: "Initial prompt version 1",
+            },
+          ],
+          { session },
+        );
+
+        return newPrompt;
       });
     } catch (err: any) {
       if (err.code === 11000 && err.keyPattern?.slug) {
@@ -170,7 +216,7 @@ export class PromptService {
     await workspaceService.assertMembership(userId, workspaceId);
 
     return runInTransaction(async (session) => {
-      const targetPrompt = await PromptLibraryModel.findOne({
+      let targetPrompt = await PromptLibraryModel.findOne({
         _id: promptId,
         workspaceId,
       }).session(session || null);
@@ -185,14 +231,24 @@ export class PromptService {
         workspaceId,
       );
 
+      const rootPromptId = targetPrompt.parentId || targetPrompt._id;
+
       if (!targetPrompt.isLatest) {
-        throw new HttpError(
-          400,
-          "Historical prompt revisions are immutable. Update the current logical prompt/revision instead.",
-        );
+        const latestDoc = await PromptLibraryModel.findOne({
+          $or: [{ _id: rootPromptId }, { parentId: rootPromptId }],
+          isLatest: true,
+        }).session(session || null);
+
+        if (latestDoc && latestDoc.isLatest) {
+          targetPrompt = latestDoc;
+        } else {
+          throw new HttpError(
+            400,
+            "Historical prompt revisions are immutable. Update the current logical prompt/revision instead.",
+          );
+        }
       }
 
-      const rootPromptId = targetPrompt.parentId || targetPrompt._id;
       let existing = targetPrompt;
 
       if (payload.folderId !== undefined && payload.folderId !== null) {
@@ -343,6 +399,7 @@ export class PromptService {
             {
               promptId: rootPromptId,
               version: newVersionNum,
+              environment: "development",
               hash: newHash,
               body: newBody,
               messages: newMessages,

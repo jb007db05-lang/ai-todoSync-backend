@@ -21,6 +21,7 @@ export interface IProjectAi {
   apiKey?: string | null;
   baseUrl?: string;
   modelName: string;
+  productionPromptId?: Types.ObjectId | string | null;
 }
 
 // ─── Embedded: Audit Retention (was AuditRetentionPolicy) ───────────────────
@@ -97,6 +98,11 @@ const projectAiSchema = new Schema<IProjectAi>(
     },
     baseUrl: { type: String, default: "" },
     modelName: { type: String, default: "Gemini 3.6 Flash" },
+    productionPromptId: {
+      type: Schema.Types.ObjectId,
+      ref: "PromptLibrary",
+      default: null,
+    },
   },
   { _id: false },
 );

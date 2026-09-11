@@ -32,10 +32,16 @@ class ProjectController {
         return;
       }
 
-      const project = await projectService.createProject(
-        user._id.toString(),
-        req.body as ProjectPayload,
-      );
+      const workspaceId =
+        (req.body as ProjectPayload)?.workspaceId ||
+        (req.headers["x-workspace-id"] as string) ||
+        (req.query.workspaceId as string) ||
+        undefined;
+
+      const project = await projectService.createProject(user._id.toString(), {
+        ...(req.body as ProjectPayload),
+        workspaceId,
+      });
 
       res.status(201).json({
         message: "Project created",

@@ -13,6 +13,13 @@ const promptVersionSchema = new Schema<IPromptVersionDocument>(
       index: true,
     },
     version: { type: Number, required: true },
+    environment: {
+      type: String,
+      enum: ["development", "staging", "production", "canary"],
+      default: "development",
+      required: true,
+      index: true,
+    },
     hash: { type: String, default: "" },
     body: { type: String, required: true, maxlength: 20000 },
     messages: [

@@ -15,6 +15,12 @@ import {
 
 import aiPlanningController from "../../../modules/ai-planner/controllers/ai-planning.controller.js";
 
+import {
+  getProviders,
+  getModels,
+  getModelDetails,
+} from "../../../modules/ai/controllers/ai-catalog.controller.js";
+
 class CentralizedAiRoutes implements Routes {
   public path = "/api/ai";
   public router = Router();
@@ -25,6 +31,10 @@ class CentralizedAiRoutes implements Routes {
 
   private initializeRoutes() {
     this.router.use(authMiddleware);
+
+    this.router.get("/providers", getProviders);
+    this.router.get("/models", getModels);
+    this.router.get("/models/:modelId", getModelDetails);
 
     this.router.get(
       "/workspace-sessions",

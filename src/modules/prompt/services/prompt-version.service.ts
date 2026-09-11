@@ -1,9 +1,12 @@
+import mongoose from "mongoose";
 import PromptLibraryModel from "../models/prompt-library.model.js";
 import PromptVersionModel from "../models/prompt-version.model.js";
+import PromptCanaryDeploymentModel from "../models/prompt-canary-deployment.model.js";
 import promptAuthorizationService from "./prompt-authorization.service.js";
 import workspaceService from "../../workspace/services/workspace.service.js";
-
 import { HttpError } from "../../../shared/errors/http-error.js";
+import { runInTransaction } from "../../../utils/transaction.js";
+import logger from "../../../lib/logger.js";
 
 export class PromptVersionService {
   public async getPromptVersions(
@@ -73,6 +76,194 @@ export class PromptVersionService {
       v2: ver2,
       hashMatch: ver1.hash === ver2.hash,
     };
+  }
+
+  public async moveToStaging(
+    workspaceId: string,
+    userId: string,
+    promptId: string,
+    versionNumber: number,
+  ) {
+    await workspaceService.assertMembership(userId, workspaceId);
+    const prompt = await PromptLibraryModel.findOne({
+      _id: promptId,
+      workspaceId,
+    });
+    if (!prompt) {
+      throw new HttpError(404, "Prompt not found.");
+    }
+    await promptAuthorizationService.assertPromptAccess(
+      prompt,
+      userId,
+      workspaceId,
+    );
+
+    const rootId = prompt.parentId || prompt._id;
+
+    const targetVersion = await PromptVersionModel.findOne({
+      promptId: rootId,
+      version: versionNumber,
+    });
+
+    if (!targetVersion) {
+      throw new HttpError(404, `Version ${versionNumber} not found.`);
+    }
+
+    if (targetVersion.environment === "production") {
+      throw new HttpError(
+        400,
+        "Cannot move active production version directly to staging without deploying another production version.",
+      );
+    }
+
+    targetVersion.environment = "staging";
+    await targetVersion.save();
+
+    logger.info(
+      `Prompt ${rootId} version ${versionNumber} moved to environment: staging`,
+    );
+    return targetVersion;
+  }
+
+  public async moveToDevelopment(
+    workspaceId: string,
+    userId: string,
+    promptId: string,
+    versionNumber: number,
+  ) {
+    await workspaceService.assertMembership(userId, workspaceId);
+    const prompt = await PromptLibraryModel.findOne({
+      _id: promptId,
+      workspaceId,
+    });
+    if (!prompt) {
+      throw new HttpError(404, "Prompt not found.");
+    }
+    await promptAuthorizationService.assertPromptAccess(
+      prompt,
+      userId,
+      workspaceId,
+    );
+
+    const rootId = prompt.parentId || prompt._id;
+
+    const targetVersion = await PromptVersionModel.findOne({
+      promptId: rootId,
+      version: versionNumber,
+    });
+
+    if (!targetVersion) {
+      throw new HttpError(404, `Version ${versionNumber} not found.`);
+    }
+
+    if (targetVersion.environment === "production") {
+      throw new HttpError(
+        400,
+        "Cannot move active production version directly to development without deploying another production version.",
+      );
+    }
+
+    targetVersion.environment = "development";
+    await targetVersion.save();
+
+    logger.info(
+      `Prompt ${rootId} version ${versionNumber} moved to environment: development`,
+    );
+    return targetVersion;
+  }
+
+  public async deployDirectToProduction(
+    workspaceId: string,
+    userId: string,
+    promptId: string,
+    versionNumber: number,
+  ) {
+    await workspaceService.assertMembership(userId, workspaceId);
+    const prompt = await PromptLibraryModel.findOne({
+      _id: promptId,
+      workspaceId,
+    });
+    if (!prompt) {
+      throw new HttpError(404, "Prompt not found.");
+    }
+    await promptAuthorizationService.assertPromptAccess(
+      prompt,
+      userId,
+      workspaceId,
+    );
+
+    const rootId = prompt.parentId || prompt._id;
+
+    const targetVersion = await PromptVersionModel.findOne({
+      promptId: rootId,
+      version: versionNumber,
+    });
+
+    if (!targetVersion) {
+      throw new HttpError(404, `Version ${versionNumber} not found.`);
+    }
+
+    // Cancel any active canary deployment so direct deploy takes over
+    await PromptCanaryDeploymentModel.updateMany(
+      { promptId: rootId, status: { $in: ["active", "paused"] } },
+      {
+        $set: {
+          status: "cancelled",
+          rollbackReason: `Cancelled due to direct deployment of version ${versionNumber}`,
+        },
+      },
+    );
+
+    return runInTransaction(async (session) => {
+      // 1. Demote current production version to staging
+      await PromptVersionModel.updateMany(
+        { promptId: rootId, environment: "production" },
+        { $set: { environment: "staging" } },
+        { session },
+      );
+
+      // 2. Promote target version to production
+      targetVersion.environment = "production";
+      await targetVersion.save({ session });
+
+      // 3. Update PromptLibrary metadata
+      await PromptLibraryModel.updateMany(
+        { $or: [{ _id: rootId }, { parentId: rootId }] },
+        {
+          $set: {
+            productionVersion: versionNumber,
+            isProductionPublished: true,
+            publishedAt: new Date(),
+          },
+        },
+        { session },
+      );
+
+      logger.info(
+        `Prompt ${rootId} version ${versionNumber} directly deployed to production.`,
+      );
+
+      return {
+        promptId: rootId,
+        productionVersion: versionNumber,
+        publishedAt: new Date(),
+        environment: "production",
+      };
+    });
+  }
+
+  public async publishProductionVersion(
+    workspaceId: string,
+    userId: string,
+    promptId: string,
+    versionNumber: number,
+  ) {
+    return this.deployDirectToProduction(
+      workspaceId,
+      userId,
+      promptId,
+      versionNumber,
+    );
   }
 }
 

@@ -362,14 +362,17 @@ describe("PromptOps Core Hardening & Verification Suite (F-04, F-05, F-06)", () 
 
     const origFindOne = PromptLibraryModel.findOne;
     PromptLibraryModel.findOne = (() => ({
-      session: () => ({
-        exec: async () => ({
+      session() {
+        return this;
+      },
+      then(resolve: any) {
+        resolve({
           _id: promptId,
           workspaceId: wsA,
           isLatest: false,
           createdBy: userId,
-        }),
-      }),
+        });
+      },
     })) as any;
 
     try {
