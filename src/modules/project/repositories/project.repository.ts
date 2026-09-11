@@ -21,6 +21,7 @@ export interface CreateProjectPayload {
   userId: string;
   name: string;
   description?: string;
+  workspaceId?: string;
 }
 
 export interface UpdateProjectPayload {

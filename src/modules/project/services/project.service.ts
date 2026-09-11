@@ -97,6 +97,8 @@ interface ProjectAccess {
   role: ProjectRole;
 }
 
+import workspaceService from "../../workspace/services/workspace.service.js";
+
 class HttpError extends Error {
   public status: number;
 
@@ -118,10 +120,26 @@ class ProjectService {
         ? payload.description.trim()
         : undefined;
 
+    let targetWorkspaceId = payload.workspaceId;
+    if (!targetWorkspaceId) {
+      try {
+        const defaultWs =
+          await workspaceService.getOrCreateDefaultWorkspace(userId);
+        targetWorkspaceId = defaultWs._id
+          ? defaultWs._id.toString()
+          : undefined;
+      } catch (err) {
+        console.error(
+          "Failed to resolve default workspace for project creation",
+          err,
+        );
+      }
+    }
+
     try {
       const project = await runInTransaction(async (session) => {
         const newProject = await createProject(
-          { userId, name, description },
+          { userId, name, description, workspaceId: targetWorkspaceId },
           session,
         );
 

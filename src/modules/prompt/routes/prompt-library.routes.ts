@@ -42,6 +42,56 @@ class PromptLibraryRoutes implements Routes {
       "/:promptId/compare",
       promptLibraryController.comparePromptVersions,
     );
+    this.router.post(
+      "/:promptId/publish-production",
+      promptLibraryController.publishProductionVersion,
+    );
+    this.router.post(
+      "/:promptId/versions/:version/staging",
+      promptLibraryController.moveToStaging,
+    );
+    this.router.post(
+      "/:promptId/versions/:version/development",
+      promptLibraryController.moveToDevelopment,
+    );
+
+    // Deployment & Canary
+    this.router.post(
+      "/:promptId/deploy/direct",
+      promptLibraryController.deployDirectToProduction,
+    );
+    this.router.post(
+      "/:promptId/deploy/canary/start",
+      promptLibraryController.startCanary,
+    );
+    this.router.post(
+      "/:promptId/deploy/canary/advance",
+      promptLibraryController.advanceCanary,
+    );
+    this.router.post(
+      "/:promptId/deploy/canary/pause",
+      promptLibraryController.pauseCanary,
+    );
+    this.router.post(
+      "/:promptId/deploy/canary/resume",
+      promptLibraryController.resumeCanary,
+    );
+    this.router.post(
+      "/:promptId/deploy/canary/rollback",
+      promptLibraryController.rollbackCanary,
+    );
+    this.router.post(
+      "/:promptId/deploy/canary/cancel",
+      promptLibraryController.cancelCanary,
+    );
+    this.router.post(
+      "/:promptId/deploy/canary/complete",
+      promptLibraryController.completeCanary,
+    );
+    this.router.get(
+      "/:promptId/deploy/canary",
+      promptLibraryController.getCanaryDeployment,
+    );
 
     // Validation & Rendering Execution Engine
     this.router.post(

@@ -3,9 +3,7 @@ import PromptVersionModel from "../models/prompt-version.model.js";
 import promptAuthorizationService from "./prompt-authorization.service.js";
 import promptVariableService from "./prompt-variable.service.js";
 import workspaceService from "../../workspace/services/workspace.service.js";
-import aiService, {
-  AIServiceMessage,
-} from "../../ai/services/ai/ai.service.js";
+import llmExecutionService from "../../ai/services/llm-execution.service.js";
 import { HttpError } from "../../../shared/errors/http-error.js";
 import type {
   IPromptVariable,
@@ -37,6 +35,7 @@ export interface PlaygroundRunResponse {
     inputTokens?: number;
     outputTokens?: number;
     totalTokens?: number;
+    costUsd?: number;
     timestamp: string;
     promptId?: string;
     versionNumber?: number;
@@ -60,11 +59,10 @@ export class PromptPlaygroundService {
       const promptDoc = await PromptLibraryModel.findOne({
         _id: payload.promptId,
         workspaceId,
-        isArchived: false,
-      }).lean();
+      });
 
       if (!promptDoc) {
-        throw new HttpError(404, "Prompt template not found.");
+        throw new HttpError(404, "Prompt template not found in workspace.");
       }
 
       await promptAuthorizationService.assertPromptAccess(
@@ -73,23 +71,25 @@ export class PromptPlaygroundService {
         workspaceId,
       );
 
-      templateBody = promptDoc.body || "";
-      templateMessages = (promptDoc.messages as IPromptMessage[]) || [];
-      promptVariables = (promptDoc.variables as IPromptVariable[]) || [];
-      versionNum = versionNum || promptDoc.version;
-
-      if (payload.versionNumber) {
-        const versionDoc = await PromptVersionModel.findOne({
+      if (versionNum) {
+        const verDoc = await PromptVersionModel.findOne({
           promptId: payload.promptId,
-          version: payload.versionNumber,
-        }).lean();
-
-        if (versionDoc) {
-          templateBody = versionDoc.body || "";
-          templateMessages = (versionDoc.messages as IPromptMessage[]) || [];
-          promptVariables = (versionDoc.variables as IPromptVariable[]) || [];
-          versionNum = versionDoc.version;
+          version: versionNum,
+        });
+        if (!verDoc) {
+          throw new HttpError(
+            404,
+            `Version ${versionNum} not found for this prompt.`,
+          );
         }
+        templateBody = verDoc.body || "";
+        templateMessages = verDoc.messages || [];
+        promptVariables = verDoc.variables || [];
+      } else {
+        versionNum = promptDoc.version;
+        templateBody = promptDoc.body || "";
+        templateMessages = promptDoc.messages || [];
+        promptVariables = promptDoc.variables || [];
       }
     }
 
@@ -105,15 +105,16 @@ export class PromptPlaygroundService {
       suppliedValues,
     );
 
-    const target =
-      templateMessages.length > 0 ? templateMessages : templateBody;
     const resolved = promptVariableService.substituteVariables(
-      target,
+      templateBody,
       syncedVariables,
       suppliedValues,
     );
 
-    let aiMessages: AIServiceMessage[] = [];
+    let aiMessages: Array<{
+      role: "system" | "user" | "assistant";
+      content: string;
+    }> = [];
     if (Array.isArray(resolved)) {
       aiMessages = resolved.map((m) => ({
         role: m.role as "system" | "user" | "assistant",
@@ -125,44 +126,34 @@ export class PromptPlaygroundService {
 
     const selectedProvider = payload.provider || "gemini";
     const selectedModel = payload.modelName || "gemini-3.6-flash";
-    const temperature = payload.parameters?.temperature ?? 0.7;
-    const maxTokens = payload.parameters?.maxTokens ?? 2048;
 
-    const startTime = Date.now();
-
-    let output = "";
-    try {
-      output = await aiService.generate(aiMessages, {
-        provider: selectedProvider,
-        modelName: selectedModel,
-        temperature,
-        maxTokens,
-      });
-    } catch (err: any) {
-      const msg = err?.message || "Failed to execute prompt with AI provider.";
-      throw new HttpError(502, `Playground Execution Error: ${msg}`);
-    }
-
-    const latencyMs = Date.now() - startTime;
-
-    const inputCharCount = Array.isArray(resolved)
-      ? resolved.reduce((acc, m) => acc + m.content.length, 0)
-      : (resolved as string).length;
-    const outputCharCount = output.length;
-    const inputTokens = Math.ceil(inputCharCount / 4);
-    const outputTokens = Math.ceil(outputCharCount / 4);
-    const totalTokens = inputTokens + outputTokens;
+    const execResult = await llmExecutionService.execute({
+      workspaceId,
+      userId,
+      promptId: payload.promptId || null,
+      promptVersion: versionNum || null,
+      source: "playground",
+      messages: aiMessages,
+      provider: selectedProvider,
+      modelName: selectedModel,
+      parameters: {
+        temperature: payload.parameters?.temperature ?? 0.7,
+        maxTokens: payload.parameters?.maxTokens ?? 2048,
+        topP: payload.parameters?.topP ?? 0.95,
+      },
+    });
 
     return {
-      output,
+      output: execResult.content,
       resolvedPrompt: resolved as string | IPromptMessage[],
       metadata: {
-        modelName: selectedModel,
-        provider: selectedProvider,
-        latencyMs,
-        inputTokens,
-        outputTokens,
-        totalTokens,
+        modelName: execResult.modelName,
+        provider: execResult.provider,
+        latencyMs: execResult.latencyMs,
+        inputTokens: execResult.inputTokens,
+        outputTokens: execResult.outputTokens,
+        totalTokens: execResult.totalTokens,
+        costUsd: execResult.cost.totalCost,
         timestamp: new Date().toISOString(),
         promptId: payload.promptId,
         versionNumber: versionNum,

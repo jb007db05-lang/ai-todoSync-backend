@@ -1,4 +1,5 @@
 import logger from "../../../../lib/logger.js";
+import llmExecutionService from "../llm-execution.service.js";
 
 export interface AIServiceMessage {
   role: "system" | "user" | "assistant";
@@ -153,107 +154,30 @@ class AIService {
     options: AIServiceOptions = {},
     userApiKey?: string,
   ): Promise<string> {
-    const apiKey = this.getApiKey(userApiKey);
     const provider = options.provider || "gemini";
     const rawModel = options.modelName || "gemini-3.6-flash";
-    const model = this.getModel(rawModel);
 
-    let url = options.baseUrl ? options.baseUrl.trim() : "";
-    let headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    let body: Record<string, unknown> = {};
+    const result = await llmExecutionService.execute({
+      workspaceId: (options as any).workspaceId || "system",
+      userId: (options as any).userId || "system",
+      projectId: (options as any).projectId || null,
+      promptId: (options as any).promptId || null,
+      promptVersion: (options as any).promptVersion || null,
+      isProduction: (options as any).isProduction || false,
+      source: (options as any).source || "project_ai",
+      messages,
+      provider,
+      modelName: rawModel,
+      parameters: {
+        temperature: options.temperature,
+        maxTokens: options.maxTokens,
+        responseFormat: options.responseFormatJson ? "json" : "text",
+      },
+      userApiKey,
+      baseUrl: options.baseUrl,
+    });
 
-    if (provider === "openai") {
-      if (!url) url = "https://api.openai.com/v1";
-      url = `${url.replace(/\/$/, "")}/chat/completions`;
-      headers["Authorization"] = `Bearer ${apiKey}`;
-      body = {
-        model: rawModel,
-        messages,
-        temperature: options.temperature ?? 0.2,
-        max_tokens: options.maxTokens ?? 4096,
-      };
-      if (options.responseFormatJson) {
-        body.response_format = { type: "json_object" };
-      }
-    } else if (provider === "anthropic") {
-      if (!url) url = "https://api.anthropic.com/v1";
-      url = `${url.replace(/\/$/, "")}/messages`;
-      headers["x-api-key"] = apiKey;
-      headers["anthropic-version"] = "2023-06-01";
-
-      const systemMsg = messages.find((m) => m.role === "system")?.content;
-      const userMsgs = messages
-        .filter((m) => m.role !== "system")
-        .map((m) => ({
-          role:
-            m.role === "assistant" ? ("assistant" as const) : ("user" as const),
-          content: m.content,
-        }));
-
-      body = {
-        model: rawModel,
-        messages: userMsgs,
-        max_tokens: options.maxTokens ?? 4096,
-        temperature: options.temperature ?? 0.2,
-      };
-      if (systemMsg) {
-        body.system = systemMsg;
-      }
-    } else {
-      // Default: Google Gemini API
-      if (!url) url = "https://generativelanguage.googleapis.com/v1beta/openai";
-      url = `${url.replace(/\/$/, "")}/chat/completions?key=${encodeURIComponent(apiKey)}`;
-      headers["Authorization"] = `Bearer ${apiKey}`;
-      headers["x-goog-api-key"] = apiKey;
-      body = {
-        model,
-        messages,
-        temperature: options.temperature ?? 0.2,
-        max_tokens: options.maxTokens ?? 4096,
-      };
-      if (options.responseFormatJson) {
-        body.response_format = { type: "json_object" };
-      }
-    }
-
-    try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(300000),
-      });
-
-      if (!response.ok) {
-        const errText = await response.text().catch(() => "");
-        logger.error(
-          `AI API Error (${provider} ${response.status}): ${errText}`,
-        );
-        throw new Error(
-          `AI generation failed with status ${response.status}: ${errText || response.statusText}`,
-        );
-      }
-
-      const json = await response.json();
-      let content = "";
-      if (provider === "anthropic") {
-        content = (json as any).content?.[0]?.text || "";
-      } else {
-        content = (json as any).choices?.[0]?.message?.content || "";
-      }
-
-      if (typeof content !== "string" || !content.trim()) {
-        throw new Error(
-          `Invalid or empty response content from ${provider} AI`,
-        );
-      }
-      return content.trim();
-    } catch (err: any) {
-      logger.error("AIService.generate error:", err);
-      throw err;
-    }
+    return result.content;
   }
 
   public async generateStructured<T>(
