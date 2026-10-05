@@ -12,6 +12,7 @@ import promptFavoriteService from "./prompt-favorite.service.js";
 import promptVersionService from "./prompt-version.service.js";
 import promptQueryService from "./prompt-query.service.js";
 import promptPlaygroundService from "./prompt-playground.service.js";
+import promptDeploymentService from "./prompt-deployment.service.js";
 import type {
   CreatePromptPayload,
   UpdatePromptPayload,
@@ -48,6 +49,35 @@ export class PromptService {
   public getPromptVersions = promptVersionService.getPromptVersions;
   public comparePromptVersions = promptVersionService.comparePromptVersions;
   public runPlayground = promptPlaygroundService.runPlayground;
+
+  // Deployment Operations (production / canary / feature binding)
+  public listFeatures = promptDeploymentService.listFeatures.bind(
+    promptDeploymentService,
+  );
+  public getDeployment = promptDeploymentService.getDeployment.bind(
+    promptDeploymentService,
+  );
+  public setProductionVersion = promptDeploymentService.setProduction.bind(
+    promptDeploymentService,
+  );
+  public startCanary = promptDeploymentService.startCanary.bind(
+    promptDeploymentService,
+  );
+  public deployVersion = promptDeploymentService.deploy.bind(
+    promptDeploymentService,
+  );
+  public rollbackProduction = promptDeploymentService.rollback.bind(
+    promptDeploymentService,
+  );
+  public promoteCanary = promptDeploymentService.promoteCanary.bind(
+    promptDeploymentService,
+  );
+  public abortCanary = promptDeploymentService.abortCanary.bind(
+    promptDeploymentService,
+  );
+  public bindFeature = promptDeploymentService.bindFeature.bind(
+    promptDeploymentService,
+  );
 
   // Core Prompt CRUD Operations
   public async createPrompt(
@@ -151,6 +181,14 @@ export class PromptService {
           { session },
         );
 
+        await promptDeploymentService.ensureDeployment(
+          workspaceId,
+          prompt._id,
+          1,
+          userId,
+          session,
+        );
+
         return prompt;
       });
     } catch (err: any) {
@@ -245,8 +283,19 @@ export class PromptService {
           .sort({ version: -1 })
           .session(session || null);
 
-        const newVersionNum =
-          (latestVersionRecord?.version || existing.version) + 1;
+        const currentVersionNum =
+          latestVersionRecord?.version || existing.version;
+        const newVersionNum = currentVersionNum + 1;
+
+        // Editing creates a new version but never changes what is deployed:
+        // pin production to the current version if it was not pinned yet.
+        await promptDeploymentService.ensureDeployment(
+          workspaceId,
+          rootPromptId,
+          currentVersionNum,
+          userId,
+          session,
+        );
 
         const updateRes = await PromptLibraryModel.updateOne(
           { _id: existing._id, isLatest: true },
@@ -376,6 +425,7 @@ export class PromptService {
       { workspaceId, $or: [{ _id: rootId }, { parentId: rootId }] },
       { $set: { isArchived: true } },
     );
+    await promptDeploymentService.retire(workspaceId, rootId, userId);
     return { success: true };
   }
 }

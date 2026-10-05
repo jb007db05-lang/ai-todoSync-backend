@@ -2,9 +2,11 @@ import type { Request, Response } from "express";
 import { isAppError } from "../../utils/app-error.js";
 import { getTenantIdFromRequest } from "./permissions.js";
 import surveyService from "./service.js";
+import { parseEnvironment } from "../../shared/environment.js";
 import {
   validateCreateSurveyDto,
   validateSubmitSurveyResponseDto,
+  validateSurveyResponseQueryDto,
   validateSurveyQueryDto,
   validateUpdateSurveyDto,
 } from "./validators.js";
@@ -97,13 +99,14 @@ class SurveyController {
     res: Response,
   ): Promise<void> => {
     try {
-      const response = await surveyService.submitResponse(
+      const { response, duplicate } = await surveyService.submitResponse(
         getTenantIdFromRequest(req),
         getSdkIntegrationId(req),
         getParam(req.params.surveyId),
         validateSubmitSurveyResponseDto(req.body),
+        req.sdkEnvironment ?? parseEnvironment(req.query.environment),
       );
-      res.status(201).json({ data: { response } });
+      res.status(duplicate ? 200 : 201).json({ data: { response, duplicate } });
     } catch (error) {
       this.respondError(res, error);
     }
@@ -111,12 +114,14 @@ class SurveyController {
 
   public getResponses = async (req: Request, res: Response): Promise<void> => {
     try {
-      const responses = await surveyService.listResponses(
+      const result = await surveyService.listResponses(
         getTenantIdFromRequest(req),
         getSdkIntegrationId(req),
         getParam(req.params.surveyId),
+        parseEnvironment(req.query.environment),
+        validateSurveyResponseQueryDto(req.query),
       );
-      res.status(200).json({ data: { responses } });
+      res.status(200).json({ data: result });
     } catch (error) {
       this.respondError(res, error);
     }
@@ -128,6 +133,7 @@ class SurveyController {
         getTenantIdFromRequest(req),
         getSdkIntegrationId(req),
         getParam(req.params.surveyId),
+        parseEnvironment(req.query.environment),
       );
       res.status(200).json({ data: analytics });
     } catch (error) {

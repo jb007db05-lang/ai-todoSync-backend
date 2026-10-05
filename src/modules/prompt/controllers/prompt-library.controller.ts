@@ -379,6 +379,203 @@ class PromptLibraryController {
       next(err);
     }
   };
+
+  // Deployments (production / canary / feature binding)
+  public listFeatures = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+
+      const features = await promptLibraryService.listFeatures(
+        workspaceId,
+        userId,
+      );
+      res.status(200).json({ status: "success", data: features });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public getDeployment = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = this.getParam(req, "promptId");
+
+      const deployment = await promptLibraryService.getDeployment(
+        workspaceId,
+        userId,
+        promptId,
+      );
+      res.status(200).json({ status: "success", data: deployment });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public setProductionVersion = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = this.getParam(req, "promptId");
+
+      const deployment = await promptLibraryService.setProductionVersion(
+        workspaceId,
+        userId,
+        promptId,
+        req.body?.version,
+      );
+      res.status(200).json({ status: "success", data: deployment });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public startCanary = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = this.getParam(req, "promptId");
+
+      const deployment = await promptLibraryService.startCanary(
+        workspaceId,
+        userId,
+        promptId,
+        req.body?.version,
+        req.body?.percentage,
+      );
+      res.status(200).json({ status: "success", data: deployment });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public deployVersion = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = this.getParam(req, "promptId");
+
+      const deployment = await promptLibraryService.deployVersion(
+        workspaceId,
+        userId,
+        promptId,
+        {
+          version: req.body?.version,
+          strategy: req.body?.strategy,
+          percentage: req.body?.percentage,
+        },
+      );
+      res.status(200).json({ status: "success", data: deployment });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public rollbackProduction = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = this.getParam(req, "promptId");
+
+      const deployment = await promptLibraryService.rollbackProduction(
+        workspaceId,
+        userId,
+        promptId,
+      );
+      res.status(200).json({ status: "success", data: deployment });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public promoteCanary = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = this.getParam(req, "promptId");
+
+      const deployment = await promptLibraryService.promoteCanary(
+        workspaceId,
+        userId,
+        promptId,
+      );
+      res.status(200).json({ status: "success", data: deployment });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public abortCanary = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = this.getParam(req, "promptId");
+
+      const deployment = await promptLibraryService.abortCanary(
+        workspaceId,
+        userId,
+        promptId,
+      );
+      res.status(200).json({ status: "success", data: deployment });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public bindFeature = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const userId = this.getUserId(req);
+      const workspaceId = this.getParam(req, "workspaceId");
+      const promptId = this.getParam(req, "promptId");
+
+      const deployment = await promptLibraryService.bindFeature(
+        workspaceId,
+        userId,
+        promptId,
+        req.body?.featureKey ?? null,
+      );
+      res.status(200).json({ status: "success", data: deployment });
+    } catch (err) {
+      next(err);
+    }
+  };
 }
 
 export default new PromptLibraryController();

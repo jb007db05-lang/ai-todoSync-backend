@@ -3,6 +3,7 @@ export interface GuideAnalyticsQueryDto {
 }
 
 export interface GuideAnalyticsSummaryDto {
+  environment?: "live" | "sandbox";
   guides: {
     total: number;
     live: number;

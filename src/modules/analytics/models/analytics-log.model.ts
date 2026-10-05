@@ -7,6 +7,8 @@ export interface IAnalyticsLog {
   eventName?: string;
   apiKeyId?: string;
   sdkIntegrationId: string;
+  /** "sandbox" for traffic from the integration's sandbox key */
+  environment?: "live" | "sandbox";
   userIdentifier?: string;
   sessionId?: string;
   payload: Record<string, unknown>;
@@ -22,6 +24,7 @@ const analyticsLogSchema = new Schema<IAnalyticsLogDocument>(
     eventName: { type: String, index: true },
     apiKeyId: { type: String, required: false, index: true },
     sdkIntegrationId: { type: String, required: true, index: true },
+    environment: { type: String, enum: ["live", "sandbox"], default: "live" },
     userIdentifier: { type: String, index: true },
     sessionId: { type: String, index: true },
     payload: { type: Schema.Types.Mixed, default: {} },
@@ -39,6 +42,13 @@ analyticsLogSchema.index(
     },
   },
 );
+
+analyticsLogSchema.index({
+  sdkIntegrationId: 1,
+  environment: 1,
+  createdAt: -1,
+});
+analyticsLogSchema.index({ sdkIntegrationId: 1, environment: 1, eventRef: 1 });
 
 // Sparse index for event-name-seen queries (replaces AnalyticsEventRegistry)
 analyticsLogSchema.index(

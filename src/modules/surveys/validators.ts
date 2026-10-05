@@ -9,10 +9,12 @@ import {
   type SurveyQuestionType,
 } from "../engagement/types.js";
 import { validateTargetingRuleGroup } from "../targeting/validators.js";
+import { toAnswerRecord } from "./answers.js";
 import type {
   CreateSurveyDto,
   SubmitSurveyResponseDto,
   SurveyQueryDto,
+  SurveyResponseQueryDto,
   UpdateSurveyDto,
 } from "./dtos.js";
 
@@ -200,15 +202,35 @@ export const validateSubmitSurveyResponseDto = (
     throw new AppError(400, "Survey answers are required", "INVALID_ANSWERS");
   }
 
+  const answers = toAnswerRecord(record.answers);
+
+  const idempotencyKey =
+    typeof record.idempotencyKey === "string" &&
+    record.idempotencyKey.trim() !== ""
+      ? record.idempotencyKey.trim().slice(0, 128)
+      : undefined;
+
   return {
     userId: typeof record.userId === "string" ? record.userId : undefined,
     sessionId:
       typeof record.sessionId === "string" ? record.sessionId : undefined,
-    answers: record.answers as Record<string, unknown>,
+    idempotencyKey,
+    answers,
     metadata:
       typeof record.metadata === "object" && record.metadata != null
         ? (record.metadata as Record<string, unknown>)
         : {},
+  };
+};
+
+export const validateSurveyResponseQueryDto = (
+  query: Record<string, unknown>,
+): SurveyResponseQueryDto => {
+  const page = Number(query.page ?? 1);
+  const limit = Number(query.limit ?? 50);
+  return {
+    page: Number.isInteger(page) && page > 0 ? page : 1,
+    limit: Number.isInteger(limit) && limit > 0 ? Math.min(limit, 200) : 50,
   };
 };
 

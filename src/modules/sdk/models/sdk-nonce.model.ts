@@ -10,7 +10,7 @@ export interface ISdkNonceDocument extends ISdkNonce, Document {}
 const sdkNonceSchema = new Schema<ISdkNonceDocument>(
   {
     nonce: { type: String, required: true, unique: true, index: true },
-    expiresAt: { type: Date, required: true, index: true },
+    expiresAt: { type: Date, required: true }, // TTL index below
   },
   {
     timestamps: true,

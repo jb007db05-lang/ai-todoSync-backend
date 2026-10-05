@@ -70,6 +70,10 @@ export const validateRuntimeEvaluationDto = (
       typeof record.forceShowCompleted === "boolean"
         ? record.forceShowCompleted
         : undefined,
+    environment:
+      record.environment === "sandbox" || record.environment === "live"
+        ? record.environment
+        : undefined,
   };
 };
 

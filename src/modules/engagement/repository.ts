@@ -4,10 +4,15 @@ import {
   type GuideExposureStatus,
   type IGuideExposureDocument,
 } from "./model.js";
+import {
+  environmentFilter,
+  type DataEnvironment,
+} from "../../shared/environment.js";
 
 interface ExposureIdentity {
   tenantId: string;
   sdkIntegrationId: string;
+  environment?: DataEnvironment;
   guideId: string;
   userId?: string;
   sessionId?: string;
@@ -30,10 +35,15 @@ class EngagementRepository {
   }
 
   public findExposuresForGuide(
-    tenantId: string,
+    sdkIntegrationId: string,
     guideId: string,
+    environment: DataEnvironment = "live",
   ): Promise<IGuideExposureDocument[]> {
-    return GuideExposureModel.find({ tenantId, guideId }).exec();
+    return GuideExposureModel.find({
+      sdkIntegrationId,
+      guideId,
+      ...environmentFilter(environment),
+    }).exec();
   }
 
   public async upsertExposure(
@@ -78,6 +88,10 @@ class EngagementRepository {
       sessionId: identity.sessionId,
       stepState: {},
     };
+    // Sandbox exposures get their environment from the equality filter.
+    if ((identity.environment ?? "live") === "live") {
+      setOnInsert.environment = "live";
+    }
 
     if (!patch.incrementDisplay) {
       setOnInsert.displayCount = 0;
@@ -145,14 +159,21 @@ class EngagementRepository {
     ).exec();
   }
 
-  public async countMtu(sdkIntegrationId: string, month: string): Promise<number> {
-    return MonthlyTargetedUserModel.countDocuments({ sdkIntegrationId, month }).exec();
+  public async countMtu(
+    sdkIntegrationId: string,
+    month: string,
+  ): Promise<number> {
+    return MonthlyTargetedUserModel.countDocuments({
+      sdkIntegrationId,
+      month,
+    }).exec();
   }
 
   private buildExposureFilter(identity: ExposureIdentity) {
     return {
       sdkIntegrationId: identity.sdkIntegrationId,
       guideId: identity.guideId,
+      ...environmentFilter(identity.environment),
       ...(identity.userId ? { userId: identity.userId } : {}),
       ...(identity.sessionId ? { sessionId: identity.sessionId } : {}),
     };

@@ -1,70 +1,66 @@
 import type { GuideAnalyticsSummaryDto } from "./dtos.js";
 import guideAnalyticsRepository from "./repository.js";
+import type { DataEnvironment } from "../../shared/environment.js";
 
 class GuideAnalyticsService {
   public async summary(
     sdkIntegrationId: string,
     month: string,
+    environment: DataEnvironment = "live",
   ): Promise<GuideAnalyticsSummaryDto> {
     const [
       totalGuides,
       liveGuides,
       exposures,
       totalSurveys,
-      surveyResponses,
+      responses,
       mtu,
       events,
     ] = await Promise.all([
       guideAnalyticsRepository.countGuides(sdkIntegrationId),
       guideAnalyticsRepository.countLiveGuides(sdkIntegrationId),
-      guideAnalyticsRepository.listExposures(sdkIntegrationId),
+      guideAnalyticsRepository.exposureTotals(sdkIntegrationId, environment),
       guideAnalyticsRepository.countSurveys(sdkIntegrationId),
-      guideAnalyticsRepository.listSurveyResponses(sdkIntegrationId),
-      guideAnalyticsRepository.countMtu(sdkIntegrationId, month),
-      guideAnalyticsRepository.aggregateEngagementEvents(sdkIntegrationId),
+      guideAnalyticsRepository.responseTotals(sdkIntegrationId, environment),
+      // Sandbox traffic is never billed, so it has no MTU.
+      environment === "live"
+        ? guideAnalyticsRepository.countMtu(sdkIntegrationId, month)
+        : Promise.resolve(0),
+      guideAnalyticsRepository.aggregateEngagementEvents(
+        sdkIntegrationId,
+        environment,
+      ),
     ]);
 
-    const impressions = exposures.reduce(
-      (sum, exposure) => sum + (exposure.displayCount ?? 0),
-      0,
-    );
-    const completions = exposures.filter(
-      (exposure) => exposure.status === "completed",
-    ).length;
-    const dismissals = exposures.filter(
-      (exposure) => exposure.status === "dismissed",
-    ).length;
-    const promoters = surveyResponses.filter(
-      (response) => response.category === "PROMOTER",
-    ).length;
-    const passives = surveyResponses.filter(
-      (response) => response.category === "PASSIVE",
-    ).length;
-    const detractors = surveyResponses.filter(
-      (response) => response.category === "DETRACTOR",
-    ).length;
-    const responseTotal = surveyResponses.length;
     const summary = {
+      environment,
       guides: {
         total: totalGuides,
         live: liveGuides,
-        impressions,
-        completions,
-        dismissals,
+        impressions: exposures.impressions,
+        completions: exposures.completions,
+        dismissals: exposures.dismissals,
         completionRate:
-          exposures.length > 0 ? completions / exposures.length : 0,
-        dismissalRate: exposures.length > 0 ? dismissals / exposures.length : 0,
+          exposures.exposures > 0
+            ? exposures.completions / exposures.exposures
+            : 0,
+        dismissalRate:
+          exposures.exposures > 0
+            ? exposures.dismissals / exposures.exposures
+            : 0,
       },
       surveys: {
         total: totalSurveys,
-        responses: responseTotal,
+        responses: responses.responses,
         nps:
-          responseTotal > 0
-            ? ((promoters - detractors) / responseTotal) * 100
+          responses.responses > 0
+            ? ((responses.promoters - responses.detractors) /
+                responses.responses) *
+              100
             : 0,
-        promoters,
-        passives,
-        detractors,
+        promoters: responses.promoters,
+        passives: responses.passives,
+        detractors: responses.detractors,
       },
       mtu: {
         month,
@@ -73,11 +69,14 @@ class GuideAnalyticsService {
       events,
     };
 
-    await guideAnalyticsRepository.writeSnapshot({
-      sdkIntegrationId,
-      period: month,
-      metrics: summary,
-    });
+    // Snapshots are the live record of the month.
+    if (environment === "live") {
+      await guideAnalyticsRepository.writeSnapshot({
+        sdkIntegrationId,
+        period: month,
+        metrics: summary,
+      });
+    }
 
     return summary;
   }

@@ -31,11 +31,12 @@ class TrackingController {
         return res.status(401).json({ error: "API key is required" });
       }
 
-      logger.info("Tracking single event", { apiKeyId, eventName, sessionId });
+      logger.debug("Tracking single event", { apiKeyId, eventName, sessionId });
 
       const log = await trackingService.trackSingle({
         apiKeyId,
         sdkIntegrationId,
+        environment: req.sdkEnvironment,
         eventName: eventName ?? "",
         payload,
         sessionId,
@@ -67,7 +68,7 @@ class TrackingController {
         return res.status(401).json({ error: "API key is required" });
       }
 
-      logger.info("Identifying and tracking event", {
+      logger.debug("Identifying and tracking event", {
         apiKeyId,
         userIdentifier,
         eventName,
@@ -81,6 +82,8 @@ class TrackingController {
 
       const log = await trackingService.trackSingle({
         apiKeyId,
+        sdkIntegrationId: req.sdkIntegration?._id?.toString(),
+        environment: req.sdkEnvironment,
         userIdentifier,
         eventName,
         payload,
@@ -102,7 +105,7 @@ class TrackingController {
         return res.status(401).json({ error: "API key is required" });
       }
 
-      logger.info("Ingesting event batch", {
+      logger.debug("Ingesting event batch", {
         apiKeyId,
         count: Array.isArray(req.body) ? req.body.length : "unknown",
       });
@@ -111,6 +114,7 @@ class TrackingController {
         apiKeyId,
         req.body,
         sdkIntegrationId,
+        req.sdkEnvironment,
       );
       return res.status(200).json({ success: true, ...result });
     } catch (error) {
@@ -192,7 +196,7 @@ class TrackingController {
         return res.status(401).json({ error: "API key is required" });
       }
 
-      logger.info("Tracking page view", { apiKeyId, url, userId });
+      logger.debug("Tracking page view", { apiKeyId, url, userId });
 
       if (!url) {
         return res.status(400).json({ error: "url is required" });
@@ -205,6 +209,8 @@ class TrackingController {
         userIdentifier: userId,
         sessionId,
         eventId,
+        sdkIntegrationId: req.sdkIntegration?._id?.toString(),
+        environment: req.sdkEnvironment,
       });
 
       return res.status(200).json({ success: true, logId: log?._id ?? null });

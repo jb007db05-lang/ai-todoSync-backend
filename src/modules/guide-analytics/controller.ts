@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { isAppError } from "../../utils/app-error.js";
 import guideAnalyticsService from "./service.js";
 import { validateGuideAnalyticsQueryDto } from "./validators.js";
+import { parseEnvironment } from "../../shared/environment.js";
 
 class GuideAnalyticsController {
   public summary = async (req: Request, res: Response): Promise<void> => {
@@ -15,6 +16,7 @@ class GuideAnalyticsController {
       const summary = await guideAnalyticsService.summary(
         sdkIntegrationId,
         month,
+        parseEnvironment(req.query.environment),
       );
       res.status(200).json({ data: summary });
     } catch (error) {

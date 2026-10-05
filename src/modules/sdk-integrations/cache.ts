@@ -61,6 +61,9 @@ class SdkIntegrationCache {
 
     const entry = { data: integration, expiry };
     this.integrationsByKeyHash.set(keyHash, entry);
+    if (integration.sandboxKeyHash) {
+      this.integrationsByKeyHash.set(integration.sandboxKeyHash, entry);
+    }
     this.integrationsById.set(id, entry);
   }
 
@@ -74,19 +77,19 @@ class SdkIntegrationCache {
     this.allowedOrigins.set(origin, { data: allowed, expiry });
   }
 
-  public invalidate(id: string, keyHash?: string): void {
-    let hash = keyHash;
-    if (!hash) {
-      const entry = this.integrationsById.get(id);
-      if (entry) {
-        hash = entry.data.sdkKeyHash;
-      }
+  public invalidate(
+    id: string,
+    ...keyHashes: Array<string | null | undefined>
+  ): void {
+    const hashes = new Set(keyHashes.filter((h): h is string => !!h));
+    const entry = this.integrationsById.get(id);
+    if (entry) {
+      hashes.add(entry.data.sdkKeyHash);
+      if (entry.data.sandboxKeyHash) hashes.add(entry.data.sandboxKeyHash);
     }
 
     this.integrationsById.delete(id);
-    if (hash) {
-      this.integrationsByKeyHash.delete(hash);
-    }
+    hashes.forEach((hash) => this.integrationsByKeyHash.delete(hash));
     // Clear allowedOrigins map because we don't know which origins this integration had
     this.allowedOrigins.clear();
   }

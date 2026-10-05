@@ -12,6 +12,10 @@ import {
   validateRuntimeEvaluationDto,
 } from "./validators.js";
 import logger from "../../lib/logger.js";
+import {
+  parseEnvironment,
+  type DataEnvironment,
+} from "../../shared/environment.js";
 
 class EngagementController {
   public runtime = async (req: Request, res: Response): Promise<void> => {
@@ -48,7 +52,19 @@ class EngagementController {
         }
       }
 
+      // The key decides the environment for SDK traffic; portal (JWT) users
+      // may ask for sandbox to preview drafts.
+      const environment: DataEnvironment = req.sdkIntegration
+        ? (req.sdkEnvironment ?? "live")
+        : parseEnvironment(dto.environment);
+      // End users must not bypass frequency caps on live traffic.
+      const forceShowCompleted =
+        environment === "sandbox" || !req.sdkIntegration
+          ? dto.forceShowCompleted
+          : undefined;
+
       const context = {
+        environment,
         userId: dto.userId ?? req.user?._id?.toString(),
         sessionId: dto.sessionId ?? req.auth?.sessionId ?? undefined,
         sdkIntegrationId,
@@ -63,10 +79,11 @@ class EngagementController {
         now: dto.now,
         eventName: dto.eventName,
         eventProperties: dto.eventProperties,
-        forceShowCompleted: dto.forceShowCompleted,
+        forceShowCompleted,
       };
 
-      if (dto.eventName && sdkIntegrationId) {
+      // Checklist progress is live-only data.
+      if (dto.eventName && sdkIntegrationId && environment === "live") {
         await checklistService.applyEvent(tenantId, sdkIntegrationId, {
           eventName: dto.eventName,
           userId: context.userId,
@@ -80,24 +97,33 @@ class EngagementController {
         surveyService.getEligibleSurveys(tenantId, sdkIntegrationId, context),
         checklistService.getEligibleChecklists(tenantId, context),
       ]);
-      const rawExperiences = [...guides, ...surveys, ...checklists];
+      let rawExperiences = [...guides, ...surveys, ...checklists];
+      // A manual trigger asks for one specific experience: when it is
+      // servable, show only it, so other eligible items cannot outrank it.
+      const manualTourId = dto.eventProperties?.tourId;
+      if (dto.eventName === "manual_tour" && typeof manualTourId === "string") {
+        const requested = rawExperiences.filter((e) => e.id === manualTourId);
+        if (requested.length > 0) rawExperiences = requested;
+      }
       const experiences = await experienceOrchestrator.orchestrate({
         tenantId,
         userId: context.userId,
         sessionId: context.sessionId,
         experiences: rawExperiences,
         forceShowCompleted: context.forceShowCompleted,
+        environment,
       });
 
       await engagementService.recordRuntimeDelivery({
         tenantId,
         sdkIntegrationId,
+        environment,
         userId: context.userId,
         sessionId: context.sessionId,
         guides: experiences,
       });
 
-      res.status(200).json({ data: { experiences } });
+      res.status(200).json({ data: { experiences, environment } });
     } catch (error) {
       this.respondError(res, error);
     }
@@ -107,9 +133,15 @@ class EngagementController {
     try {
       const tenantId = getTenantIdFromRequest(req);
       const sdkIntegrationId = req.sdkIntegration?._id?.toString() ?? "";
+      const environment: DataEnvironment = req.sdkIntegration
+        ? (req.sdkEnvironment ?? "live")
+        : parseEnvironment(
+            (req.body as Record<string, unknown> | undefined)?.environment,
+          );
       const result = await engagementService.recordInteraction({
         tenantId,
         sdkIntegrationId,
+        environment,
         actorUserId: req.user?._id?.toString(),
         dto: validateEngagementTrackDto(req.body),
       });

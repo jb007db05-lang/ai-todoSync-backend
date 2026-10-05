@@ -1,8 +1,5 @@
 import { Schema, model, type Document } from "mongoose";
-import {
-  encrypt,
-  decrypt,
-} from "../../utils/encryption.js";
+import { encrypt, decrypt } from "../../utils/encryption.js";
 
 export type SdkIntegrationStatus =
   | "pending"
@@ -23,6 +20,11 @@ export interface ISdkIntegration {
   sdkKey: string; // encrypted public SDK key (plain-text on get)
   sdkKeyHash: string; // deterministic HMAC for fast lookup
   sdkVersion?: string;
+  // Sandbox (test-mode) key: sees draft content, data stored as sandbox
+  sandboxKey?: string | null; // encrypted (plain-text on get)
+  sandboxKeyHash?: string | null;
+  sandboxCreatedAt?: Date | null;
+  lastSandboxRequestAt?: Date | null;
   // Connection tracking
   firstConnectedAt?: Date | null;
   lastConnectedAt?: Date | null;
@@ -36,6 +38,22 @@ export interface ISdkIntegration {
 }
 
 export interface ISdkIntegrationDocument extends ISdkIntegration, Document {}
+
+function decryptKey(v: string): string {
+  if (!v) return v;
+  try {
+    return decrypt(v);
+  } catch {
+    return v;
+  }
+}
+
+function encryptKey(v: string): string {
+  if (v && !v.includes(":")) {
+    return encrypt(v);
+  }
+  return v;
+}
 
 const sdkIntegrationSchema = new Schema<ISdkIntegrationDocument>(
   {
@@ -59,19 +77,8 @@ const sdkIntegrationSchema = new Schema<ISdkIntegrationDocument>(
     sdkKey: {
       type: String,
       required: true,
-      get: (v: string) => {
-        try {
-          return decrypt(v);
-        } catch {
-          return v;
-        }
-      },
-      set: (v: string) => {
-        if (v && !v.includes(":")) {
-          return encrypt(v);
-        }
-        return v;
-      },
+      get: decryptKey,
+      set: encryptKey,
     },
     sdkKeyHash: {
       type: String,
@@ -80,6 +87,15 @@ const sdkIntegrationSchema = new Schema<ISdkIntegrationDocument>(
       unique: true,
     },
     sdkVersion: { type: String, default: null },
+    sandboxKey: {
+      type: String,
+      default: null,
+      get: decryptKey,
+      set: encryptKey,
+    },
+    sandboxKeyHash: { type: String, default: null },
+    sandboxCreatedAt: { type: Date, default: null },
+    lastSandboxRequestAt: { type: Date, default: null },
     firstConnectedAt: { type: Date, default: null },
     lastConnectedAt: { type: Date, default: null },
     lastRuntimeRequestAt: { type: Date, default: null },
@@ -96,6 +112,13 @@ const sdkIntegrationSchema = new Schema<ISdkIntegrationDocument>(
 );
 
 sdkIntegrationSchema.index({ tenantId: 1, status: 1 });
+sdkIntegrationSchema.index(
+  { sandboxKeyHash: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { sandboxKeyHash: { $type: "string" } },
+  },
+);
 
 const SdkIntegrationModel = model<ISdkIntegrationDocument>(
   "SdkIntegration",

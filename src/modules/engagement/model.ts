@@ -10,6 +10,7 @@ export type GuideExposureStatus =
 export interface IGuideExposure {
   tenantId: string;
   sdkIntegrationId: string;
+  environment?: "live" | "sandbox";
   guideId: string;
   userId?: string;
   sessionId?: string;
@@ -33,6 +34,7 @@ const guideExposureSchema = new Schema<IGuideExposureDocument>(
   {
     tenantId: { type: String, required: true, index: true },
     sdkIntegrationId: { type: String, required: true, index: true },
+    environment: { type: String, enum: ["live", "sandbox"], default: "live" },
     guideId: { type: String, required: true, index: true },
     userId: { type: String, index: true },
     sessionId: { type: String, index: true },
@@ -57,6 +59,12 @@ const guideExposureSchema = new Schema<IGuideExposureDocument>(
 );
 
 guideExposureSchema.index({ sdkIntegrationId: 1, guideId: 1, userId: 1 });
+guideExposureSchema.index({
+  sdkIntegrationId: 1,
+  environment: 1,
+  guideId: 1,
+  userId: 1,
+});
 guideExposureSchema.index({ sdkIntegrationId: 1, guideId: 1, sessionId: 1 });
 guideExposureSchema.index({ tenantId: 1, guideId: 1, userId: 1 });
 guideExposureSchema.index({ tenantId: 1, guideId: 1, sessionId: 1 });
@@ -97,9 +105,7 @@ monthlyTargetedUserSchema.index(
   { sdkIntegrationId: 1, month: 1, userId: 1 },
   { unique: true },
 );
-monthlyTargetedUserSchema.index(
-  { tenantId: 1, month: 1, userId: 1 },
-);
+monthlyTargetedUserSchema.index({ tenantId: 1, month: 1, userId: 1 });
 
 export const GuideExposureModel = model<IGuideExposureDocument>(
   "GuideExposure",

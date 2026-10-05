@@ -3,10 +3,28 @@ import SdkIntegrationModel, {
   type SdkIntegrationStatus,
 } from "./model.js";
 
+/** Matches either the live key or the sandbox key. */
 export const findByKeyHash = (
-  sdkKeyHash: string,
+  keyHash: string,
 ): Promise<ISdkIntegrationDocument | null> =>
-  SdkIntegrationModel.findOne({ sdkKeyHash }).exec();
+  SdkIntegrationModel.findOne({
+    $or: [{ sdkKeyHash: keyHash }, { sandboxKeyHash: keyHash }],
+  }).exec();
+
+export const updateSandboxKey = (
+  id: string,
+  sandboxKey: string | null,
+  sandboxKeyHash: string | null,
+): Promise<ISdkIntegrationDocument | null> =>
+  SdkIntegrationModel.findByIdAndUpdate(
+    id,
+    {
+      sandboxKey,
+      sandboxKeyHash,
+      sandboxCreatedAt: sandboxKey ? new Date() : null,
+    },
+    { new: true },
+  ).exec();
 
 export const findByTenantId = (
   tenantId: string,
@@ -23,10 +41,7 @@ export const findByTenantAndId = (
   SdkIntegrationModel.findOne({ _id: id, tenantId }).exec();
 
 export const createIntegration = (
-  data: Omit<
-    ISdkIntegrationDocument,
-    "_id" | "createdAt" | "updatedAt" | "id"
-  >,
+  data: Omit<ISdkIntegrationDocument, "_id" | "createdAt" | "updatedAt" | "id">,
 ): Promise<ISdkIntegrationDocument> => SdkIntegrationModel.create(data);
 
 export const updateStatus = (
@@ -54,9 +69,18 @@ export const updateConnectionTracking = (
     touchRuntime?: boolean;
     touchEvent?: boolean;
     touchHeartbeat?: boolean;
+    sandbox?: boolean;
   },
 ): Promise<ISdkIntegrationDocument | null> => {
   const now = new Date();
+  // Sandbox traffic never changes the live connection status or counters.
+  if (data.sandbox) {
+    return SdkIntegrationModel.findByIdAndUpdate(
+      id,
+      { lastSandboxRequestAt: now },
+      { new: true },
+    ).exec();
+  }
   const update: Record<string, unknown> = {
     lastConnectedAt: now,
     $inc: { connectionCount: 1 },

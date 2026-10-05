@@ -2,19 +2,45 @@ import { AppError } from "../../utils/app-error.js";
 import engagementService from "../engagement/service.js";
 import type { RuntimeGuideDto } from "../engagement/dtos.js";
 import type {
+  GuideStatus,
   NpsCategory,
   TargetingRuntimeContext,
 } from "../engagement/types.js";
 import { GuideExposureModel } from "../engagement/model.js";
+import { assertStatusTransition, isObjectId } from "../engagement/lifecycle.js";
 import targetingService from "../targeting/service.js";
+import {
+  environmentFilter,
+  servableStatuses,
+  type DataEnvironment,
+} from "../../shared/environment.js";
 import type {
   CreateSurveyDto,
   SubmitSurveyResponseDto,
   SurveyQueryDto,
+  SurveyResponseQueryDto,
   UpdateSurveyDto,
 } from "./dtos.js";
-import type { ISurveyDocument } from "./model.js";
+import { SurveyResponseModel, type ISurveyDocument } from "./model.js";
 import surveyRepository from "./repository.js";
+import { assertSurveyPublishable, validateSurveyAnswers } from "./answers.js";
+
+const NUMERIC_QUESTION_TYPES = [
+  "NPS",
+  "RATING_SCALE",
+  "OPINION_SCALE",
+  "CSAT",
+  "CES",
+];
+
+/** Statuses that still accept responses: what the environment serves, plus PAUSED (users mid-survey). */
+const acceptingStatuses = (environment: DataEnvironment): string[] => [
+  ...servableStatuses(environment),
+  "PAUSED",
+];
+
+const isDuplicateKeyError = (error: unknown): boolean =>
+  (error as { code?: number } | undefined)?.code === 11000;
 
 class SurveyService {
   public listSurveys(
@@ -25,12 +51,29 @@ class SurveyService {
     return surveyRepository.listSurveys(tenantId, sdkIntegrationId, query);
   }
 
-  public listResponses(
+  public async listResponses(
     tenantId: string,
     sdkIntegrationId: string,
     surveyId: string,
+    environment: DataEnvironment = "live",
+    page: SurveyResponseQueryDto = { page: 1, limit: 50 },
   ) {
-    return surveyRepository.listResponses(tenantId, sdkIntegrationId, surveyId);
+    await this.getSurvey(tenantId, sdkIntegrationId, surveyId);
+    const { responses, total } = await surveyRepository.listResponses(
+      tenantId,
+      sdkIntegrationId,
+      surveyId,
+      environment,
+      page,
+    );
+    return {
+      responses,
+      total,
+      page: page.page,
+      limit: page.limit,
+      totalPages: Math.max(1, Math.ceil(total / page.limit)),
+      environment,
+    };
   }
 
   public async getSurvey(
@@ -38,11 +81,9 @@ class SurveyService {
     sdkIntegrationId: string,
     surveyId: string,
   ) {
-    const survey = await surveyRepository.getSurvey(
-      tenantId,
-      sdkIntegrationId,
-      surveyId,
-    );
+    const survey = isObjectId(surveyId)
+      ? await surveyRepository.getSurvey(tenantId, sdkIntegrationId, surveyId)
+      : null;
 
     if (!survey) {
       throw new AppError(404, "Survey not found", "NOT_FOUND");
@@ -57,11 +98,24 @@ class SurveyService {
     createdBy: string,
     dto: CreateSurveyDto,
   ) {
+    const status = dto.status ?? "DRAFT";
+    if (status === "LIVE") {
+      assertSurveyPublishable(dto.questions ?? []);
+    } else if (status !== "DRAFT") {
+      throw new AppError(
+        400,
+        "New surveys start as DRAFT or LIVE.",
+        "INVALID_STATUS",
+      );
+    }
     return surveyRepository.createSurvey(
       tenantId,
       sdkIntegrationId,
       createdBy,
-      dto,
+      {
+        ...dto,
+        status,
+      },
     );
   }
 
@@ -72,16 +126,32 @@ class SurveyService {
     updatedBy: string,
     dto: UpdateSurveyDto,
   ) {
+    const existing = await this.getSurvey(tenantId, sdkIntegrationId, surveyId);
+    const nextStatus: GuideStatus = dto.status ?? existing.status;
+    const statusChanges = nextStatus !== existing.status;
+
+    if (statusChanges) {
+      assertStatusTransition("Survey", existing.status, nextStatus);
+    }
+    if (nextStatus === "LIVE") {
+      assertSurveyPublishable(dto.questions ?? existing.questions);
+    }
+
     const survey = await surveyRepository.updateSurvey(
       tenantId,
       sdkIntegrationId,
       surveyId,
       updatedBy,
       dto,
+      statusChanges ? existing.status : undefined,
     );
 
     if (!survey) {
-      throw new AppError(404, "Survey not found", "NOT_FOUND");
+      throw new AppError(
+        409,
+        "Survey changed while updating. Reload and try again.",
+        "STATUS_CONFLICT",
+      );
     }
 
     return survey;
@@ -92,6 +162,14 @@ class SurveyService {
     sdkIntegrationId: string,
     surveyId: string,
   ) {
+    const existing = await this.getSurvey(tenantId, sdkIntegrationId, surveyId);
+    if (existing.status === "LIVE") {
+      throw new AppError(
+        409,
+        "Pause or archive a live survey before deleting it.",
+        "SURVEY_LIVE",
+      );
+    }
     const result = await surveyRepository.deleteSurvey(
       tenantId,
       sdkIntegrationId,
@@ -103,27 +181,71 @@ class SurveyService {
     }
   }
 
+  /**
+   * Stores a validated response. With an idempotency key, a retried
+   * submission returns the original response instead of a duplicate.
+   */
   public async submitResponse(
     tenantId: string,
     sdkIntegrationId: string,
     surveyId: string,
     dto: SubmitSurveyResponseDto,
+    environment: DataEnvironment = "live",
   ) {
     const survey = await this.getSurvey(tenantId, sdkIntegrationId, surveyId);
-    const npsScore = this.extractNpsScore(survey, dto.answers);
+    if (!acceptingStatuses(environment).includes(survey.status)) {
+      throw new AppError(
+        409,
+        `This survey is ${survey.status.toLowerCase()} and is not accepting responses.`,
+        "SURVEY_CLOSED",
+      );
+    }
+
+    if (dto.idempotencyKey) {
+      const existing = await surveyRepository.findResponseByIdempotencyKey(
+        sdkIntegrationId,
+        surveyId,
+        dto.idempotencyKey,
+      );
+      if (existing) return { response: existing, duplicate: true };
+    }
+
+    const answers = validateSurveyAnswers(survey.questions, dto.answers);
+    const npsScore = this.extractNpsScore(survey, answers);
     const category = this.categorizeNps(npsScore);
-    const response = await surveyRepository.createResponse({
-      tenantId,
-      sdkIntegrationId,
-      survey,
-      dto,
-      npsScore,
-      category,
-    });
+
+    let response;
+    try {
+      response = await surveyRepository.createResponse({
+        tenantId,
+        sdkIntegrationId,
+        environment,
+        survey,
+        answers,
+        userId: dto.userId,
+        sessionId: dto.sessionId,
+        idempotencyKey: dto.idempotencyKey,
+        metadata: dto.metadata,
+        npsScore,
+        category,
+      });
+    } catch (error) {
+      // A concurrent retry with the same key won the race.
+      if (dto.idempotencyKey && isDuplicateKeyError(error)) {
+        const existing = await surveyRepository.findResponseByIdempotencyKey(
+          sdkIntegrationId,
+          surveyId,
+          dto.idempotencyKey,
+        );
+        if (existing) return { response: existing, duplicate: true };
+      }
+      throw error;
+    }
 
     await engagementService.recordInteraction({
       tenantId,
       sdkIntegrationId,
+      environment,
       actorUserId: dto.userId,
       dto: {
         eventName: "survey_completed",
@@ -138,7 +260,7 @@ class SurveyService {
       },
     });
 
-    return response;
+    return { response, duplicate: false };
   }
 
   public async getEligibleSurveys(
@@ -146,16 +268,22 @@ class SurveyService {
     sdkIntegrationId: string,
     context: Omit<TargetingRuntimeContext, "tenantId">,
   ): Promise<RuntimeGuideDto[]> {
+    const statuses = servableStatuses(context.environment ?? "live");
     const manualTourId = context.eventProperties?.tourId;
     if (
       context.eventName === "manual_tour" &&
       typeof manualTourId === "string"
     ) {
       const cleanTourId = manualTourId.replace(/^survey:/, "");
-      const survey = await surveyRepository
-        .getSurvey(tenantId, sdkIntegrationId, cleanTourId)
-        .catch(() => null);
-      if (survey) {
+      const survey = isObjectId(cleanTourId)
+        ? await surveyRepository.getSurvey(
+            tenantId,
+            sdkIntegrationId,
+            cleanTourId,
+          )
+        : null;
+      // Manual triggers obey the same status rules as automatic delivery.
+      if (survey && statuses.includes(survey.status)) {
         return [
           this.toRuntimeDto(survey, {
             reasons: ["Manual tour trigger"],
@@ -166,9 +294,10 @@ class SurveyService {
       }
     }
 
-    const surveys = await surveyRepository.listLiveSurveys(
+    const surveys = await surveyRepository.listServableSurveys(
       tenantId,
       sdkIntegrationId,
+      statuses,
     );
     const contextWithTenant = { ...context, tenantId };
     const evaluated = await Promise.all(
@@ -216,159 +345,287 @@ class SurveyService {
       .map((entry) => this.toRuntimeDto(entry.survey, entry.eligibility));
   }
 
+  /**
+   * Survey analytics computed in the database, so cost does not grow with
+   * the number of responses held in memory.
+   */
   public async getSurveyAnalytics(
     tenantId: string,
     sdkIntegrationId: string,
     surveyId: string,
+    environment: DataEnvironment = "live",
   ) {
     const survey = await this.getSurvey(tenantId, sdkIntegrationId, surveyId);
-    const responses = await surveyRepository.listResponses(
+    const responseMatch = {
       tenantId,
       sdkIntegrationId,
       surveyId,
-    );
+      ...environmentFilter(environment),
+    };
 
-    const exposures = await GuideExposureModel.find({
-      sdkIntegrationId,
-      guideId: `survey:${surveyId}`,
-    }).exec();
+    const [responseFacets] = await SurveyResponseModel.aggregate<{
+      totals: Array<{
+        submissions: number;
+        promoters: number;
+        passives: number;
+        detractors: number;
+      }>;
+      answers: Array<{ _id: { q: string; v: unknown }; count: number }>;
+      durations: Array<{ total: number; count: number }>;
+      weekly: Array<{
+        _id: string;
+        responses: number;
+        promoters: number;
+        detractors: number;
+      }>;
+      monthly: Array<{
+        _id: string;
+        responses: number;
+        promoters: number;
+        detractors: number;
+      }>;
+    }>([
+      { $match: responseMatch },
+      {
+        $facet: {
+          totals: [
+            {
+              $group: {
+                _id: null,
+                submissions: { $sum: 1 },
+                promoters: {
+                  $sum: { $cond: [{ $eq: ["$category", "PROMOTER"] }, 1, 0] },
+                },
+                passives: {
+                  $sum: { $cond: [{ $eq: ["$category", "PASSIVE"] }, 1, 0] },
+                },
+                detractors: {
+                  $sum: { $cond: [{ $eq: ["$category", "DETRACTOR"] }, 1, 0] },
+                },
+              },
+            },
+          ],
+          answers: [
+            { $unwind: "$answers" },
+            { $match: { "answers.value": { $ne: null } } },
+            {
+              $group: {
+                _id: { q: "$answers.questionId", v: "$answers.value" },
+                count: { $sum: 1 },
+              },
+            },
+          ],
+          durations: [
+            {
+              $project: {
+                seconds: {
+                  $divide: [
+                    {
+                      $subtract: [
+                        "$submittedAt",
+                        {
+                          $convert: {
+                            input: "$metadata.startedAt",
+                            to: "date",
+                            onError: null,
+                            onNull: null,
+                          },
+                        },
+                      ],
+                    },
+                    1000,
+                  ],
+                },
+              },
+            },
+            { $match: { seconds: { $gt: 0 } } },
+            {
+              $group: {
+                _id: null,
+                total: { $sum: "$seconds" },
+                count: { $sum: 1 },
+              },
+            },
+          ],
+          weekly: this.trendStages("%G-W%V"),
+          monthly: this.trendStages("%Y-%m"),
+        },
+      },
+    ]).exec();
 
-    const totalImpressions = exposures.reduce(
-      (sum, exp) => sum + (exp.displayCount ?? 0),
-      0,
-    );
-    const uniqueUsersCount = new Set(
-      exposures.map((exp) => exp.userId).filter(Boolean),
-    ).size;
-    const starts = exposures.filter((exp) => exp.status !== "shown").length;
-    const submissions = responses.length;
-    const dismissals = exposures.filter(
-      (exp) => exp.status === "dismissed" || exp.status === "abandoned",
-    ).length;
+    const [exposureStats] = await GuideExposureModel.aggregate<{
+      impressions: number;
+      users: string[];
+      starts: number;
+      dismissals: number;
+      durationTotal: number;
+      durationCount: number;
+    }>([
+      {
+        $match: {
+          sdkIntegrationId,
+          guideId: `survey:${surveyId}`,
+          ...environmentFilter(environment),
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          impressions: { $sum: { $ifNull: ["$displayCount", 0] } },
+          users: { $addToSet: "$userId" },
+          starts: { $sum: { $cond: [{ $ne: ["$status", "shown"] }, 1, 0] } },
+          dismissals: {
+            $sum: {
+              $cond: [{ $in: ["$status", ["dismissed", "abandoned"]] }, 1, 0],
+            },
+          },
+          durationTotal: {
+            $sum: {
+              $cond: [
+                { $and: ["$startedAt", "$completedAt"] },
+                {
+                  $divide: [
+                    { $subtract: ["$completedAt", "$startedAt"] },
+                    1000,
+                  ],
+                },
+                0,
+              ],
+            },
+          },
+          durationCount: {
+            $sum: { $cond: [{ $and: ["$startedAt", "$completedAt"] }, 1, 0] },
+          },
+        },
+      },
+    ]).exec();
 
-    const completionRate =
-      totalImpressions > 0 ? (submissions / totalImpressions) * 100 : 0;
-    const dropOffRate =
-      starts > 0 ? ((starts - submissions) / starts) * 100 : 0;
+    const totals = responseFacets?.totals[0] ?? {
+      submissions: 0,
+      promoters: 0,
+      passives: 0,
+      detractors: 0,
+    };
+    const submissions = totals.submissions;
+    const impressions = exposureStats?.impressions ?? 0;
+    const starts = exposureStats?.starts ?? 0;
+    const uniqueUsers = (exposureStats?.users ?? []).filter(Boolean).length;
 
-    let totalCompletionTime = 0;
-    let completionTimeCount = 0;
+    const exposureDuration = exposureStats?.durationCount
+      ? exposureStats.durationTotal / exposureStats.durationCount
+      : 0;
+    const responseDuration = responseFacets?.durations[0]?.count
+      ? responseFacets.durations[0].total / responseFacets.durations[0].count
+      : 0;
 
-    exposures.forEach((exp) => {
-      if (exp.startedAt && exp.completedAt) {
-        totalCompletionTime +=
-          (exp.completedAt.getTime() - exp.startedAt.getTime()) / 1000;
-        completionTimeCount++;
-      }
-    });
-
-    if (completionTimeCount === 0) {
-      responses.forEach((res) => {
-        if (res.metadata && typeof res.metadata.startedAt === "string") {
-          const start = new Date(res.metadata.startedAt).getTime();
-          const end = new Date(res.submittedAt).getTime();
-          if (end > start) {
-            totalCompletionTime += (end - start) / 1000;
-            completionTimeCount++;
-          }
-        }
-      });
+    const answersByQuestion = new Map<
+      string,
+      Array<{ value: unknown; count: number }>
+    >();
+    for (const row of responseFacets?.answers ?? []) {
+      const list = answersByQuestion.get(row._id.q) ?? [];
+      list.push({ value: row._id.v, count: row.count });
+      answersByQuestion.set(row._id.q, list);
     }
-    const averageCompletionTime =
-      completionTimeCount > 0 ? totalCompletionTime / completionTimeCount : 0;
-
-    const promoters = responses.filter((r) => r.category === "PROMOTER").length;
-    const passives = responses.filter((r) => r.category === "PASSIVE").length;
-    const detractors = responses.filter(
-      (r) => r.category === "DETRACTOR",
-    ).length;
-    const nps =
-      submissions > 0 ? ((promoters - detractors) / submissions) * 100 : 0;
 
     const questionAnalytics = survey.questions.map((q) => {
-      const qAnswers = responses
-        .map((r) => {
-          if (Array.isArray(r.answers)) {
-            return r.answers.find((a: any) => a.questionId === q.id)?.value;
-          }
-          return (r.answers as Record<string, unknown>)[q.id];
-        })
-        .filter((val) => val !== undefined && val !== null);
-
-      const answeredCount = qAnswers.length;
-      const skippedCount = submissions - answeredCount;
-
-      let averageScore = 0;
+      const rows = answersByQuestion.get(q.id) ?? [];
       const distribution: Record<string, number> = {};
+      let answeredCount = 0;
+      let numericSum = 0;
+      let numericCount = 0;
 
-      if (
-        ["NPS", "RATING_SCALE", "OPINION_SCALE", "CSAT", "CES"].includes(q.type)
-      ) {
-        const scores = qAnswers.map(Number).filter(Number.isFinite);
-        if (scores.length > 0) {
-          averageScore = scores.reduce((sum, s) => sum + s, 0) / scores.length;
+      for (const { value, count } of rows) {
+        answeredCount += count;
+        const key =
+          typeof value === "object" && value !== null
+            ? JSON.stringify(value)
+            : String(value);
+        distribution[key] = (distribution[key] ?? 0) + count;
+        const num = Number(value);
+        if (NUMERIC_QUESTION_TYPES.includes(q.type) && Number.isFinite(num)) {
+          numericSum += num * count;
+          numericCount += count;
         }
       }
 
-      qAnswers.forEach((ans) => {
-        const key =
-          typeof ans === "object" && ans !== null
-            ? JSON.stringify(ans)
-            : String(ans);
-        distribution[key] = (distribution[key] ?? 0) + 1;
-      });
-
-      let mostSelectedOption: string | null = null;
-      let leastSelectedOption: string | null = null;
-      let maxCount = -1;
-      let minCount = Infinity;
-
-      Object.entries(distribution).forEach(([key, count]) => {
-        if (count > maxCount) {
-          maxCount = count;
-          mostSelectedOption = key;
-        }
-        if (count < minCount) {
-          minCount = count;
-          leastSelectedOption = key;
-        }
-      });
-
+      const ranked = Object.entries(distribution).sort((a, b) => b[1] - a[1]);
       return {
         questionId: q.id,
         title: q.title,
         type: q.type,
         responseCount: answeredCount,
-        skippedCount,
-        averageScore,
+        skippedCount: Math.max(0, submissions - answeredCount),
+        averageScore: numericCount > 0 ? numericSum / numericCount : 0,
         distribution,
-        mostSelectedOption,
-        leastSelectedOption,
+        mostSelectedOption: ranked[0]?.[0] ?? null,
+        leastSelectedOption: ranked[ranked.length - 1]?.[0] ?? null,
       };
     });
 
+    const toTrend = (
+      rows: Array<{
+        _id: string;
+        responses: number;
+        promoters: number;
+        detractors: number;
+      }> = [],
+    ) =>
+      rows.map((row) => ({
+        period: row._id,
+        responses: row.responses,
+        nps:
+          row.responses > 0
+            ? ((row.promoters - row.detractors) / row.responses) * 100
+            : 0,
+      }));
+
     return {
       surveyId,
+      environment,
       responses: submissions,
-      nps,
-      promoters,
-      passives,
-      detractors,
-      responseRate:
-        totalImpressions > 0 ? (submissions / totalImpressions) * 100 : 0,
-      impressions: totalImpressions,
-      eligibleUsers: uniqueUsersCount,
-      displays: totalImpressions,
+      nps:
+        submissions > 0
+          ? ((totals.promoters - totals.detractors) / submissions) * 100
+          : 0,
+      promoters: totals.promoters,
+      passives: totals.passives,
+      detractors: totals.detractors,
+      responseRate: impressions > 0 ? (submissions / impressions) * 100 : 0,
+      impressions,
+      eligibleUsers: uniqueUsers,
+      displays: impressions,
       starts,
       submissions,
-      dismissals,
-      completionRate,
-      dropOffRate,
-      averageCompletionTime,
+      dismissals: exposureStats?.dismissals ?? 0,
+      completionRate: impressions > 0 ? (submissions / impressions) * 100 : 0,
+      dropOffRate:
+        starts > 0 ? (Math.max(0, starts - submissions) / starts) * 100 : 0,
+      averageCompletionTime: exposureDuration || responseDuration,
       questionAnalytics,
-      weeklyTrends: this.buildTrend(responses, "week"),
-      monthlyTrends: this.buildTrend(responses, "month"),
+      weeklyTrends: toTrend(responseFacets?.weekly),
+      monthlyTrends: toTrend(responseFacets?.monthly),
     };
+  }
+
+  private trendStages(format: string) {
+    return [
+      {
+        $group: {
+          _id: {
+            $dateToString: { format, date: "$submittedAt", timezone: "UTC" },
+          },
+          responses: { $sum: 1 },
+          promoters: {
+            $sum: { $cond: [{ $eq: ["$category", "PROMOTER"] }, 1, 0] },
+          },
+          detractors: {
+            $sum: { $cond: [{ $eq: ["$category", "DETRACTOR"] }, 1, 0] },
+          },
+        },
+      },
+      { $sort: { _id: 1 as const } },
+    ];
   }
 
   private toRuntimeDto(
@@ -390,6 +647,7 @@ class SurveyService {
         ...survey.metadata,
         surveyId: survey._id.toString(),
         sdkIntegrationId: survey.sdkIntegrationId,
+        status: survey.status,
       },
       eligibility,
     };
@@ -397,7 +655,7 @@ class SurveyService {
 
   private extractNpsScore(
     survey: ISurveyDocument,
-    answers: Record<string, unknown> | Array<any>,
+    answers: Record<string, unknown>,
   ): number | null {
     const npsQuestion = survey.questions.find(
       (question) => question.type === "NPS",
@@ -405,20 +663,8 @@ class SurveyService {
     if (!npsQuestion) {
       return null;
     }
-
-    let valueStr: any = undefined;
-    if (Array.isArray(answers)) {
-      const found = answers.find((ans) => ans?.questionId === npsQuestion.id);
-      if (found) {
-        valueStr = found.value;
-      }
-    } else if (answers && typeof answers === "object") {
-      valueStr = answers[npsQuestion.id];
-    }
-
-    const value =
-      valueStr !== undefined && valueStr !== null ? Number(valueStr) : NaN;
-    return Number.isFinite(value) ? value : null;
+    const value = answers[npsQuestion.id];
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
   }
 
   private categorizeNps(score: number | null): NpsCategory {
@@ -435,50 +681,6 @@ class SurveyService {
     }
 
     return "DETRACTOR";
-  }
-
-  private buildTrend(
-    responses: Array<{ submittedAt: Date; category: NpsCategory }>,
-    bucket: "week" | "month",
-  ) {
-    const groups = new Map<
-      string,
-      { total: number; promoters: number; detractors: number }
-    >();
-
-    responses.forEach((response) => {
-      const date = response.submittedAt;
-      const key =
-        bucket === "month"
-          ? `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`
-          : `${date.getUTCFullYear()}-W${String(this.weekOfYear(date)).padStart(2, "0")}`;
-      const current = groups.get(key) ?? {
-        total: 0,
-        promoters: 0,
-        detractors: 0,
-      };
-      current.total += 1;
-      current.promoters += response.category === "PROMOTER" ? 1 : 0;
-      current.detractors += response.category === "DETRACTOR" ? 1 : 0;
-      groups.set(key, current);
-    });
-
-    return [...groups.entries()].map(([period, value]) => ({
-      period,
-      responses: value.total,
-      nps:
-        value.total > 0
-          ? ((value.promoters - value.detractors) / value.total) * 100
-          : 0,
-    }));
-  }
-
-  private weekOfYear(date: Date): number {
-    const firstDay = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-    const dayOffset = Math.floor(
-      (date.getTime() - firstDay.getTime()) / 86400000,
-    );
-    return Math.ceil((dayOffset + firstDay.getUTCDay() + 1) / 7);
   }
 }
 

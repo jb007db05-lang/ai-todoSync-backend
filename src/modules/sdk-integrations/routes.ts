@@ -26,6 +26,27 @@ class SdkIntegrationRoutes implements Routes {
       authMiddleware,
       sdkIntegrationController.regenerateKey,
     );
+    // Sandbox (test-mode key + isolated data)
+    this.router.post(
+      "/:id/sandbox",
+      authMiddleware,
+      sdkIntegrationController.createSandbox,
+    );
+    this.router.post(
+      "/:id/sandbox/regenerate-key",
+      authMiddleware,
+      sdkIntegrationController.regenerateSandboxKey,
+    );
+    this.router.post(
+      "/:id/sandbox/reset",
+      authMiddleware,
+      sdkIntegrationController.resetSandbox,
+    );
+    this.router.delete(
+      "/:id/sandbox",
+      authMiddleware,
+      sdkIntegrationController.deleteSandbox,
+    );
     this.router.post(
       "/:id/disable",
       authMiddleware,

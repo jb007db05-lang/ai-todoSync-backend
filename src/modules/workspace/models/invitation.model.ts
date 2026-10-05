@@ -54,7 +54,7 @@ const invitationSchema = new Schema<IInvitationDocument>(
 );
 
 invitationSchema.index({ projectId: 1, email: 1 }, { unique: true });
-invitationSchema.index({ token: 1 });
+// token is already indexed by `unique: true` on the field.
 
 const InvitationModel = model<IInvitationDocument>(
   "Invitation",

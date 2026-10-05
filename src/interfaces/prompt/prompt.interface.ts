@@ -92,6 +92,62 @@ export interface IPromptVersion {
   updatedAt?: Date;
 }
 
+export const PROMPT_DEPLOYMENT_ACTIONS = [
+  "set-production",
+  "start-canary",
+  "update-canary",
+  "promote-canary",
+  "abort-canary",
+  "rollback",
+  "bind-feature",
+  "unbind-feature",
+] as const;
+export type PromptDeploymentAction = (typeof PROMPT_DEPLOYMENT_ACTIONS)[number];
+
+export interface IPromptDeploymentEvent {
+  action: PromptDeploymentAction;
+  version?: number | null;
+  previousVersion?: number | null;
+  percentage?: number | null;
+  featureKey?: string | null;
+  actor: Types.ObjectId | string;
+  at: Date;
+}
+
+export interface IPromptCanary {
+  version: number;
+  percentage: number; // 1-99, share of users routed to the canary
+  startedAt: Date;
+}
+
+export const PROMPT_VERSION_STATUSES = [
+  "production",
+  "canary",
+  "staging",
+  "draft",
+] as const;
+export type PromptVersionStatus = (typeof PROMPT_VERSION_STATUSES)[number];
+
+/**
+ * Deployment state of one logical prompt (keyed by its root prompt id).
+ * Exactly one version is in production. When another version replaces it
+ * (direct deploy, canary promotion or rollback), the replaced version moves
+ * to `stagingVersion`, the one-step rollback target. `canary`, when set,
+ * receives `percentage`% of users (sticky per user).
+ */
+export interface IPromptDeployment {
+  workspaceId: Types.ObjectId | string;
+  promptId: Types.ObjectId | string; // root prompt id
+  featureKey?: string | null;
+  productionVersion: number;
+  stagingVersion?: number | null;
+  canary?: IPromptCanary | null;
+  updatedBy: Types.ObjectId | string;
+  history: IPromptDeploymentEvent[];
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 export interface IPromptFavorite {
   workspaceId: Types.ObjectId | string;
   userId: Types.ObjectId | string;

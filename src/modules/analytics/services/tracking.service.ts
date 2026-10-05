@@ -5,6 +5,7 @@ import AnalyticsLogModel, {
 } from "../../../modules/analytics/models/analytics-log.model.js";
 import AnalyticsUserModel from "../models/analytics-user.model.js";
 import logger from "../../../lib/logger.js";
+import type { DataEnvironment } from "../../../shared/environment.js";
 import {
   NormalizedTrackingEvent,
   normalizeTrackingEvent,
@@ -22,6 +23,7 @@ interface SingleTrackInput {
   userIdentifier?: string;
   sessionId?: string;
   eventId?: string;
+  environment?: DataEnvironment;
 }
 
 interface BatchResult {
@@ -112,12 +114,14 @@ class TrackingService {
     apiKeyId: string,
     eventRef: string,
     sdkIntegrationId?: string,
+    environment: DataEnvironment = "live",
   ) {
     return {
       eventId: event.eventId || this.generateEventId(),
       eventRef,
       apiKeyId,
       sdkIntegrationId: sdkIntegrationId ?? apiKeyId,
+      environment,
       userIdentifier: event.userIdentifier,
       sessionId: event.sessionId,
       payload: event.payload,
@@ -174,6 +178,7 @@ class TrackingService {
           input.apiKeyId,
           event._id.toString(),
           input.sdkIntegrationId,
+          input.environment,
         ),
       );
     } catch (error) {
@@ -189,6 +194,7 @@ class TrackingService {
     apiKeyId: string,
     body: unknown,
     sdkIntegrationId?: string,
+    environment: DataEnvironment = "live",
   ): Promise<BatchResult> {
     const rawEvents = validateBatchBody(body);
     const normalizedEvents = rawEvents.map((event, index) =>
@@ -238,6 +244,7 @@ class TrackingService {
           apiKeyId,
           eventRefByName.get(event.eventName) as string,
           sdkIntegrationId,
+          environment,
         ),
       },
     }));
@@ -331,10 +338,14 @@ class TrackingService {
       userIdentifier?: string;
       sessionId?: string;
       eventId?: string;
+      sdkIntegrationId?: string;
+      environment?: DataEnvironment;
     },
   ): Promise<IAnalyticsLogDocument | null> {
     return this.trackSingle({
       apiKeyId,
+      sdkIntegrationId: input.sdkIntegrationId,
+      environment: input.environment,
       eventName: "page",
       userIdentifier: input.userIdentifier,
       sessionId: input.sessionId,

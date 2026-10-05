@@ -1,4 +1,7 @@
 import logger from "../../../../lib/logger.js";
+import promptResolverService, {
+  type PromptScope,
+} from "../../../prompt/services/prompt-resolver.service.js";
 
 export interface AIServiceMessage {
   role: "system" | "user" | "assistant";
@@ -414,104 +417,12 @@ class AIService {
     context?: string,
     userApiKey?: string,
     options: AIServiceOptions = {},
+    scope?: PromptScope,
   ): Promise<AIProjectPlanResponse> {
-    const systemPrompt = `You are a Senior AI Project Architect and Planner.
-Act as an AI Project Architect to transform user high-level requirements into a structured, production-grade Project Implementation Blueprint.
-DO NOT provide source code. Provide detailed engineering specifications, actor definitions, modular breakdowns, implementation requirements, timeline estimates, risks, and tasks.
-
-Return JSON with exact structure:
-{
-  "name": "Project Title",
-  "description": "Short overview",
-  "systemGoal": "Primary business/system goal",
-  "coreWorkflow": ["Step 1...", "Step 2...", "Step 3..."],
-  "actors": [
-    {
-      "name": "Customer / Admin / Payment Gateway",
-      "type": "HUMAN" | "SYSTEM" | "EXTERNAL_SERVICE",
-      "responsibilities": ["Browse products", "Place order"],
-      "permissions": ["READ", "WRITE"]
-    }
-  ],
-  "suggestedStates": [
-    {"name": "Backlog", "category": "BACKLOG", "color": "#9CA3AF"},
-    {"name": "In Progress", "category": "STARTED", "color": "#3B82F6"},
-    {"name": "Code Review", "category": "STARTED", "color": "#8B5CF6"},
-    {"name": "Done", "category": "COMPLETED", "color": "#10B981"}
-  ],
-  "modules": [
-    {
-      "name": "Module Name (e.g. Authentication, Orders)",
-      "purpose": "Why this module exists",
-      "features": [
-        {
-          "name": "Feature Name",
-          "description": "Short summary",
-          "purpose": "Why this feature exists",
-          "actors": ["Customer"],
-          "userFlow": ["User opens form", "Submits info"],
-          "backendRequirements": ["Input validation", "Database insert"],
-          "frontendRequirements": ["Form component", "Loading state"],
-          "databaseRequirements": ["User table schema"],
-          "apiRequirements": ["POST /api/register"],
-          "validation": ["Email uniqueness"],
-          "authorization": ["Public"],
-          "errorHandling": ["400 Bad Request"],
-          "acceptanceCriteria": ["Valid inputs create user"],
-          "estimatedHours": 8
-        }
-      ]
-    }
-  ],
-  "epics": [
-    {"name": "Phase 1: Foundation & Auth", "description": "Core setup"}
-  ],
-  "tasks": [
-    {
-      "title": "Task title",
-      "description": "Implementation specification",
-      "priority": "HIGH",
-      "estimatedHours": 8,
-      "epicIndex": 0,
-      "suggestedStateIndex": 0,
-      "subtasks": [{"title": "Subtask title"}],
-      "acceptanceCriteria": ["Criteria 1"],
-      "suggestedRole": "Backend Developer",
-      "sourceFeatureName": "Feature Name"
-    }
-  ],
-  "dependencies": [
-    {
-      "taskIndex": 1,
-      "dependsOnTaskIndex": 0,
-      "type": "BLOCKS",
-      "description": "Task 1 requires task 0 baseline"
-    }
-  ],
-  "risks": [
-    {
-      "title": "Risk title",
-      "type": "TECHNICAL" | "INTEGRATION" | "REQUIREMENTS" | "TIMELINE" | "SCALABILITY",
-      "severity": "HIGH",
-      "mitigation": "Mitigation strategy"
-    }
-  ],
-  "timeline": {
-    "totalEngineeringHours": 120,
-    "totalEngineeringDays": 15,
-    "estimatedCalendarWeeks": 3,
-    "confidence": "HIGH",
-    "assumptions": ["Existing setup available"],
-    "milestones": [
-      {
-        "name": "Milestone 1: Authentication & Setup",
-        "description": "Core foundation",
-        "estimatedHours": 40,
-        "epicNames": ["Phase 1: Foundation & Auth"]
-      }
-    ]
-  }
-}`;
+    const { content: systemPrompt } = await promptResolverService.resolve(
+      "project-planner",
+      scope,
+    );
 
     const fullPrompt = context
       ? `User System Requirements:\n${prompt}\n\nExisting Context:\n${context}`
@@ -532,22 +443,12 @@ Return JSON with exact structure:
     changeRequest: string,
     userApiKey?: string,
     options: AIServiceOptions = {},
+    scope?: PromptScope,
   ): Promise<AIPlanModificationResponse> {
-    const systemPrompt = `You are a Senior AI Project Architect.
-The user wants to request changes to an existing project implementation plan.
-Analyze the user change request (e.g., "Remove delivery module", "Add affiliate system"), apply the modifications to the project plan, and calculate the exact Delta.
-
-Return JSON with structure:
-{
-  "updatedPlan": <FULL_UPDATED_PROJECT_PLAN_JSON>,
-  "delta": {
-    "addedFeatures": ["Affiliate Signup", "Commission Tracking"],
-    "removedFeatures": ["Delivery Tracking"],
-    "modifiedFeatures": ["Order Status"],
-    "timelineDeltaHours": -16,
-    "summary": "Removed Delivery module (-32 hrs), added Affiliate module (+16 hrs)."
-  }
-}`;
+    const { content: systemPrompt } = await promptResolverService.resolve(
+      "plan-modifier",
+      scope,
+    );
 
     const prompt = `Existing Project Plan:\n${JSON.stringify(existingPlan, null, 2)}\n\nUser Change Request:\n${changeRequest}`;
     return this.generateStructured<AIPlanModificationResponse>(
@@ -563,26 +464,20 @@ Return JSON with structure:
     taskDescription?: string,
     projectContext?: string,
     userApiKey?: string,
+    options: AIServiceOptions = {},
+    scope?: PromptScope,
   ): Promise<AITaskDecompositionResponse> {
-    const systemPrompt = `You are an Agile Task Planner AI. Decompose the given task into detailed subtasks, realistic estimated hours, and priority.
-Return JSON:
-{
-  "title": "Cleaned Task Title",
-  "description": "Enhanced description with acceptance criteria",
-  "priority": "MEDIUM",
-  "estimatedHours": 6,
-  "subtasks": [
-    {"title": "Step 1...", "description": "...", "estimatedHours": 2}
-  ],
-  "dependencies": [],
-  "rationale": "Why this breakdown makes sense"
-}`;
+    const { content: systemPrompt } = await promptResolverService.resolve(
+      "task-breakdown",
+      scope,
+    );
 
     const prompt = `Task: ${taskTitle}\nDescription: ${taskDescription || "N/A"}\nProject Context: ${projectContext || "N/A"}`;
     return this.generateStructured<AITaskDecompositionResponse>(
       prompt,
       systemPrompt,
       userApiKey,
+      options,
     );
   }
 
@@ -596,21 +491,20 @@ Return JSON:
     }>,
     userWorkloadContext?: string,
     userApiKey?: string,
+    options: AIServiceOptions = {},
+    scope?: PromptScope,
   ): Promise<AIDailyScheduleResponse> {
-    const systemPrompt = `You are an AI Productivity Assistant. Create a prioritized daily schedule for the user based on their current task list, considering priority, deadlines, and blocked tasks.
-Return JSON:
-{
-  "summary": "Overview of today's focus",
-  "timeBlocks": [
-    {"time": "09:00 - 10:30", "taskTitle": "...", "taskId": "...", "notes": "Focus on high-priority blocker"}
-  ]
-}`;
+    const { content: systemPrompt } = await promptResolverService.resolve(
+      "daily-planner",
+      scope,
+    );
 
     const prompt = `Current User Tasks:\n${JSON.stringify(taskSummaryList, null, 2)}\n\nWorkload Context:\n${userWorkloadContext || "Standard 8-hour work day"}`;
     return this.generateStructured<AIDailyScheduleResponse>(
       prompt,
       systemPrompt,
       userApiKey,
+      options,
     );
   }
 
@@ -619,27 +513,29 @@ Return JSON:
     title: string,
     projectContext: string,
     userApiKey?: string,
+    options: AIServiceOptions = {},
+    scope?: PromptScope,
   ): Promise<{ title: string; content: string; tags: string[] }> {
-    const systemPrompt = `You are a Technical Writer & Product Architect AI. Generate a comprehensive, professional Markdown document (${docType}) based on the project context.
-Return JSON:
-{
-  "title": "Document Title",
-  "content": "Full markdown content with headings, bullet points, acceptance criteria, tables, and sections.",
-  "tags": ["prd", "architecture", "v1"]
-}`;
+    const { content: systemPrompt } = await promptResolverService.resolve(
+      "document-generator",
+      scope,
+      { doc_type: docType },
+    );
 
     const prompt = `Document Type: ${docType}\nDocument Title: ${title}\nProject Context:\n${projectContext}`;
     return this.generateStructured<{
       title: string;
       content: string;
       tags: string[];
-    }>(prompt, systemPrompt, userApiKey);
+    }>(prompt, systemPrompt, userApiKey, options);
   }
 
   public async generateMeetingNotes(
     rawNotesOrTranscript: string,
     projectContext?: string,
     userApiKey?: string,
+    options: AIServiceOptions = {},
+    scope?: PromptScope,
   ): Promise<{
     title: string;
     summary: string;
@@ -648,19 +544,13 @@ Return JSON:
     openQuestions: string[];
     contentMarkdown: string;
   }> {
-    const systemPrompt = `You are an Executive AI Assistant. Process meeting notes or transcripts into structured summaries, key decisions, and action items.
-Return JSON:
-{
-  "title": "Meeting Notes - [Topic]",
-  "summary": "High level overview",
-  "keyDecisions": ["Decision 1..."],
-  "actionItems": [{"taskTitle": "Action item...", "assigneeName": "Name"}],
-  "openQuestions": ["Question 1..."],
-  "contentMarkdown": "Formatted markdown notes"
-}:`;
+    const { content: systemPrompt } = await promptResolverService.resolve(
+      "meeting-notes",
+      scope,
+    );
 
     const prompt = `Raw Notes / Transcript:\n${rawNotesOrTranscript}\n\nProject Context:\n${projectContext || "N/A"}`;
-    return this.generateStructured(prompt, systemPrompt, userApiKey);
+    return this.generateStructured(prompt, systemPrompt, userApiKey, options);
   }
 
   public async chatAssistant(
@@ -668,18 +558,17 @@ Return JSON:
     projectKnowledgeBase: string,
     chatHistory: AIServiceMessage[] = [],
     userApiKey?: string,
+    options: AIServiceOptions = {},
+    scope?: PromptScope,
   ): Promise<string> {
+    const { content: systemContent } = await promptResolverService.resolve(
+      "project-chat",
+      scope,
+      { project_knowledge: projectKnowledgeBase },
+    );
     const systemInstruction: AIServiceMessage = {
       role: "system",
-      content: `You are the Project AI Assistant inside the project chat. You have access to real-time project context, original requirements, canonical plan, modules, tasks, milestones, documents, and chat history.
-Ground your answers in the provided Project Knowledge Base.
-Clearly distinguish between:
-1. Known project facts and canonical plan requirements
-2. Current task execution status & timeline progress
-3. Recommendations for the team.
-
-Project Knowledge Base:
-${projectKnowledgeBase}`,
+      content: systemContent,
     };
 
     const messages: AIServiceMessage[] = [
@@ -688,7 +577,11 @@ ${projectKnowledgeBase}`,
       { role: "user", content: userMessage },
     ];
 
-    return this.generate(messages, { temperature: 0.3 }, userApiKey);
+    return this.generate(
+      messages,
+      { temperature: 0.3, ...options },
+      userApiKey,
+    );
   }
 }
 

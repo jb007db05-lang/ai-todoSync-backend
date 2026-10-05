@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { isAppError } from "../../utils/app-error.js";
 import { getTenantIdFromRequest } from "./permissions.js";
 import guideService from "./service.js";
+import { parseEnvironment } from "../../shared/environment.js";
 import {
   validateCreateGuideDto,
   validateGuideQueryDto,
@@ -12,7 +13,8 @@ const getParam = (value: string | string[] | undefined): string =>
   Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
 
 const getSdkIntegrationId = (req: Request): string => {
-  const raw = req.sdkIntegration?._id?.toString() ?? req.params["sdkIntegrationId"];
+  const raw =
+    req.sdkIntegration?._id?.toString() ?? req.params["sdkIntegrationId"];
   const id = Array.isArray(raw) ? raw[0] : raw;
   if (!id) throw new Error("sdkIntegrationId missing from request context");
   return id;
@@ -125,6 +127,7 @@ class GuideController {
         getTenantIdFromRequest(req),
         getSdkIntegrationId(req),
         getParam(req.params.guideId),
+        parseEnvironment(req.query.environment),
       );
       res.status(200).json({ data: summary });
     } catch (error) {

@@ -98,6 +98,9 @@ export interface ISurveyResponse {
   userId?: string;
   tenantId: string;
   sdkIntegrationId: string;
+  environment?: "live" | "sandbox";
+  /** Client-supplied key; a retried submission returns the original response */
+  idempotencyKey?: string | null;
   sessionId?: string;
   answers: ISurveyAnswer[] | Record<string, unknown>;
   npsScore?: number | null;
@@ -126,6 +129,8 @@ const surveyResponseSchema = new Schema<ISurveyResponseDocument>(
     userId: { type: String, index: true },
     tenantId: { type: String, required: true, index: true },
     sdkIntegrationId: { type: String, required: true, index: true },
+    environment: { type: String, enum: ["live", "sandbox"], default: "live" },
+    idempotencyKey: { type: String, default: null },
     sessionId: { type: String, index: true },
     answers: { type: [surveyAnswerSchema], default: [] },
     npsScore: { type: Number, default: null },
@@ -143,8 +148,29 @@ const surveyResponseSchema = new Schema<ISurveyResponseDocument>(
 
 surveyResponseSchema.index({ tenantId: 1, surveyId: 1, submittedAt: -1 });
 surveyResponseSchema.index({ tenantId: 1, category: 1, submittedAt: -1 });
-surveyResponseSchema.index({ sdkIntegrationId: 1, surveyId: 1, submittedAt: -1 });
-surveyResponseSchema.index({ sdkIntegrationId: 1, category: 1, submittedAt: -1 });
+surveyResponseSchema.index({
+  sdkIntegrationId: 1,
+  surveyId: 1,
+  submittedAt: -1,
+});
+surveyResponseSchema.index({
+  sdkIntegrationId: 1,
+  category: 1,
+  submittedAt: -1,
+});
+surveyResponseSchema.index({
+  sdkIntegrationId: 1,
+  environment: 1,
+  surveyId: 1,
+  submittedAt: -1,
+});
+surveyResponseSchema.index(
+  { sdkIntegrationId: 1, surveyId: 1, idempotencyKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { idempotencyKey: { $type: "string" } },
+  },
+);
 
 export const SurveyModel = model<ISurveyDocument>("Survey", surveySchema);
 export const SurveyResponseModel = model<ISurveyResponseDocument>(

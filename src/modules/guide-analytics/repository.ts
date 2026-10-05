@@ -7,6 +7,24 @@ import {
 import GuideModel from "../guides/model.js";
 import { SurveyModel, SurveyResponseModel } from "../surveys/model.js";
 import GuideAnalyticsSnapshotModel from "./model.js";
+import {
+  environmentFilter,
+  type DataEnvironment,
+} from "../../shared/environment.js";
+
+export interface ExposureTotals {
+  exposures: number;
+  impressions: number;
+  completions: number;
+  dismissals: number;
+}
+
+export interface ResponseTotals {
+  responses: number;
+  promoters: number;
+  passives: number;
+  detractors: number;
+}
 
 class GuideAnalyticsRepository {
   public countGuides(sdkIntegrationId: string) {
@@ -20,16 +38,65 @@ class GuideAnalyticsRepository {
     }).exec();
   }
 
-  public listExposures(sdkIntegrationId: string) {
-    return GuideExposureModel.find({ sdkIntegrationId }).lean().exec();
+  /** Guide exposures only (survey/checklist exposures use prefixed ids). */
+  public async exposureTotals(
+    sdkIntegrationId: string,
+    environment: DataEnvironment,
+  ): Promise<ExposureTotals> {
+    const [row] = await GuideExposureModel.aggregate<ExposureTotals>([
+      {
+        $match: {
+          sdkIntegrationId,
+          ...environmentFilter(environment),
+          guideId: { $not: /^(survey|checklist):/ },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          exposures: { $sum: 1 },
+          impressions: { $sum: { $ifNull: ["$displayCount", 0] } },
+          completions: {
+            $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] },
+          },
+          dismissals: {
+            $sum: { $cond: [{ $eq: ["$status", "dismissed"] }, 1, 0] },
+          },
+        },
+      },
+    ]).exec();
+    return (
+      row ?? { exposures: 0, impressions: 0, completions: 0, dismissals: 0 }
+    );
   }
 
   public countSurveys(sdkIntegrationId: string) {
     return SurveyModel.countDocuments({ sdkIntegrationId }).exec();
   }
 
-  public listSurveyResponses(sdkIntegrationId: string) {
-    return SurveyResponseModel.find({ sdkIntegrationId }).lean().exec();
+  public async responseTotals(
+    sdkIntegrationId: string,
+    environment: DataEnvironment,
+  ): Promise<ResponseTotals> {
+    const [row] = await SurveyResponseModel.aggregate<ResponseTotals>([
+      { $match: { sdkIntegrationId, ...environmentFilter(environment) } },
+      {
+        $group: {
+          _id: null,
+          responses: { $sum: 1 },
+          promoters: {
+            $sum: { $cond: [{ $eq: ["$category", "PROMOTER"] }, 1, 0] },
+          },
+          passives: {
+            $sum: { $cond: [{ $eq: ["$category", "PASSIVE"] }, 1, 0] },
+          },
+          detractors: {
+            $sum: { $cond: [{ $eq: ["$category", "DETRACTOR"] }, 1, 0] },
+          },
+        },
+      },
+    ]).exec();
+    return row ?? { responses: 0, promoters: 0, passives: 0, detractors: 0 };
   }
 
   public countMtu(sdkIntegrationId: string, month: string) {
@@ -39,7 +106,10 @@ class GuideAnalyticsRepository {
     }).exec();
   }
 
-  public async aggregateEngagementEvents(sdkIntegrationId: string) {
+  public async aggregateEngagementEvents(
+    sdkIntegrationId: string,
+    environment: DataEnvironment,
+  ) {
     const registries = await AnalyticsEventRegistryModel.find({
       sdkIntegrationId,
       eventName: {
@@ -80,6 +150,7 @@ class GuideAnalyticsRepository {
       {
         $match: {
           sdkIntegrationId,
+          ...environmentFilter(environment),
           eventRef: { $in: [...eventNameByRef.keys()] },
         },
       },

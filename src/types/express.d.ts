@@ -6,6 +6,7 @@ import type { IUserDocument } from "../modules/auth/models/user.model.js";
 import type { IAnalyticsKeyDocument } from "../modules/analytics/models/analytics-key.model.js";
 import type { ISdkIntegrationDocument } from "../modules/sdk-integrations/model.js";
 import type { SessionDeviceContext } from "./auth.js";
+import type { DataEnvironment } from "../shared/environment.js";
 
 interface ProjectAccessContext {
   project: IProjectDocument;
@@ -25,6 +26,8 @@ declare global {
       /** Populated by validateSdkIntegrationKey / validateSdkKeyUnified */
       sdkIntegration?: ISdkIntegrationDocument;
       sdkSession?: any;
+      /** "sandbox" when the request was signed with the integration's sandbox key */
+      sdkEnvironment?: DataEnvironment;
     }
   }
 }

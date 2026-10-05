@@ -158,6 +158,8 @@ export interface SurveyQuestion {
 export interface TargetingRuntimeContext {
   tenantId: string;
   sdkIntegrationId?: string;
+  /** live or sandbox; drives which content and which exposure history apply */
+  environment?: "live" | "sandbox";
   userId?: string;
   sessionId?: string;
   url?: string;

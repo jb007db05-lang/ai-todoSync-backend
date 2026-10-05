@@ -89,7 +89,9 @@ export const listWorkspacePlans = async (
       .lean();
     res.status(200).json({ plans });
   } catch (error: any) {
-    res.status(error.statusCode || 500).json({ error: error.message });
+    res
+      .status(error.status || error.statusCode || 500)
+      .json({ error: error.message });
   }
 };
 
@@ -176,6 +178,28 @@ const resolveAiConfigForUserOrProject = async (
   return { apiKey, provider, modelName, baseUrl };
 };
 
+const toAiOptions = (config: ResolvedAiConfig) => ({
+  modelName: config.modelName,
+  provider: config.provider,
+  baseUrl: config.baseUrl,
+});
+
+/** Workspace whose deployed prompts apply to work done in a project. */
+const getProjectWorkspaceId = async (
+  projectId?: unknown,
+): Promise<string | null> => {
+  if (
+    typeof projectId !== "string" ||
+    !mongoose.Types.ObjectId.isValid(projectId)
+  ) {
+    return null;
+  }
+  const project = await ProjectModel.findById(projectId)
+    .select("workspaceId")
+    .lean();
+  return project?.workspaceId ? String(project.workspaceId) : null;
+};
+
 export const generateProjectPlan = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -206,11 +230,13 @@ export const generateProjectPlan = async (
       apiKey,
     });
 
-    const plan = await aiService.planProject(prompt, context, aiConfig.apiKey, {
-      modelName: aiConfig.modelName,
-      provider: aiConfig.provider,
-      baseUrl: aiConfig.baseUrl,
-    });
+    const plan = await aiService.planProject(
+      prompt,
+      context,
+      aiConfig.apiKey,
+      toAiOptions(aiConfig),
+      { workspaceId, userId },
+    );
 
     // Persist to session history if sessionId is provided
     if (sessionId && mongoose.Types.ObjectId.isValid(sessionId)) {
@@ -295,11 +321,8 @@ export const modifyProjectPlan = async (
       existingPlan,
       changeRequest,
       aiConfig.apiKey,
-      {
-        modelName: aiConfig.modelName,
-        provider: aiConfig.provider,
-        baseUrl: aiConfig.baseUrl,
-      },
+      toAiOptions(aiConfig),
+      { workspaceId, userId },
     );
 
     // Persist change request to session history
@@ -343,7 +366,9 @@ export const modifyProjectPlan = async (
 
     res.status(200).json(result);
   } catch (error: any) {
-    res.status(error.statusCode || 500).json({ error: error.message });
+    res
+      .status(error.status || error.statusCode || 500)
+      .json({ error: error.message });
   }
 };
 
@@ -571,7 +596,9 @@ ${(plan.risks || []).map((r: any) => `- [${r.severity}] **${r.title}**: ${r.miti
       canonicalPlanId: canonicalPlanDoc._id,
     });
   } catch (error: any) {
-    res.status(error.statusCode || 500).json({ error: error.message });
+    res
+      .status(error.status || error.statusCode || 500)
+      .json({ error: error.message });
   }
 };
 
@@ -581,14 +608,18 @@ export const decomposeTask = async (
 ): Promise<void> => {
   try {
     const { taskId, title, description, projectContext } = req.body;
+    const userId = req.user!._id.toString();
     let taskTitle = title;
     let taskDesc = description;
+    let projectId: string | undefined =
+      typeof req.body.projectId === "string" ? req.body.projectId : undefined;
 
     if (taskId) {
       const task = await TaskModel.findById(taskId).lean();
       if (task) {
         taskTitle = task.title;
         taskDesc = task.description;
+        if (task.projectId) projectId = String(task.projectId);
       }
     }
 
@@ -596,14 +627,20 @@ export const decomposeTask = async (
       throw new AppError(400, "Task title is required", "BAD_REQUEST");
     }
 
+    const aiConfig = await resolveAiConfigForUserOrProject(req, projectId);
     const breakdown = await aiService.decomposeTask(
       taskTitle,
       taskDesc,
       projectContext,
+      aiConfig.apiKey,
+      toAiOptions(aiConfig),
+      { workspaceId: await getProjectWorkspaceId(projectId), userId },
     );
     res.status(200).json({ breakdown });
   } catch (error: any) {
-    res.status(error.statusCode || 500).json({ error: error.message });
+    res
+      .status(error.status || error.statusCode || 500)
+      .json({ error: error.message });
   }
 };
 
@@ -628,13 +665,19 @@ export const planDailyWork = async (
       isBlocked: t.isBlocked,
     }));
 
+    const aiConfig = await resolveAiConfigForUserOrProject(req);
     const schedule = await aiService.planDailyWork(
       taskSummaryList,
       req.body.workloadContext,
+      aiConfig.apiKey,
+      toAiOptions(aiConfig),
+      { workspaceId: req.body.workspaceId, userId },
     );
     res.status(200).json({ schedule });
   } catch (error: any) {
-    res.status(error.statusCode || 500).json({ error: error.message });
+    res
+      .status(error.status || error.statusCode || 500)
+      .json({ error: error.message });
   }
 };
 
@@ -652,16 +695,25 @@ export const generateDocument = async (
       );
     }
 
+    const userId = req.user!._id.toString();
+    await projectService.assertProjectMembership(userId, projectId);
+
     const projectKnowledge = await assembleProjectKnowledge(projectId);
+    const aiConfig = await resolveAiConfigForUserOrProject(req, projectId);
     const draft = await aiService.generateDocument(
       docType,
       title,
       projectKnowledge,
+      aiConfig.apiKey,
+      toAiOptions(aiConfig),
+      { workspaceId: await getProjectWorkspaceId(projectId), userId },
     );
 
     res.status(200).json({ draft });
   } catch (error: any) {
-    res.status(error.statusCode || 500).json({ error: error.message });
+    res
+      .status(error.status || error.statusCode || 500)
+      .json({ error: error.message });
   }
 };
 
@@ -679,18 +731,26 @@ export const generateNotes = async (
       );
     }
 
+    const userId = req.user!._id.toString();
     let knowledge = "N/A";
     if (projectId) {
+      await projectService.assertProjectMembership(userId, projectId);
       knowledge = await assembleProjectKnowledge(projectId);
     }
 
+    const aiConfig = await resolveAiConfigForUserOrProject(req, projectId);
     const notesDraft = await aiService.generateMeetingNotes(
       transcript,
       knowledge,
+      aiConfig.apiKey,
+      toAiOptions(aiConfig),
+      { workspaceId: await getProjectWorkspaceId(projectId), userId },
     );
     res.status(200).json({ notesDraft });
   } catch (error: any) {
-    res.status(error.statusCode || 500).json({ error: error.message });
+    res
+      .status(error.status || error.statusCode || 500)
+      .json({ error: error.message });
   }
 };
 
@@ -708,15 +768,24 @@ export const chatWithProjectAssistant = async (
       );
     }
 
+    const userId = req.user!._id.toString();
+    await projectService.assertProjectMembership(userId, projectId);
+
     const knowledge = await assembleProjectKnowledge(projectId);
+    const aiConfig = await resolveAiConfigForUserOrProject(req, projectId);
     const reply = await aiService.chatAssistant(
       message,
       knowledge,
       chatHistory || [],
+      aiConfig.apiKey,
+      toAiOptions(aiConfig),
+      { workspaceId: await getProjectWorkspaceId(projectId), userId },
     );
 
     res.status(200).json({ reply });
   } catch (error: any) {
-    res.status(error.statusCode || 500).json({ error: error.message });
+    res
+      .status(error.status || error.statusCode || 500)
+      .json({ error: error.message });
   }
 };

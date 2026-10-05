@@ -16,6 +16,10 @@ import type {
   UpdateTargetingSegmentDto,
 } from "./dtos.js";
 import targetingRepository from "./repository.js";
+import {
+  environmentFilter,
+  type DataEnvironment,
+} from "../../shared/environment.js";
 
 interface EvaluationInput {
   rules?: TargetingRuleGroup | null;
@@ -104,6 +108,7 @@ class TargetingService {
       const frequencyResult = await this.evaluateFrequency({
         tenantId: input.context.tenantId,
         sdkIntegrationId: input.context.sdkIntegrationId,
+        environment: input.context.environment,
         guideId: input.guideId,
         userId: input.context.userId,
         sessionId: input.context.sessionId,
@@ -378,6 +383,8 @@ class TargetingService {
             : String(condition.value ?? ""));
     const count = await this.countEvents({
       tenantId: context.tenantId,
+      sdkIntegrationId: context.sdkIntegrationId,
+      environment: context.environment,
       userId: context.userId,
       sessionId: context.sessionId,
       eventName,
@@ -401,8 +408,15 @@ class TargetingService {
     };
   }
 
+  /**
+   * Counts a user's past events. SDK traffic is counted within its own
+   * integration and environment; legacy analytics-key traffic (no
+   * integration) across the tenant's active keys.
+   */
   private async countEvents(input: {
     tenantId: string;
+    sdkIntegrationId?: string;
+    environment?: DataEnvironment;
     userId?: string;
     sessionId?: string;
     eventName: string;
@@ -410,21 +424,34 @@ class TargetingService {
     property?: string;
     value?: unknown;
   }): Promise<number> {
-    const keys = await AnalyticsKeyModel.find({
-      userId: input.tenantId,
-      status: "active",
-    })
-      .select("_id")
-      .lean()
-      .exec();
-    const apiKeyIds = keys.map((key) => key._id.toString());
+    let registryScope: Record<string, unknown>;
+    let logScope: Record<string, unknown>;
 
-    if (apiKeyIds.length === 0) {
-      return 0;
+    if (input.sdkIntegrationId) {
+      registryScope = { sdkIntegrationId: input.sdkIntegrationId };
+      logScope = {
+        sdkIntegrationId: input.sdkIntegrationId,
+        ...environmentFilter(input.environment),
+      };
+    } else {
+      const keys = await AnalyticsKeyModel.find({
+        userId: input.tenantId,
+        status: "active",
+      })
+        .select("_id")
+        .lean()
+        .exec();
+      const apiKeyIds = keys.map((key) => key._id.toString());
+
+      if (apiKeyIds.length === 0) {
+        return 0;
+      }
+      registryScope = { apiKeyId: { $in: apiKeyIds } };
+      logScope = { apiKeyId: { $in: apiKeyIds } };
     }
 
     const events = await AnalyticsEventRegistryModel.find({
-      apiKeyId: { $in: apiKeyIds },
+      ...registryScope,
       eventName: input.eventName,
     })
       .select("_id")
@@ -441,7 +468,7 @@ class TargetingService {
         ? { $gte: new Date(Date.now() - input.windowDays * 86400000) }
         : undefined;
     const filter: Record<string, unknown> = {
-      apiKeyId: { $in: apiKeyIds },
+      ...logScope,
       eventRef: { $in: eventRefs },
       ...(input.userId ? { userIdentifier: input.userId } : {}),
       ...(input.sessionId ? { sessionId: input.sessionId } : {}),
@@ -487,6 +514,7 @@ class TargetingService {
   private async evaluateFrequency(input: {
     tenantId: string;
     sdkIntegrationId?: string;
+    environment?: DataEnvironment;
     guideId: string;
     userId?: string;
     sessionId?: string;
@@ -496,6 +524,7 @@ class TargetingService {
   }): Promise<ConditionEvaluation> {
     const userFilter = {
       tenantId: input.tenantId,
+      ...environmentFilter(input.environment),
       ...(input.sdkIntegrationId
         ? { sdkIntegrationId: input.sdkIntegrationId }
         : {}),

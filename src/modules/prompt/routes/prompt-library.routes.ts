@@ -26,6 +26,9 @@ class PromptLibraryRoutes implements Routes {
       promptLibraryController.deleteFolder,
     );
 
+    // AI feature registry & bindings (before "/:promptId")
+    this.router.get("/features", promptLibraryController.listFeatures);
+
     // Prompts CRUD
     this.router.get("/", promptLibraryController.listPrompts);
     this.router.post("/", promptLibraryController.createPrompt);
@@ -41,6 +44,40 @@ class PromptLibraryRoutes implements Routes {
     this.router.get(
       "/:promptId/compare",
       promptLibraryController.comparePromptVersions,
+    );
+
+    // Deployments: production version, canary rollout, feature binding
+    this.router.get(
+      "/:promptId/deployment",
+      promptLibraryController.getDeployment,
+    );
+    this.router.post(
+      "/:promptId/deployment/deploy",
+      promptLibraryController.deployVersion,
+    );
+    this.router.post(
+      "/:promptId/deployment/rollback",
+      promptLibraryController.rollbackProduction,
+    );
+    this.router.put(
+      "/:promptId/deployment/production",
+      promptLibraryController.setProductionVersion,
+    );
+    this.router.put(
+      "/:promptId/deployment/canary",
+      promptLibraryController.startCanary,
+    );
+    this.router.post(
+      "/:promptId/deployment/canary/promote",
+      promptLibraryController.promoteCanary,
+    );
+    this.router.delete(
+      "/:promptId/deployment/canary",
+      promptLibraryController.abortCanary,
+    );
+    this.router.put(
+      "/:promptId/deployment/feature",
+      promptLibraryController.bindFeature,
     );
 
     // Validation & Rendering Execution Engine

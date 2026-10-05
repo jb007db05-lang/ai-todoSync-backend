@@ -2,3 +2,5 @@
 dist
 node_modules
 .DS_Store
+# E2E run reports (generated)
+tests/e2e/reports/

@@ -25,6 +25,7 @@ export interface UpdateSurveyDto extends Partial<CreateSurveyDto> {}
 export interface SubmitSurveyResponseDto {
   userId?: string;
   sessionId?: string;
+  idempotencyKey?: string;
   answers: Record<string, unknown>;
   metadata?: Record<string, unknown>;
 }
@@ -32,4 +33,9 @@ export interface SubmitSurveyResponseDto {
 export interface SurveyQueryDto {
   status?: GuideStatus;
   search?: string;
+}
+
+export interface SurveyResponseQueryDto {
+  page: number;
+  limit: number;
 }

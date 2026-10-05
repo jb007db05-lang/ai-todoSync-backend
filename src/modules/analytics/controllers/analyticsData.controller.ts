@@ -4,6 +4,12 @@ import AnalyticsEventRegistryModel from "../models/analytics-event-registry.mode
 import AnalyticsLogModel from "../models/analytics-log.model.js";
 import AnalyticsUserModel from "../models/analytics-user.model.js";
 import SdkIntegrationModel from "../../sdk-integrations/model.js";
+import {
+  environmentFilter,
+  escapeRegex,
+  parseEnvironment,
+} from "../../../shared/environment.js";
+import { isAppError } from "../../../utils/app-error.js";
 import logger from "../../../lib/logger.js";
 
 class AnalyticsDataController {
@@ -101,12 +107,16 @@ class AnalyticsDataController {
         }
         query = { apiKeyId };
       }
+      // Integration data is split into live and sandbox.
+      const envFilter = sdkIntegrationId
+        ? environmentFilter(parseEnvironment(req.query.environment))
+        : {};
 
       const eventNames = this.parseEventNames(req.query.eventNames);
       if (eventNames.length > 0) {
         query.eventName = { $in: eventNames };
       } else if (eventName) {
-        query.eventName = new RegExp(eventName as string, "i");
+        query.eventName = new RegExp(escapeRegex(String(eventName)), "i");
       }
 
       const events = await AnalyticsEventRegistryModel.find(query)
@@ -117,7 +127,7 @@ class AnalyticsDataController {
       const enrichedEvents = await Promise.all(
         events.map(async (event) => {
           const logQuery: Record<string, unknown> = sdkIntegrationId
-            ? { sdkIntegrationId, eventRef: event._id.toString() }
+            ? { sdkIntegrationId, eventRef: event._id.toString(), ...envFilter }
             : this.buildEventRefQuery(apiKeyId as string, event._id.toString());
           if (startDate || endDate) {
             logQuery.createdAt = {};
@@ -140,8 +150,18 @@ class AnalyticsDataController {
         }),
       );
 
-      res.status(200).json(enrichedEvents);
+      // Event names are shared across environments; show those seen in this one.
+      res
+        .status(200)
+        .json(
+          sdkIntegrationId
+            ? enrichedEvents.filter((e) => e.count > 0)
+            : enrichedEvents,
+        );
     } catch (error) {
+      if (isAppError(error)) {
+        return res.status(error.status).json({ error: error.message });
+      }
       logger.error(
         "Get events error",
         error instanceof Error ? error : undefined,
@@ -171,7 +191,11 @@ class AnalyticsDataController {
         if (!integration) {
           return res.status(403).json({ error: "Unauthorized access" });
         }
-        query = { sdkIntegrationId, eventRef: eventId };
+        query = {
+          sdkIntegrationId,
+          eventRef: eventId,
+          ...environmentFilter(parseEnvironment(req.query.environment)),
+        };
       } else {
         if (!apiKeyId)
           return res.status(400).json({ error: "apiKeyId is required" });
@@ -301,7 +325,10 @@ class AnalyticsDataController {
         if (!integration) {
           return res.status(403).json({ error: "Unauthorized access" });
         }
-        query = { sdkIntegrationId };
+        query = {
+          sdkIntegrationId,
+          ...environmentFilter(parseEnvironment(req.query.environment)),
+        };
       } else {
         if (!apiKeyId)
           return res.status(400).json({ error: "apiKeyId is required" });
@@ -338,7 +365,7 @@ class AnalyticsDataController {
       } else if (eventName) {
         const matchingEvents = await AnalyticsEventRegistryModel.find({
           ...registryFilter,
-          eventName: new RegExp(eventName as string, "i"),
+          eventName: new RegExp(escapeRegex(String(eventName)), "i"),
         })
           .select({ _id: 1 })
           .lean()
@@ -426,13 +453,14 @@ class AnalyticsDataController {
       const sdkIntegrationId =
         req.sdkIntegration?._id?.toString() ?? req.params.sdkIntegrationId;
       const { eventName, startDate, endDate } = req.query;
+      const environment = parseEnvironment(req.query.environment);
 
       const query: Record<string, unknown> = { sdkIntegrationId };
       const eventNames = this.parseEventNames(req.query.eventNames);
       if (eventNames.length > 0) {
         query.eventName = { $in: eventNames };
       } else if (eventName) {
-        query.eventName = new RegExp(eventName as string, "i");
+        query.eventName = new RegExp(escapeRegex(String(eventName)), "i");
       }
 
       const events = await AnalyticsEventRegistryModel.find(query)
@@ -443,6 +471,7 @@ class AnalyticsDataController {
         events.map(async (event) => {
           const logQuery: Record<string, unknown> = {
             sdkIntegrationId,
+            ...environmentFilter(environment),
             $or: [
               { eventRef: event._id.toString() },
               { eventRef: { $exists: false }, eventId: event._id.toString() },
@@ -469,8 +498,12 @@ class AnalyticsDataController {
         }),
       );
 
-      res.status(200).json(enrichedEvents);
+      // Event names are shared across environments; list only those seen here.
+      res.status(200).json(enrichedEvents.filter((e) => e.count > 0));
     } catch (error) {
+      if (isAppError(error)) {
+        return res.status(error.status).json({ error: error.message });
+      }
       logger.error(
         "Scoped get events error",
         error instanceof Error ? error : undefined,
@@ -490,6 +523,7 @@ class AnalyticsDataController {
 
       const logs = await AnalyticsLogModel.find({
         sdkIntegrationId,
+        ...environmentFilter(parseEnvironment(req.query.environment)),
         $or: [{ eventRef: eventId }, { eventRef: { $exists: false }, eventId }],
       })
         .sort({ createdAt: -1 })
@@ -499,6 +533,9 @@ class AnalyticsDataController {
 
       res.status(200).json(logs);
     } catch (error) {
+      if (isAppError(error)) {
+        return res.status(error.status).json({ error: error.message });
+      }
       logger.error(
         "Scoped get logs error",
         error instanceof Error ? error : undefined,
@@ -516,7 +553,10 @@ class AnalyticsDataController {
         req.sdkIntegration?._id?.toString() ?? req.params.sdkIntegrationId;
       const { eventName, startDate, endDate, offset = "0" } = req.query;
 
-      const query: Record<string, unknown> = { sdkIntegrationId };
+      const query: Record<string, unknown> = {
+        sdkIntegrationId,
+        ...environmentFilter(parseEnvironment(req.query.environment)),
+      };
       const { page, limit, skip } = this.parsePagination(req);
       const legacyOffset = parseInt(offset as string, 10);
       const effectiveSkip =
@@ -539,7 +579,7 @@ class AnalyticsDataController {
       } else if (eventName) {
         const matchingEvents = await AnalyticsEventRegistryModel.find({
           sdkIntegrationId,
-          eventName: new RegExp(eventName as string, "i"),
+          eventName: new RegExp(escapeRegex(String(eventName)), "i"),
         })
           .select({ _id: 1 })
           .lean()
@@ -607,6 +647,9 @@ class AnalyticsDataController {
         },
       });
     } catch (error) {
+      if (isAppError(error)) {
+        return res.status(error.status).json({ error: error.message });
+      }
       logger.error(
         "Scoped get all logs error",
         error instanceof Error ? error : undefined,
@@ -628,6 +671,7 @@ class AnalyticsDataController {
         "userIdentifier",
         {
           sdkIntegrationId,
+          ...environmentFilter(parseEnvironment(req.query.environment)),
           userIdentifier: { $exists: true, $ne: null },
         },
       ).exec();
@@ -636,6 +680,9 @@ class AnalyticsDataController {
         .status(200)
         .json(userIdentifiers.map((id: string) => ({ userIdentifier: id })));
     } catch (error) {
+      if (isAppError(error)) {
+        return res.status(error.status).json({ error: error.message });
+      }
       logger.error(
         "Scoped get users error",
         error instanceof Error ? error : undefined,

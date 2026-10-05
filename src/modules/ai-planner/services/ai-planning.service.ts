@@ -18,6 +18,7 @@ import projectService from "../../project/services/project.service.js";
 import taskService from "../../task/services/task.service.js";
 import workspaceService from "../../workspace/services/workspace.service.js";
 import env from "../../../config/env.js";
+import promptResolverService from "../../prompt/services/prompt-resolver.service.js";
 import mongoose from "mongoose";
 
 class HttpError extends Error {
@@ -54,6 +55,9 @@ class AiPlanningService {
         id: access.project._id.toString(),
         name: access.project.name,
         description: access.project.description ?? "",
+        workspaceId: access.project.workspaceId
+          ? String(access.project.workspaceId)
+          : null,
         currentUserRole: access.role,
       },
       milestones: milestones.map((milestone) => ({
@@ -850,25 +854,28 @@ class AiPlanningService {
           apiKey = env.GEMINI_API_KEY;
         }
 
-        const systemPrompt = `You are a world-class AI Project Assistant acting simultaneously as a Senior Project Manager, Business Analyst, and Solution Architect.
-Your goal is to guide the user through planning a software project or feature.
-Follow these structured planning phases logically depending on the current discussion state:
-1. **Discovery Phase**: Analyze the current conversation and workspace state. Ask targeted, context-aware questions to discover core objectives, key workflows, primary users, and edge cases.
-2. **Scope Phase**: Define what is in-scope vs. out-of-scope, and identify constraints (security, timeline, compliance).
-3. **Review & Proposal**: Formulate a cohesive strategy. Once requirements are clear, invite the user to generate a plan draft.
-
-Current Project Workspace Context:
-- Project Name: ${context.project.name}
-- Project Description: ${context.project.description}
-- Existing Milestones/Epics: ${JSON.stringify(context.milestones)}
-- Existing Tasks: ${JSON.stringify(context.tasks.map((t) => ({ title: t.title, status: t.status, epicId: t.epicId })))}
-- Existing Documentation/Notes: ${JSON.stringify(context.notes.map((n) => ({ title: n.title })))}
-- Team Members: ${JSON.stringify(context.team.map((t) => ({ name: t.name, role: t.role })))}
-
-Instructions:
-- Analyze what already exists in the project workspace to avoid recommending duplicate milestones or tasks. Refer directly to existing elements to build trust.
-- Be concise, professional, and action-oriented.
-- NEVER claim project artifacts (milestones, tasks, notes) have been created or modified in the database yet. Clarify that you only generate proposals, which must be approved by an Admin to take effect.`;
+        const { content: systemPrompt } = await promptResolverService.resolve(
+          "planning-assistant",
+          { workspaceId: context.project.workspaceId, userId },
+          {
+            project_name: context.project.name,
+            project_description: context.project.description,
+            existing_milestones: JSON.stringify(context.milestones),
+            existing_tasks: JSON.stringify(
+              context.tasks.map((t) => ({
+                title: t.title,
+                status: t.status,
+                epicId: t.epicId,
+              })),
+            ),
+            existing_notes: JSON.stringify(
+              context.notes.map((n) => ({ title: n.title })),
+            ),
+            team_members: JSON.stringify(
+              context.team.map((t) => ({ name: t.name, role: t.role })),
+            ),
+          },
+        );
 
         const messages = [
           { role: "system", content: systemPrompt },
@@ -941,47 +948,22 @@ Instructions:
           apiKey = env.GEMINI_API_KEY;
         }
 
-        const systemPrompt = `You are a Senior Project Manager and Business Analyst.
-Generate a structured, complete project plan based on the conversation requirements and existing project state.
-Return JSON ONLY. Do not wrap it in anything other than raw text or standard JSON code blocks.
-
-Your response must strictly match the following JSON schema:
-{
-  "documentationTitle": "Title of the project documentation page",
-  "documentation": "Full markdown-formatted architectural and technical requirements document",
-  "milestones": [
-    {
-      "name": "Milestone name",
-      "description": "Milestone description"
-    }
-  ],
-  "tasks": [
-    {
-      "title": "Task title",
-      "description": "Detailed task description",
-      "priority": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
-      "date": "YYYY-MM-DD",
-      "milestoneIndex": 0,
-      "subtasks": [
-        {
-          "title": "Subtask title",
-          "description": "Subtask description"
-        }
-      ]
-    }
-  ]
-}
-
-Constraints:
-- Keep the plan focused. Max 4 milestones and max 12 tasks total.
-- Date must be formatted as YYYY-MM-DD.
-- milestones index reference must exist.
-
-Existing Workspace Context:
-- Project Name: ${context.project.name}
-- Project Description: ${context.project.description}
-- Existing Milestones/Epics: ${JSON.stringify(context.milestones)}
-- Existing Tasks: ${JSON.stringify(context.tasks.map((t) => ({ title: t.title, status: t.status, epicId: t.epicId })))}`;
+        const { content: systemPrompt } = await promptResolverService.resolve(
+          "planning-draft",
+          { workspaceId: context.project.workspaceId, userId },
+          {
+            project_name: context.project.name,
+            project_description: context.project.description,
+            existing_milestones: JSON.stringify(context.milestones),
+            existing_tasks: JSON.stringify(
+              context.tasks.map((t) => ({
+                title: t.title,
+                status: t.status,
+                epicId: t.epicId,
+              })),
+            ),
+          },
+        );
 
         const messages = [
           { role: "system", content: systemPrompt },

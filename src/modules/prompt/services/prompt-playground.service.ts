@@ -79,17 +79,24 @@ export class PromptPlaygroundService {
       versionNum = versionNum || promptDoc.version;
 
       if (payload.versionNumber) {
+        // Version history is keyed by the root prompt, not by the revision row id.
+        const rootPromptId = promptDoc.parentId || promptDoc._id;
         const versionDoc = await PromptVersionModel.findOne({
-          promptId: payload.promptId,
+          promptId: rootPromptId,
           version: payload.versionNumber,
         }).lean();
 
-        if (versionDoc) {
-          templateBody = versionDoc.body || "";
-          templateMessages = (versionDoc.messages as IPromptMessage[]) || [];
-          promptVariables = (versionDoc.variables as IPromptVariable[]) || [];
-          versionNum = versionDoc.version;
+        if (!versionDoc) {
+          throw new HttpError(
+            404,
+            `Version ${payload.versionNumber} not found for this prompt.`,
+          );
         }
+
+        templateBody = versionDoc.body || "";
+        templateMessages = (versionDoc.messages as IPromptMessage[]) || [];
+        promptVariables = (versionDoc.variables as IPromptVariable[]) || [];
+        versionNum = versionDoc.version;
       }
     }
 

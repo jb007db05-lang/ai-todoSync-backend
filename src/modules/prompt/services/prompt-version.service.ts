@@ -1,6 +1,9 @@
 import PromptLibraryModel from "../models/prompt-library.model.js";
 import PromptVersionModel from "../models/prompt-version.model.js";
 import promptAuthorizationService from "./prompt-authorization.service.js";
+import promptDeploymentService, {
+  getVersionStatus,
+} from "./prompt-deployment.service.js";
 import workspaceService from "../../workspace/services/workspace.service.js";
 
 import { HttpError } from "../../../shared/errors/http-error.js";
@@ -27,10 +30,24 @@ export class PromptVersionService {
 
     const rootId = prompt.parentId || prompt._id;
 
-    return PromptVersionModel.find({ promptId: rootId })
-      .sort({ version: -1 })
-      .populate("changedBy", "name email avatar")
-      .lean();
+    const [versions, deployments] = await Promise.all([
+      PromptVersionModel.find({ promptId: rootId })
+        .sort({ version: -1 })
+        .populate("changedBy", "name email avatar")
+        .lean(),
+      promptDeploymentService.getSummaries(workspaceId, [rootId]),
+    ]);
+    // Prompts created before deployments existed serve their latest version.
+    const deployment = deployments.get(String(rootId)) ?? {
+      productionVersion: versions[0]?.version ?? 1,
+      stagingVersion: null,
+      canary: null,
+    };
+
+    return versions.map((v) => ({
+      ...v,
+      status: getVersionStatus(deployment, v.version),
+    }));
   }
 
   public async comparePromptVersions(

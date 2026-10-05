@@ -5,6 +5,7 @@ import promptLibraryService, { HttpError } from "./prompt.service.js";
 import PromptLibraryModel from "../models/prompt-library.model.js";
 import PromptVersionModel from "../models/prompt-version.model.js";
 import PromptFolderModel from "../models/prompt-folder.model.js";
+import PromptDeploymentModel from "../models/prompt-deployment.model.js";
 import workspaceService from "../../workspace/services/workspace.service.js";
 
 describe("PromptOps Core Hardening & Verification Suite (F-04, F-05, F-06)", () => {
@@ -596,6 +597,17 @@ describe("PromptOps Core Hardening & Verification Suite (F-04, F-05, F-06)", () 
       });
     }) as any;
 
+    // Deployment pin: emulate upsert with $setOnInsert (first write wins).
+    const origPDUpdateOne = PromptDeploymentModel.updateOne;
+    const deploymentPins = new Map<string, number>();
+    PromptDeploymentModel.updateOne = ((query: any, update: any) => {
+      const key = query.promptId.toString();
+      if (!deploymentPins.has(key)) {
+        deploymentPins.set(key, update.$setOnInsert.productionVersion);
+      }
+      return Promise.resolve({ acknowledged: true });
+    }) as any;
+
     try {
       // Simulate 10 sequential version updates on active prompt revision
       for (let i = 0; i < 10; i++) {
@@ -633,6 +645,14 @@ describe("PromptOps Core Hardening & Verification Suite (F-04, F-05, F-06)", () 
         "Final version number must be 11 after 10 updates",
       );
 
+      // Editing never moves production: it stays pinned to the pre-edit version
+      assert.equal(deploymentPins.size, 1);
+      assert.equal(
+        [...deploymentPins.values()][0],
+        1,
+        "Production must stay on v1 until explicitly deployed",
+      );
+
       // Verify Stable Slug: All documents maintain the original slug
       for (const p of promptDocs) {
         assert.equal(
@@ -647,6 +667,7 @@ describe("PromptOps Core Hardening & Verification Suite (F-04, F-05, F-06)", () 
       PromptLibraryModel.create = origPLCreate;
       PromptVersionModel.findOne = origPVFindOne;
       PromptVersionModel.create = origPVCreate;
+      PromptDeploymentModel.updateOne = origPDUpdateOne;
       workspaceService.assertMembership = originalAssertMembership;
     }
   });

@@ -4,9 +4,31 @@ import * as repo from "./repository.js";
 import type { ISdkIntegrationDocument, SdkEnvironment } from "./model.js";
 import { sdkIntegrationCache } from "./cache.js";
 import type { IUserDocument } from "../auth/models/user.model.js";
+import {
+  SANDBOX_KEY_PREFIX,
+  scopedApiKeyId,
+  type DataEnvironment,
+} from "../../shared/environment.js";
+import logger from "../../lib/logger.js";
+import { AppError } from "../../utils/app-error.js";
 
 const generateSdkKey = (): string =>
   `sdk_${crypto.randomBytes(24).toString("hex")}`;
+
+const generateSandboxKey = (): string =>
+  `${SANDBOX_KEY_PREFIX}${crypto.randomBytes(24).toString("hex")}`;
+
+export interface ResolvedSdkKey {
+  integration: ISdkIntegrationDocument;
+  environment: DataEnvironment;
+}
+
+export interface SandboxPurgeResult {
+  events: number;
+  exposures: number;
+  surveyResponses: number;
+  users: number;
+}
 
 export interface CreateIntegrationInput {
   tenantId: string;
@@ -64,6 +86,47 @@ export const matchOrigin = (origin: string, pattern: string): boolean => {
   }
 
   return normOrigin === normPattern;
+};
+
+const isLocalOrigin = (origin: string): boolean => {
+  try {
+    const host = new URL(normalizeOrigin(origin)).hostname;
+    return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Origin check for a resolved key. Live keys only work from the registered
+ * domain and allowed origins; sandbox keys also work from localhost so
+ * developers can test locally.
+ */
+export const validateKeyOrigin = (
+  origin: string | undefined,
+  integration: Pick<ISdkIntegrationDocument, "domain" | "allowedOrigins">,
+  environment: DataEnvironment,
+): string | null => {
+  if (!origin) {
+    return "Origin header is required";
+  }
+  try {
+    const parsedOrigin = normalizeOrigin(origin);
+    if (environment === "sandbox" && isLocalOrigin(parsedOrigin)) {
+      return null;
+    }
+    const domainMatches =
+      !!integration.domain && matchOrigin(parsedOrigin, integration.domain);
+    const allowedMatches = (integration.allowedOrigins || []).some((o) =>
+      matchOrigin(parsedOrigin, o),
+    );
+    if (domainMatches || allowedMatches) {
+      return null;
+    }
+    return `Origin '${parsedOrigin}' is not allowed for this integration.`;
+  } catch {
+    return "Invalid Origin header format";
+  }
 };
 
 class SdkIntegrationService {
@@ -128,9 +191,131 @@ class SdkIntegrationService {
     });
 
     if (updated) {
-      sdkIntegrationCache.invalidate(id, existing.sdkKeyHash);
+      sdkIntegrationCache.invalidate(
+        id,
+        existing.sdkKeyHash,
+        existing.sandboxKeyHash,
+      );
     }
     return updated;
+  }
+
+  /** Create the integration's sandbox key. The raw key is returned once. */
+  async createSandbox(
+    tenantId: string,
+    id: string,
+  ): Promise<{ integration: ISdkIntegrationDocument; rawKey: string } | null> {
+    const existing = await repo.findByTenantAndId(tenantId, id);
+    if (!existing) return null;
+    if (existing.sandboxKeyHash) {
+      throw new AppError(
+        409,
+        "This integration already has a sandbox. Regenerate its key instead.",
+        "SANDBOX_EXISTS",
+      );
+    }
+    return this.issueSandboxKey(existing);
+  }
+
+  /** Rotate the sandbox key; the old sandbox key stops working immediately. */
+  async regenerateSandboxKey(
+    tenantId: string,
+    id: string,
+  ): Promise<{ integration: ISdkIntegrationDocument; rawKey: string } | null> {
+    const existing = await repo.findByTenantAndId(tenantId, id);
+    if (!existing) return null;
+    if (!existing.sandboxKeyHash) {
+      throw new AppError(404, "This integration has no sandbox.", "NO_SANDBOX");
+    }
+    return this.issueSandboxKey(existing);
+  }
+
+  /** Delete all sandbox data (events, exposures, responses, users); keeps the key. */
+  async resetSandbox(
+    tenantId: string,
+    id: string,
+  ): Promise<SandboxPurgeResult | null> {
+    const existing = await repo.findByTenantAndId(tenantId, id);
+    if (!existing) return null;
+    return this.purgeSandboxData(id);
+  }
+
+  /** Remove the sandbox key and all sandbox data. */
+  async deleteSandbox(
+    tenantId: string,
+    id: string,
+  ): Promise<SandboxPurgeResult | null> {
+    const existing = await repo.findByTenantAndId(tenantId, id);
+    if (!existing) return null;
+    await repo.updateSandboxKey(id, null, null);
+    sdkIntegrationCache.invalidate(
+      id,
+      existing.sdkKeyHash,
+      existing.sandboxKeyHash,
+    );
+    await this.revokeSessions(existing.sandboxKeyHash);
+    return this.purgeSandboxData(id);
+  }
+
+  private async issueSandboxKey(
+    existing: ISdkIntegrationDocument,
+  ): Promise<{ integration: ISdkIntegrationDocument; rawKey: string } | null> {
+    const id = existing._id.toString();
+    const rawKey = generateSandboxKey();
+    const integration = await repo.updateSandboxKey(
+      id,
+      rawKey,
+      deterministicHash(rawKey),
+    );
+    if (!integration) return null;
+    sdkIntegrationCache.invalidate(
+      id,
+      existing.sdkKeyHash,
+      existing.sandboxKeyHash,
+    );
+    await this.revokeSessions(existing.sandboxKeyHash);
+    return { integration, rawKey };
+  }
+
+  private async revokeSessions(keyHash?: string | null): Promise<void> {
+    if (!keyHash) return;
+    const SdkSessionModel = (await import("../sdk/models/sdk-session.model.js"))
+      .default;
+    await SdkSessionModel.updateMany(
+      { sdkKeyHash: keyHash },
+      { revoked: true },
+    );
+  }
+
+  private async purgeSandboxData(id: string): Promise<SandboxPurgeResult> {
+    const [
+      { default: AnalyticsLogModel },
+      { default: AnalyticsUserModel },
+      { GuideExposureModel },
+      { SurveyResponseModel },
+    ] = await Promise.all([
+      import("../analytics/models/analytics-log.model.js"),
+      import("../analytics/models/analytics-user.model.js"),
+      import("../engagement/model.js"),
+      import("../surveys/model.js"),
+    ]);
+    const sandbox = { sdkIntegrationId: id, environment: "sandbox" };
+    const [events, exposures, surveyResponses, users] = await Promise.all([
+      AnalyticsLogModel.deleteMany(sandbox).exec(),
+      GuideExposureModel.deleteMany(sandbox).exec(),
+      SurveyResponseModel.deleteMany(sandbox).exec(),
+      AnalyticsUserModel.deleteMany({
+        apiKeyId: scopedApiKeyId(id, "sandbox"),
+      }).exec(),
+    ]);
+    const result = {
+      events: events.deletedCount ?? 0,
+      exposures: exposures.deletedCount ?? 0,
+      surveyResponses: surveyResponses.deletedCount ?? 0,
+      users: users.deletedCount ?? 0,
+    };
+    logger.info("Sandbox data purged", { sdkIntegrationId: id, ...result });
+    return result;
   }
 
   /** Regenerate SDK key — old key immediately invalid */
@@ -146,7 +331,11 @@ class SdkIntegrationService {
     const integration = await repo.updateSdkKey(id, rawKey, keyHash);
     if (!integration) return null;
 
-    sdkIntegrationCache.invalidate(id, existing.sdkKeyHash);
+    sdkIntegrationCache.invalidate(
+      id,
+      existing.sdkKeyHash,
+      existing.sandboxKeyHash,
+    );
     return { integration, rawKey };
   }
 
@@ -159,7 +348,11 @@ class SdkIntegrationService {
     if (!existing) return null;
     const updated = await repo.updateStatus(id, "disabled");
     if (updated) {
-      sdkIntegrationCache.invalidate(id, existing.sdkKeyHash);
+      sdkIntegrationCache.invalidate(
+        id,
+        existing.sdkKeyHash,
+        existing.sandboxKeyHash,
+      );
     }
     return updated;
   }
@@ -174,7 +367,11 @@ class SdkIntegrationService {
     const newStatus = existing.connectionCount > 0 ? "connected" : "pending";
     const updated = await repo.updateStatus(id, newStatus);
     if (updated) {
-      sdkIntegrationCache.invalidate(id, existing.sdkKeyHash);
+      sdkIntegrationCache.invalidate(
+        id,
+        existing.sdkKeyHash,
+        existing.sandboxKeyHash,
+      );
     }
     return updated;
   }
@@ -188,7 +385,11 @@ class SdkIntegrationService {
     if (!existing) return null;
     const updated = await repo.updateStatus(id, "revoked");
     if (updated) {
-      sdkIntegrationCache.invalidate(id, existing.sdkKeyHash);
+      sdkIntegrationCache.invalidate(
+        id,
+        existing.sdkKeyHash,
+        existing.sandboxKeyHash,
+      );
     }
     return updated;
   }
@@ -198,11 +399,25 @@ class SdkIntegrationService {
     const existing = await repo.findByTenantAndId(tenantId, id);
     if (!existing) return false;
     await repo.deleteIntegration(id);
-    sdkIntegrationCache.invalidate(id, existing.sdkKeyHash);
+    sdkIntegrationCache.invalidate(
+      id,
+      existing.sdkKeyHash,
+      existing.sandboxKeyHash,
+    );
     return true;
   }
 
-  /** Resolve integration from SDK key — used by auth middleware */
+  /** Resolve a live or sandbox SDK key to its integration and environment. */
+  async resolveKey(keyHash: string): Promise<ResolvedSdkKey | null> {
+    const integration = await this.resolveByKeyHash(keyHash);
+    if (!integration) return null;
+    return {
+      integration,
+      environment: integration.sandboxKeyHash === keyHash ? "sandbox" : "live",
+    };
+  }
+
+  /** Resolve integration from SDK key (live or sandbox) — used by auth middleware */
   async resolveByKeyHash(
     keyHash: string,
   ): Promise<ISdkIntegrationDocument | null> {
@@ -306,6 +521,7 @@ class SdkIntegrationService {
       touchRuntime?: boolean;
       touchEvent?: boolean;
       touchHeartbeat?: boolean;
+      sandbox?: boolean;
     },
   ): Promise<ISdkIntegrationDocument | null> {
     return repo.updateConnectionTracking(id, opts);

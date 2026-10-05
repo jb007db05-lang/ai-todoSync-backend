@@ -6,6 +6,11 @@ import targetingService from "../targeting/service.js";
 import type { CreateGuideDto, GuideQueryDto, UpdateGuideDto } from "./dtos.js";
 import type { IGuideDocument } from "./model.js";
 import guideRepository from "./repository.js";
+import {
+  servableStatuses,
+  type DataEnvironment,
+} from "../../shared/environment.js";
+import { assertStatusTransition, isObjectId } from "../engagement/lifecycle.js";
 
 class GuideService {
   public listGuides(
@@ -21,11 +26,9 @@ class GuideService {
     sdkIntegrationId: string,
     guideId: string,
   ) {
-    const guide = await guideRepository.getGuide(
-      tenantId,
-      sdkIntegrationId,
-      guideId,
-    );
+    const guide = isObjectId(guideId)
+      ? await guideRepository.getGuide(tenantId, sdkIntegrationId, guideId)
+      : null;
 
     if (!guide) {
       throw new AppError(404, "Guide not found", "NOT_FOUND");
@@ -40,6 +43,17 @@ class GuideService {
     createdBy: string,
     dto: CreateGuideDto,
   ) {
+    const status = dto.status ?? "DRAFT";
+    if (status === "LIVE") {
+      this.assertPublishable({ type: dto.type, steps: dto.steps ?? [] });
+    } else if (status !== "DRAFT") {
+      throw new AppError(
+        400,
+        "New guides start as DRAFT or LIVE.",
+        "INVALID_STATUS",
+      );
+    }
+    dto = { ...dto, status };
     return guideRepository.createGuide(
       tenantId,
       sdkIntegrationId,
@@ -56,7 +70,16 @@ class GuideService {
     dto: UpdateGuideDto,
   ) {
     const existing = await this.getGuide(tenantId, sdkIntegrationId, guideId);
-    const guide = await guideRepository.updateGuide(
+    // Status changes go through the lifecycle (transition rules + checks).
+    const { status: requestedStatus, ...content } = dto;
+    if (existing.status === "LIVE") {
+      this.assertPublishable({
+        type: content.type ?? existing.type,
+        steps: content.steps ?? existing.steps,
+      });
+    }
+    dto = content;
+    const updated = await guideRepository.updateGuide(
       tenantId,
       sdkIntegrationId,
       guideId,
@@ -65,11 +88,21 @@ class GuideService {
       existing,
     );
 
-    if (!guide) {
+    if (!updated) {
       throw new AppError(404, "Guide not found", "NOT_FOUND");
     }
 
-    return guide;
+    if (requestedStatus && requestedStatus !== updated.status) {
+      return this.updateStatus(
+        tenantId,
+        sdkIntegrationId,
+        guideId,
+        updatedBy,
+        requestedStatus,
+      );
+    }
+
+    return updated;
   }
 
   public async updateStatus(
@@ -79,19 +112,67 @@ class GuideService {
     updatedBy: string,
     status: "DRAFT" | "LIVE" | "PAUSED" | "ARCHIVED",
   ) {
+    const existing = await this.getGuide(tenantId, sdkIntegrationId, guideId);
+    if (existing.status === status) return existing;
+    assertStatusTransition("Guide", existing.status, status);
+    if (status === "LIVE") {
+      this.assertPublishable(existing);
+    }
+
     const guide = await guideRepository.updateStatus(
       tenantId,
       sdkIntegrationId,
       guideId,
       updatedBy,
+      existing.status,
       status,
     );
 
     if (!guide) {
-      throw new AppError(404, "Guide not found", "NOT_FOUND");
+      throw new AppError(
+        409,
+        "Guide status changed while updating. Reload and try again.",
+        "STATUS_CONFLICT",
+      );
     }
 
     return guide;
+  }
+
+  private assertPublishable(
+    guide: Pick<IGuideDocument, "type" | "steps">,
+  ): void {
+    if (!guide.steps || guide.steps.length === 0) {
+      throw new AppError(
+        400,
+        "A guide needs at least one step before it can go live.",
+        "GUIDE_NOT_PUBLISHABLE",
+      );
+    }
+    const ids = new Set(guide.steps.map((s) => s.id));
+    const missingSelector = guide.steps.find(
+      (s) =>
+        ["TOUR", "SMART_TIP", "HOTSPOT"].includes(guide.type) &&
+        s.placement !== "CENTER" &&
+        !s.selector,
+    );
+    if (missingSelector) {
+      throw new AppError(
+        400,
+        `Step '${missingSelector.title}' needs a target selector.`,
+        "GUIDE_NOT_PUBLISHABLE",
+      );
+    }
+    const brokenLink = guide.steps.find(
+      (s) => s.nextStep && !ids.has(s.nextStep),
+    );
+    if (brokenLink) {
+      throw new AppError(
+        400,
+        `Step '${brokenLink.title}' points to a step that does not exist.`,
+        "GUIDE_NOT_PUBLISHABLE",
+      );
+    }
   }
 
   public async deleteGuide(
@@ -99,6 +180,14 @@ class GuideService {
     sdkIntegrationId: string,
     guideId: string,
   ) {
+    const existing = await this.getGuide(tenantId, sdkIntegrationId, guideId);
+    if (existing.status === "LIVE") {
+      throw new AppError(
+        409,
+        "Pause or archive a live guide before deleting it.",
+        "GUIDE_LIVE",
+      );
+    }
     const result = await guideRepository.deleteGuide(
       tenantId,
       sdkIntegrationId,
@@ -115,15 +204,21 @@ class GuideService {
     sdkIntegrationId: string,
     context: Omit<TargetingRuntimeContext, "tenantId">,
   ): Promise<RuntimeGuideDto[]> {
+    const environment = context.environment ?? "live";
+    const statuses = servableStatuses(environment);
     const manualTourId = context.eventProperties?.tourId;
     if (
       context.eventName === "manual_tour" &&
-      typeof manualTourId === "string"
+      typeof manualTourId === "string" &&
+      isObjectId(manualTourId)
     ) {
-      const guide = await guideRepository
-        .getGuide(tenantId, sdkIntegrationId, manualTourId)
-        .catch(() => null);
-      if (guide) {
+      const guide = await guideRepository.getGuide(
+        tenantId,
+        sdkIntegrationId,
+        manualTourId,
+      );
+      // Manual triggers obey the same status rules as automatic delivery.
+      if (guide && statuses.includes(guide.status)) {
         return [
           this.toRuntimeDto(guide, {
             reasons: ["Manual tour trigger"],
@@ -134,9 +229,10 @@ class GuideService {
       }
     }
 
-    const guides = await guideRepository.listLiveGuides(
+    const guides = await guideRepository.listServableGuides(
       tenantId,
       sdkIntegrationId,
+      statuses,
     );
     const contextWithTenant = { ...context, tenantId };
     const evaluated = await Promise.all(
@@ -168,11 +264,13 @@ class GuideService {
     tenantId: string,
     sdkIntegrationId: string,
     guideId: string,
+    environment: DataEnvironment = "live",
   ) {
     await this.getGuide(tenantId, sdkIntegrationId, guideId);
     const exposures = await engagementRepository.findExposuresForGuide(
-      tenantId,
+      sdkIntegrationId,
       guideId,
+      environment,
     );
     const total = exposures.length;
     const completed = exposures.filter(
@@ -188,6 +286,7 @@ class GuideService {
 
     return {
       guideId,
+      environment,
       impressions,
       uniqueUsers: total,
       completions: completed,
@@ -212,7 +311,7 @@ class GuideService {
       targetingRules: guide.targetingRules,
       frequencyRules: guide.frequencyRules as Record<string, unknown>,
       scheduleRules: guide.scheduleRules as Record<string, unknown>,
-      metadata: guide.metadata,
+      metadata: { ...guide.metadata, status: guide.status },
       eligibility,
     };
   }

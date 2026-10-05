@@ -2,6 +2,10 @@ import { GuideExposureModel } from "./model.js";
 import type { RuntimeGuideDto } from "./dtos.js";
 import targetingService from "../targeting/service.js";
 import logger from "../../lib/logger.js";
+import {
+  environmentFilter,
+  type DataEnvironment,
+} from "../../shared/environment.js";
 
 const INTRUSIVE_TYPES = ["MODAL", "SURVEY", "TOUR"];
 
@@ -15,6 +19,7 @@ export class ExperienceOrchestrator {
     sessionId?: string;
     experiences: RuntimeGuideDto[];
     forceShowCompleted?: boolean;
+    environment?: DataEnvironment;
   }): Promise<RuntimeGuideDto[]> {
     const startTime = Date.now();
     const { tenantId, userId, sessionId, experiences, forceShowCompleted } =
@@ -36,7 +41,10 @@ export class ExperienceOrchestrator {
     }
 
     // Identify user/session filter for database lookups
-    const userFilter: any = { tenantId };
+    const userFilter: any = {
+      tenantId,
+      ...environmentFilter(input.environment),
+    };
     const orConditions: any[] = [];
     if (userId) {
       orConditions.push({ userId });

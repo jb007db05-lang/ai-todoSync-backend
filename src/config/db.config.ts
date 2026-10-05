@@ -61,6 +61,38 @@ export const connectDatabase = async (): Promise<void> => {
   }
 };
 
+export interface IndexSyncResult {
+  model: string;
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Creates every declared index. Mongoose's automatic index build runs when a
+ * model is compiled, which happens before the connection exists here (and
+ * bufferCommands is off), so it silently never runs. Call this after
+ * connecting. Existing indexes are left alone; failures (e.g. duplicate data
+ * blocking a unique index) are reported, not thrown.
+ */
+export const ensureIndexes = async (): Promise<IndexSyncResult[]> => {
+  const results: IndexSyncResult[] = [];
+  for (const name of mongoose.modelNames()) {
+    try {
+      await mongoose.model(name).createIndexes();
+      results.push({ model: name, ok: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      results.push({ model: name, ok: false, error: message });
+      logger.warn(`Index build failed for ${name}: ${message}`);
+    }
+  }
+  const failed = results.filter((r) => !r.ok).length;
+  logger.info(
+    `Indexes ensured for ${results.length - failed}/${results.length} models`,
+  );
+  return results;
+};
+
 export const disconnectDatabase = async (): Promise<void> => {
   if (!isConnected) {
     return;

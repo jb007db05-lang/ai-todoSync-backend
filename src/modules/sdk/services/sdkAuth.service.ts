@@ -7,7 +7,9 @@ import SdkNonceModel from "../models/sdk-nonce.model.js";
 import sdkIntegrationService, {
   normalizeOrigin,
   matchOrigin,
+  validateKeyOrigin,
 } from "../../sdk-integrations/service.js";
+import type { DataEnvironment } from "../../../shared/environment.js";
 import {
   deterministicHash,
   encrypt,
@@ -97,14 +99,15 @@ export class SdkAuthService {
     }
 
     const keyHash = deterministicHash(sdkKey);
-    const integration = await sdkIntegrationService.resolveByKeyHash(keyHash);
+    const resolved = await sdkIntegrationService.resolveKey(keyHash);
 
-    if (!integration) {
+    if (!resolved) {
       logger.warn("SDK Auth Handshake Failure: Invalid Key", {
         maskedKey: maskKey(sdkKey),
       });
       throw new AppError(401, "Invalid or revoked SDK key", "INVALID_SDK_KEY");
     }
+    const { integration, environment } = resolved;
 
     if (integration.status === "disabled") {
       logger.warn("SDK Auth Handshake Failure: Disabled Integration", {
@@ -124,8 +127,8 @@ export class SdkAuthService {
       throw new AppError(403, "This SDK key has been revoked.", "SDK_REVOKED");
     }
 
-    // Validate Origin matches whitelist
-    const originError = validateIntegrationOrigin(origin, integration);
+    // Validate Origin matches whitelist (sandbox keys also allow localhost)
+    const originError = validateKeyOrigin(origin, integration, environment);
     if (originError) {
       logger.warn("SDK Auth Handshake Failure: Invalid Origin", {
         origin,
@@ -161,6 +164,7 @@ export class SdkAuthService {
       sessionSecret: encryptedSecret,
       tenantId: integration.tenantId,
       sdkKeyHash: keyHash,
+      environment,
       validatedOrigin: normalizedOriginVal,
       issuedAt: now,
       expiresAt,
@@ -170,6 +174,7 @@ export class SdkAuthService {
     logger.info("SDK Auth Handshake Success", {
       sessionId,
       tenantId: integration.tenantId,
+      environment,
       expiresAt,
     });
 
@@ -178,6 +183,7 @@ export class SdkAuthService {
       .touchConnection(integration._id.toString(), {
         latestOrigin: origin,
         touchHeartbeat: true,
+        sandbox: environment === "sandbox",
       })
       .catch(() => {});
 
@@ -239,9 +245,12 @@ export class SdkAuthService {
   /**
    * Phase 3 & 4: Signature and Replay Verification
    */
-  static async verifySignature(
-    req: Request,
-  ): Promise<{ session: ISdkSessionDocument; integration: any; user: any }> {
+  static async verifySignature(req: Request): Promise<{
+    session: ISdkSessionDocument;
+    integration: any;
+    user: any;
+    environment: DataEnvironment;
+  }> {
     const sdkKey = req.headers["x-sdk-key"] as string;
     const sessionId = req.headers["x-session-id"] as string;
     const timestampStr = req.headers["x-timestamp"] as string;
@@ -333,7 +342,9 @@ export class SdkAuthService {
     }
 
     // 3. Retrieve and validate integration
-    const integration = await sdkIntegrationService.resolveByKeyHash(keyHash);
+    const resolved = await sdkIntegrationService.resolveKey(keyHash);
+    const integration = resolved?.integration;
+    const environment: DataEnvironment = resolved?.environment ?? "live";
     if (!integration) {
       logger.warn(
         "SDK Auth Verification Failure: Integration not found for SDK key",
@@ -358,6 +369,14 @@ export class SdkAuthService {
         sessionId,
       });
       throw new AppError(403, "This SDK key has been revoked.", "SDK_REVOKED");
+    }
+
+    // A session is bound to the key type it was issued for.
+    if ((session.environment ?? "live") !== environment) {
+      logger.warn("SDK Auth Verification Failure: Environment mismatch", {
+        sessionId,
+      });
+      throw new Error("Session environment mismatch");
     }
 
     if (integration.tenantId !== session.tenantId) {
@@ -487,10 +506,11 @@ export class SdkAuthService {
         touchRuntime: req.path.includes("/runtime"),
         touchEvent: req.path.includes("/track"),
         touchHeartbeat: true,
+        sandbox: environment === "sandbox",
       })
       .catch(() => {});
 
-    return { session, integration, user };
+    return { session, integration, user, environment };
   }
 
   /**

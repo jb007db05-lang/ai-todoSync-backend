@@ -7,7 +7,7 @@ import { rateLimit } from "express-rate-limit";
 import { Routes } from "./interfaces/routes.interface.js";
 import logger from "./lib/logger.js";
 import env from "./config/env.js";
-import { connectDatabase } from "./config/db.config.js";
+import { connectDatabase, ensureIndexes } from "./config/db.config.js";
 import { scheduleRolloverJob } from "./utils/rollover.js";
 import { scheduleSlaJob } from "./utils/sla-scheduler.js";
 import { schedulePriorityEngineJob } from "./utils/priority-engine-scheduler.js";
@@ -20,7 +20,6 @@ import {
   normalizeOrigin,
   setCorsHeaders,
   extractRawKey,
-  validateIntegrationOrigin,
 } from "./middleware/sdkAuth.middleware.js";
 import { deterministicHash } from "./utils/encryption.js";
 
@@ -85,15 +84,17 @@ class App {
             // For actual application requests, resolve the integration by key hash
             // to set up the request context and perform dynamic origin validation.
             const keyHash = deterministicHash(rawKey);
-            const integration = await service.resolveByKeyHash(keyHash);
-            if (integration) {
-              const originError = validateIntegrationOrigin(
+            const resolved = await service.resolveKey(keyHash);
+            if (resolved) {
+              const { validateKeyOrigin } =
+                await import("./modules/sdk-integrations/service.js");
+              const originError = validateKeyOrigin(
                 origin,
-                integration,
+                resolved.integration,
+                resolved.environment,
               );
               if (!originError) {
                 isAllowed = true;
-                req.sdkIntegration = integration; // attach context for downstream reuse!
               }
             }
           } else {
@@ -181,6 +182,13 @@ class App {
   public async listen(): Promise<void> {
     try {
       await this.initializeDatabase();
+      // Build declared indexes in the background; never blocks startup.
+      void ensureIndexes().catch((error) =>
+        logger.error(
+          "Index build failed",
+          error instanceof Error ? error : new Error(String(error)),
+        ),
+      );
 
       // Start background worker for project invitations
       try {

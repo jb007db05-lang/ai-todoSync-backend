@@ -1,15 +1,13 @@
 import type { Request, Response } from "express";
 import { isAppError, AppError } from "../../utils/app-error.js";
 import sdkIntegrationService from "./service.js";
-import {
-  validateCreate,
-  validateUpdate,
-} from "./validators.js";
+import { validateCreate, validateUpdate } from "./validators.js";
 
 class SdkIntegrationController {
   private tenantId(req: Request): string {
     const id = req.user?._id?.toString();
-    if (!id) throw new AppError(401, "Authentication required", "AUTH_REQUIRED");
+    if (!id)
+      throw new AppError(401, "Authentication required", "AUTH_REQUIRED");
     return id;
   }
 
@@ -42,7 +40,9 @@ class SdkIntegrationController {
       if (!integration) {
         throw new AppError(404, "Integration not found", "NOT_FOUND");
       }
-      res.status(200).json({ data: { integration: this.toSafeDto(integration, false) } });
+      res
+        .status(200)
+        .json({ data: { integration: this.toSafeDto(integration, false) } });
     } catch (error) {
       this.handleError(res, error);
     }
@@ -80,7 +80,9 @@ class SdkIntegrationController {
       if (!integration) {
         throw new AppError(404, "Integration not found", "NOT_FOUND");
       }
-      res.status(200).json({ data: { integration: this.toSafeDto(integration, false) } });
+      res
+        .status(200)
+        .json({ data: { integration: this.toSafeDto(integration, false) } });
     } catch (error) {
       this.handleError(res, error);
     }
@@ -108,6 +110,80 @@ class SdkIntegrationController {
     }
   };
 
+  /** POST /sdk-integrations/:id/sandbox — create the sandbox key (shown once) */
+  createSandbox = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const result = await sdkIntegrationService.createSandbox(
+        this.tenantId(req),
+        this.paramId(req),
+      );
+      if (!result) {
+        throw new AppError(404, "Integration not found", "NOT_FOUND");
+      }
+      res.status(201).json({
+        data: {
+          integration: this.toSafeDto(result.integration, false),
+          sandboxKey: result.rawKey,
+        },
+      });
+    } catch (error) {
+      this.handleError(res, error);
+    }
+  };
+
+  /** POST /sdk-integrations/:id/sandbox/regenerate-key */
+  regenerateSandboxKey = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const result = await sdkIntegrationService.regenerateSandboxKey(
+        this.tenantId(req),
+        this.paramId(req),
+      );
+      if (!result) {
+        throw new AppError(404, "Integration not found", "NOT_FOUND");
+      }
+      res.status(200).json({
+        data: {
+          integration: this.toSafeDto(result.integration, false),
+          sandboxKey: result.rawKey,
+        },
+      });
+    } catch (error) {
+      this.handleError(res, error);
+    }
+  };
+
+  /** POST /sdk-integrations/:id/sandbox/reset — delete sandbox data, keep key */
+  resetSandbox = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const purged = await sdkIntegrationService.resetSandbox(
+        this.tenantId(req),
+        this.paramId(req),
+      );
+      if (!purged) {
+        throw new AppError(404, "Integration not found", "NOT_FOUND");
+      }
+      res.status(200).json({ data: { purged } });
+    } catch (error) {
+      this.handleError(res, error);
+    }
+  };
+
+  /** DELETE /sdk-integrations/:id/sandbox — remove key and sandbox data */
+  deleteSandbox = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const purged = await sdkIntegrationService.deleteSandbox(
+        this.tenantId(req),
+        this.paramId(req),
+      );
+      if (!purged) {
+        throw new AppError(404, "Integration not found", "NOT_FOUND");
+      }
+      res.status(200).json({ data: { purged } });
+    } catch (error) {
+      this.handleError(res, error);
+    }
+  };
+
   /** POST /sdk-integrations/:id/disable */
   disable = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -118,7 +194,9 @@ class SdkIntegrationController {
       if (!integration) {
         throw new AppError(404, "Integration not found", "NOT_FOUND");
       }
-      res.status(200).json({ data: { integration: this.toSafeDto(integration, false) } });
+      res
+        .status(200)
+        .json({ data: { integration: this.toSafeDto(integration, false) } });
     } catch (error) {
       this.handleError(res, error);
     }
@@ -134,7 +212,9 @@ class SdkIntegrationController {
       if (!integration) {
         throw new AppError(404, "Integration not found", "NOT_FOUND");
       }
-      res.status(200).json({ data: { integration: this.toSafeDto(integration, false) } });
+      res
+        .status(200)
+        .json({ data: { integration: this.toSafeDto(integration, false) } });
     } catch (error) {
       this.handleError(res, error);
     }
@@ -163,14 +243,11 @@ class SdkIntegrationController {
       if (!integration) {
         throw new AppError(401, "SDK authentication required", "AUTH_REQUIRED");
       }
-      await sdkIntegrationService.touchConnection(
-        integration._id.toString(),
-        {
-          sdkVersion: req.body?.sdkVersion as string | undefined,
-          latestOrigin: req.headers.origin,
-          touchHeartbeat: true,
-        },
-      );
+      await sdkIntegrationService.touchConnection(integration._id.toString(), {
+        sdkVersion: req.body?.sdkVersion as string | undefined,
+        latestOrigin: req.headers.origin,
+        touchHeartbeat: true,
+      });
       res.status(200).json({ data: { status: "ok" } });
     } catch (error) {
       this.handleError(res, error);
@@ -188,9 +265,15 @@ class SdkIntegrationController {
       allowedOrigins: obj.allowedOrigins || [],
       description: obj.description,
       status: obj.status,
-      sdkKeyMasked: includeKey
-        ? obj.sdkKey
-        : this.maskKey(obj.sdkKey),
+      sdkKeyMasked: includeKey ? obj.sdkKey : this.maskKey(obj.sdkKey),
+      sandbox: obj.sandboxKeyHash
+        ? {
+            enabled: true,
+            keyMasked: this.maskKey(obj.sandboxKey),
+            createdAt: obj.sandboxCreatedAt,
+            lastRequestAt: obj.lastSandboxRequestAt,
+          }
+        : { enabled: false },
       sdkVersion: obj.sdkVersion,
       firstConnectedAt: obj.firstConnectedAt,
       lastConnectedAt: obj.lastConnectedAt,
@@ -206,7 +289,8 @@ class SdkIntegrationController {
 
   private maskKey(key: string): string {
     if (!key || key.length < 12) return "****";
-    return `${key.slice(0, 8)}...${key.slice(-4)}`;
+    const prefix = key.startsWith("sdk_test_") ? 12 : 8;
+    return `${key.slice(0, prefix)}...${key.slice(-4)}`;
   }
 
   private handleError(res: Response, error: unknown): void {

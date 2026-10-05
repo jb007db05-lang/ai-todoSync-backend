@@ -9,6 +9,7 @@ import sdkIntegrationService, {
 } from "../modules/sdk-integrations/service.js";
 export { normalizeOrigin, matchOrigin };
 import logger from "../lib/logger.js";
+import { scopedApiKeyId } from "../shared/environment.js";
 import { SdkAuthService } from "../modules/sdk/services/sdkAuth.service.js";
 import { sdkAuthConfig } from "../config/sdkAuth.config.js";
 
@@ -42,7 +43,7 @@ export const setCorsHeaders = (res: Response, origin: string): void => {
   );
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, x-api-key, x-sdk-key, x-session-id, x-timestamp, x-nonce, x-body-sha256, x-signature, x-sync-api-key, x-sdk-version",
+    "Content-Type, Authorization, x-api-key, x-sdk-key, x-session-id, x-timestamp, x-nonce, x-body-sha256, x-signature, x-signature-version, x-sync-api-key, x-sdk-version",
   );
 };
 
@@ -264,11 +265,13 @@ export const validateSdkKeyUnified = async (
 
   if (hasSignatureHeaders) {
     try {
-      const { session, integration, user } =
+      const { session, integration, user, environment } =
         await SdkAuthService.verifySignature(req);
       req.user = user;
       req.sdkIntegration = integration;
-      req.apiKeyId = integration._id.toString();
+      req.sdkEnvironment = environment;
+      // Sandbox identities live in their own namespace (see scopedApiKeyId).
+      req.apiKeyId = scopedApiKeyId(integration._id.toString(), environment);
       req.sdkSession = session;
 
       if (req.headers.origin) {
@@ -337,8 +340,12 @@ export const sdkRateLimiter = rateLimit({
 export const sdkAuthHandshakeLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: sdkAuthConfig.maxAuthAttemptsPerMin,
+  // Per visitor and key: keying by the key alone would let 10 handshakes a
+  // minute exhaust the budget for every visitor of a customer's site.
   keyGenerator: (req: Request) => {
-    return extractRawKey(req) || (req as any)["ip"];
+    const ip = (req as any)["ip"] ?? "unknown";
+    const key = extractRawKey(req);
+    return key ? `${ip}:${key}` : ip;
   },
   handler: (req: Request, res: Response) => {
     res.status(429).json({

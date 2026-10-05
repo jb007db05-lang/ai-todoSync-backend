@@ -5,6 +5,7 @@ export interface ISdkSession {
   sessionSecret: string;
   tenantId: string;
   sdkKeyHash: string;
+  environment: "live" | "sandbox";
   validatedOrigin: string;
   issuedAt: Date;
   expiresAt: Date;
@@ -19,9 +20,14 @@ const sdkSessionSchema = new Schema<ISdkSessionDocument>(
     sessionSecret: { type: String, required: true },
     tenantId: { type: String, required: true, index: true },
     sdkKeyHash: { type: String, required: true, index: true },
+    environment: {
+      type: String,
+      enum: ["live", "sandbox"],
+      default: "live",
+    },
     validatedOrigin: { type: String, required: true },
     issuedAt: { type: Date, required: true, default: Date.now },
-    expiresAt: { type: Date, required: true, index: true },
+    expiresAt: { type: Date, required: true }, // TTL index below
     revoked: { type: Boolean, required: true, default: false },
   },
   {

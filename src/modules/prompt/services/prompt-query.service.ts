@@ -1,6 +1,7 @@
 import PromptFavoriteModel from "../models/prompt-favorite.model.js";
 import PromptLibraryModel from "../models/prompt-library.model.js";
 import promptAuthorizationService from "./prompt-authorization.service.js";
+import promptDeploymentService from "./prompt-deployment.service.js";
 import workspaceService from "../../workspace/services/workspace.service.js";
 
 import { HttpError } from "../../../shared/errors/http-error.js";
@@ -90,11 +91,17 @@ export class PromptQueryService {
       ),
     );
 
+    const deployments = await promptDeploymentService.getSummaries(
+      workspaceId,
+      accessiblePrompts.map((p) => p.parentId || p._id),
+    );
+
     return accessiblePrompts.map((p) => {
       const rootId = p.parentId ? p.parentId.toString() : p._id.toString();
       return {
         ...p,
         isFavorite: userFavs.has(p._id.toString()) || userFavs.has(rootId),
+        deployment: deployments.get(rootId) ?? null,
       };
     });
   }
@@ -131,9 +138,15 @@ export class PromptQueryService {
       promptId: { $in: [prompt._id, rootId] },
     });
 
+    const deployments = await promptDeploymentService.getSummaries(
+      workspaceId,
+      [rootId],
+    );
+
     return {
       ...prompt,
       isFavorite: favCount > 0,
+      deployment: deployments.get(rootId) ?? null,
     };
   }
 }

@@ -31,7 +31,12 @@
     "depcheck": "depcheck",
     "jscpd": "jscpd",
     "precommit": "npm run check:console && npm run check:env && lint-staged",
-    "prepush": "npm run type-check && npm run build && npm run check:all"
+    "prepush": "npm run type-check && npm run build && npm run check:all",
+    "db:indexes": "tsx src/scripts/migrations/syncIndexes.ts",
+    "test:unit": "tsx --test \"tests/unit/*.test.ts\"",
+    "test:e2e": "tsx tests/e2e/run-e2e.ts",
+    "test:catalog": "tsx tests/catalog/generate-catalog.ts",
+    "test:all": "npm run test:engagement && npm run test:unit"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
