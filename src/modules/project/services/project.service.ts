@@ -178,6 +178,14 @@ class ProjectService {
     return getProjectById(projectId);
   }
 
+  public async getProject(
+    projectId: string,
+    userId: string,
+  ): Promise<ProjectDto> {
+    const { project, role } = await this.getProjectAccess(userId, projectId);
+    return this.toDto(project, role);
+  }
+
   /** Projects in the workspace the caller can open (all of them for admins). */
   public async fetchProjects(
     userId: string,
@@ -462,7 +470,10 @@ class ProjectService {
       userId,
       projectId,
     );
-    const membership = await getProjectMembership(projectId, userId);
+    const membership = await getProjectMembership(
+      project._id.toString(),
+      userId,
+    );
     const role: ProjectRole = access.isAdmin
       ? "ADMIN"
       : (membership?.role ?? "MEMBER");

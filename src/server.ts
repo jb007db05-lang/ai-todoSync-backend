@@ -60,6 +60,7 @@ const server = new App([
   new NoteRoutes(),
   new SyncRoutes(),
   new ChatRoutes(),
+  new WorkspaceChatRoutes(),
   new AiPlanningRoutes(),
   new ActivityHistoryRoutes(),
   new CommentRoutes(),

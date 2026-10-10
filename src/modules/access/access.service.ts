@@ -7,6 +7,7 @@ import ProjectModel, {
   type IProjectDocument,
 } from "../project/models/project.model.js";
 import ProjectMemberModel from "../project/models/project-member.model.js";
+import { getProjectById } from "../project/repositories/project.repository.js";
 import PromptMemberAccessModel from "./prompt-member-access.model.js";
 import {
   ADMIN_ROLES,
@@ -29,6 +30,13 @@ export interface WorkspaceAccess {
 
 const isId = (value: unknown): value is string =>
   typeof value === "string" && /^[a-f0-9]{24}$/i.test(value);
+
+const isUuid = (value: unknown): value is string =>
+  typeof value === "string" &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
+const isIdOrUuid = (value: unknown): value is string =>
+  isId(value) || isUuid(value);
 
 /** Resources outside the caller's workspace are reported as missing, never as forbidden. */
 const notFound = (what: string) =>
@@ -182,15 +190,17 @@ class AccessService {
     access: WorkspaceAccess,
     projectId: string,
   ): Promise<IProjectDocument> {
-    if (!isId(projectId)) throw notFound("Project");
-    const project = await ProjectModel.findOne({
-      _id: projectId,
-      workspaceId: access.workspaceId,
-    }).exec();
-    if (!project) throw notFound("Project");
+    if (!isIdOrUuid(projectId)) throw notFound("Project");
+    const project = await getProjectById(projectId);
+    if (
+      !project ||
+      String(project.workspaceId) !== String(access.workspaceId)
+    ) {
+      throw notFound("Project");
+    }
     if (!access.isAdmin) {
       const member = await ProjectMemberModel.exists({
-        projectId,
+        projectId: project._id,
         userId: access.userId,
       });
       if (!member) {
@@ -213,8 +223,8 @@ class AccessService {
     userId: string,
     projectId: string,
   ): Promise<{ access: WorkspaceAccess; project: IProjectDocument }> {
-    if (!isId(projectId)) throw notFound("Project");
-    const project = await ProjectModel.findById(projectId).exec();
+    if (!isIdOrUuid(projectId)) throw notFound("Project");
+    const project = await getProjectById(projectId);
     if (!project) throw notFound("Project");
     const workspaceId = await this.projectWorkspaceId(project);
     let access: WorkspaceAccess;

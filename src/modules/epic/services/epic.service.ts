@@ -1,4 +1,5 @@
 import type { IEpicDocument, EpicStatus } from "../models/epic.model.js";
+import type { IProjectDocument } from "../../project/models/project.model.js";
 import {
   createEpic,
   getEpicById,
@@ -50,26 +51,34 @@ class EpicService {
     projectId: string,
     payload: EpicPayload,
   ): Promise<EpicDto> {
-    await projectService.assertProjectMembership(userId, projectId);
+    const access = await projectService.assertProjectMembership(
+      userId,
+      projectId,
+    );
+    const resolvedProjectId = access.project._id.toString();
 
     const epic = await createEpic({
-      projectId,
+      projectId: resolvedProjectId,
       name: this.normalizeName(payload.name),
       description: this.normalizeOptionalText(payload.description),
       status: this.normalizeStatus(payload.status),
-      order: await getNextEpicOrder(projectId),
+      order: await getNextEpicOrder(resolvedProjectId),
     });
 
-    return this.toDto(epic);
+    return this.toDto(epic, access.project);
   }
 
   public async fetchProjectEpics(
     userId: string,
     projectId: string,
   ): Promise<EpicDto[]> {
-    await projectService.assertProjectMembership(userId, projectId);
-    const epics = await getEpicsByProject(projectId);
-    return epics.map((epic) => this.toDto(epic));
+    const access = await projectService.assertProjectMembership(
+      userId,
+      projectId,
+    );
+    const resolvedProjectId = access.project._id.toString();
+    const epics = await getEpicsByProject(resolvedProjectId);
+    return epics.map((epic) => this.toDto(epic, access.project));
   }
 
   public async updateEpic(
@@ -78,9 +87,13 @@ class EpicService {
     epicId: string,
     payload: EpicPayload,
   ): Promise<EpicDto> {
-    await projectService.assertProjectMembership(userId, projectId);
+    const access = await projectService.assertProjectMembership(
+      userId,
+      projectId,
+    );
+    const resolvedProjectId = access.project._id.toString();
 
-    const existingEpic = await getEpicByIdAndProject(epicId, projectId);
+    const existingEpic = await getEpicByIdAndProject(epicId, resolvedProjectId);
 
     if (existingEpic == null) {
       throw new HttpError(404, "Epic not found");
@@ -100,13 +113,13 @@ class EpicService {
       updates.status = this.normalizeStatus(payload.status);
     }
 
-    const epic = await updateEpic(epicId, projectId, updates);
+    const epic = await updateEpic(epicId, resolvedProjectId, updates);
 
     if (epic == null) {
       throw new HttpError(404, "Epic not found");
     }
 
-    return this.toDto(epic);
+    return this.toDto(epic, access.project);
   }
 
   public async deleteEpic(
@@ -114,9 +127,14 @@ class EpicService {
     projectId: string,
     epicId: string,
   ): Promise<IEpicDocument> {
-    await projectService.assertProjectOwnership(userId, projectId);
+    const access = await projectService.assertProjectRole(
+      userId,
+      projectId,
+      "ADMIN",
+    );
+    const resolvedProjectId = access.project._id.toString();
 
-    const deletedEpic = await deleteEpic(epicId, projectId);
+    const deletedEpic = await deleteEpic(epicId, resolvedProjectId);
 
     if (deletedEpic == null) {
       throw new HttpError(404, "Epic not found");
@@ -130,9 +148,13 @@ class EpicService {
     projectId: string,
     payload: ReorderEpicsInput,
   ): Promise<EpicDto[]> {
-    await projectService.assertProjectMembership(userId, projectId);
+    const access = await projectService.assertProjectMembership(
+      userId,
+      projectId,
+    );
+    const resolvedProjectId = access.project._id.toString();
 
-    const epics = await getEpicsByProject(projectId);
+    const epics = await getEpicsByProject(resolvedProjectId);
     const epicIds = this.normalizeEpicOrderPayload(payload.epicIds, epics);
 
     const updates: ReorderEpicPayload[] = epicIds.map((id, index) => ({
@@ -140,8 +162,8 @@ class EpicService {
       order: index,
     }));
 
-    const reordered = await reorderEpics(projectId, updates);
-    return reordered.map((epic) => this.toDto(epic));
+    const reordered = await reorderEpics(resolvedProjectId, updates);
+    return reordered.map((epic) => this.toDto(epic, access.project));
   }
 
   public async getEpicById(epicId: string): Promise<EpicDto | null> {
@@ -159,11 +181,19 @@ class EpicService {
       throw new HttpError(400, "Epic not found");
     }
 
-    if (epic.projectId.toString() !== projectId) {
+    const project = await projectService.getProjectById(projectId);
+    const resolvedProjectId = project ? project._id.toString() : projectId;
+    const projectUuid = project?.uuid;
+
+    if (
+      epic.projectId.toString() !== resolvedProjectId &&
+      epic.projectId.toString() !== projectId &&
+      epic.projectId.toString() !== projectUuid
+    ) {
       throw new HttpError(400, "Epic does not belong to the selected project");
     }
 
-    return this.toDto(epic);
+    return this.toDto(epic, project ?? undefined);
   }
 
   private normalizeEpicOrderPayload(
@@ -210,12 +240,15 @@ class EpicService {
     return epicIds;
   }
 
-  private toDto(epic: IEpicDocument): EpicDto {
+  private toDto(epic: IEpicDocument, project?: IProjectDocument): EpicDto {
+    const effectiveProjectId = project
+      ? project.uuid || project._id.toString()
+      : epic.projectId.toString();
     return {
       id: epic._id.toString(),
       name: epic.name,
       description: epic.description,
-      projectId: epic.projectId.toString(),
+      projectId: effectiveProjectId,
       status: epic.status ?? "planned",
       order: epic.order,
       createdAt: epic.createdAt,

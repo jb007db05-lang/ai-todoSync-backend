@@ -11,10 +11,11 @@ export const getProjectStates = async (
   try {
     const userId = req.user!._id.toString();
     const { id: projectId } = req.params as Record<string, string>;
-    await projectService.assertProjectMembership(userId, projectId);
-
-    const project = await ProjectModel.findById(projectId).lean();
-    if (!project) throw new AppError(404, "Project not found", "NOT_FOUND");
+    const access = await projectService.assertProjectMembership(
+      userId,
+      projectId,
+    );
+    const project = access.project;
 
     const states = (project.states ?? [])
       .slice()
@@ -33,15 +34,17 @@ export const createProjectState = async (
   try {
     const userId = req.user!._id.toString();
     const { id: projectId } = req.params as Record<string, string>;
-    await projectService.assertProjectRole(userId, projectId, "ADMIN");
+    const access = await projectService.assertProjectRole(
+      userId,
+      projectId,
+      "ADMIN",
+    );
+    const project = access.project;
 
     const { name, color, category, description } = req.body;
     if (!name?.trim()) {
       throw new AppError(400, "State name is required", "BAD_REQUEST");
     }
-
-    const project = await ProjectModel.findById(projectId);
-    if (!project) throw new AppError(404, "Project not found", "NOT_FOUND");
 
     const position = (project.states ?? []).length;
     const newState = {
@@ -71,12 +74,14 @@ export const updateProjectState = async (
   try {
     const userId = req.user!._id.toString();
     const { id: projectId, stateId } = req.params as Record<string, string>;
-    await projectService.assertProjectRole(userId, projectId, "ADMIN");
+    const access = await projectService.assertProjectRole(
+      userId,
+      projectId,
+      "ADMIN",
+    );
+    const project = access.project;
 
     const { name, color, category, description, position } = req.body;
-
-    const project = await ProjectModel.findById(projectId);
-    if (!project) throw new AppError(404, "Project not found", "NOT_FOUND");
 
     const state = (project.states ?? []).find(
       (s) => s._id?.toString() === stateId,
@@ -107,10 +112,12 @@ export const deleteProjectState = async (
   try {
     const userId = req.user!._id.toString();
     const { id: projectId, stateId } = req.params as Record<string, string>;
-    await projectService.assertProjectRole(userId, projectId, "ADMIN");
-
-    const project = await ProjectModel.findById(projectId);
-    if (!project) throw new AppError(404, "Project not found", "NOT_FOUND");
+    const access = await projectService.assertProjectRole(
+      userId,
+      projectId,
+      "ADMIN",
+    );
+    const project = access.project;
 
     const initialLength = (project.states ?? []).length;
     project.states = (project.states ?? []).filter(
@@ -139,14 +146,16 @@ export const reorderProjectStates = async (
     const { id: projectId } = req.params as Record<string, string>;
     const { stateIds } = req.body;
 
-    await projectService.assertProjectRole(userId, projectId, "ADMIN");
+    const access = await projectService.assertProjectRole(
+      userId,
+      projectId,
+      "ADMIN",
+    );
+    const project = access.project;
 
     if (!Array.isArray(stateIds)) {
       throw new AppError(400, "stateIds array is required", "BAD_REQUEST");
     }
-
-    const project = await ProjectModel.findById(projectId);
-    if (!project) throw new AppError(404, "Project not found", "NOT_FOUND");
 
     stateIds.forEach((stateId: string, index: number) => {
       const state = (project.states ?? []).find(

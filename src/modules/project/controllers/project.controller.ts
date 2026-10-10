@@ -96,6 +96,34 @@ class ProjectController {
     }
   };
 
+  public getProject = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const user = req.user;
+
+      if (user == null) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+
+      const projectId = getRouteParam(req.params.id);
+      const project = await projectService.getProject(
+        projectId,
+        user._id.toString(),
+      );
+
+      res.status(200).json({
+        message: "Project fetched",
+        data: { project },
+      });
+    } catch (error) {
+      const status = (error as any).status || 500;
+      res.status(status).json({ error: (error as Error).message });
+    }
+  };
+
   public updateProject = async (
     req: AuthenticatedRequest,
     res: Response,

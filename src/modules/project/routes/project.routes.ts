@@ -51,6 +51,7 @@ class ProjectRoutes implements Routes {
       requireProjectRole("ADMIN"),
       projectController.removeMember,
     );
+    this.router.get("/:id", isProjectMember, projectController.getProject);
     this.router.patch("/:id", isProjectMember, projectController.updateProject);
     this.router.delete(
       "/:id",
