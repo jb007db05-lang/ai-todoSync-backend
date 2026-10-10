@@ -2,9 +2,10 @@ import type { Document, Types } from "mongoose";
 import { Schema, model } from "mongoose";
 
 export interface IInvitation {
-  projectId: Types.ObjectId | string;
+  workspaceId?: Types.ObjectId | string;
+  projectId?: Types.ObjectId | string;
   email: string;
-  role: "ADMIN" | "MEMBER";
+  role: string;
   token: string;
   status: "PENDING" | "ACCEPTED" | "REJECTED";
   invitedBy: Types.ObjectId | string;
@@ -16,9 +17,14 @@ export interface IInvitationDocument extends IInvitation, Document {}
 
 const invitationSchema = new Schema<IInvitationDocument>(
   {
+    workspaceId: {
+      type: Schema.Types.ObjectId,
+      required: false,
+      ref: "Workspace",
+    },
     projectId: {
       type: Schema.Types.ObjectId,
-      required: true,
+      required: false,
       ref: "Project",
     },
     email: {
@@ -29,7 +35,6 @@ const invitationSchema = new Schema<IInvitationDocument>(
     },
     role: {
       type: String,
-      enum: ["ADMIN", "MEMBER"],
       required: true,
       default: "MEMBER",
     },
@@ -53,8 +58,8 @@ const invitationSchema = new Schema<IInvitationDocument>(
   { timestamps: true },
 );
 
-invitationSchema.index({ projectId: 1, email: 1 }, { unique: true });
-// token is already indexed by `unique: true` on the field.
+invitationSchema.index({ workspaceId: 1, email: 1 });
+invitationSchema.index({ projectId: 1, email: 1 });
 
 const InvitationModel = model<IInvitationDocument>(
   "Invitation",

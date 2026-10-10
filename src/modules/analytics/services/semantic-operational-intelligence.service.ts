@@ -1,4 +1,5 @@
 import type { PipelineStage } from "mongoose";
+import accessService from "../../access/access.service.js";
 import { Types } from "mongoose";
 
 import OperationalAnalyticsEventModel from "../models/operational-analytics-event.model.js";
@@ -22,6 +23,8 @@ export interface IntelligenceQueryInput {
   filters?: MetricScopeFilters;
   timeRange?: TimeRange;
   period?: RollupPeriod;
+  /** Active workspace; analytics only cover its projects the caller can open. */
+  workspaceId?: string;
 }
 
 interface IntelligenceScope {
@@ -482,8 +485,12 @@ class SemanticOperationalIntelligenceService {
     return { trends: rows, generatedAt: new Date().toISOString() };
   }
 
-  public async lineage(userId: string, metricName: string) {
-    await this.assertAnyAnalyticsScope(userId);
+  public async lineage(
+    userId: string,
+    metricName: string,
+    workspaceId?: string,
+  ) {
+    await this.assertAnyAnalyticsScope(userId, workspaceId);
     const metric = this.normalizeMetric(metricName);
     return {
       metric,
@@ -502,8 +509,12 @@ class SemanticOperationalIntelligenceService {
     };
   }
 
-  public async governance(userId: string, metricName: string) {
-    await this.assertAnyAnalyticsScope(userId);
+  public async governance(
+    userId: string,
+    metricName: string,
+    workspaceId?: string,
+  ) {
+    await this.assertAnyAnalyticsScope(userId, workspaceId);
     const metric = this.normalizeMetric(metricName);
     const audits = await SemanticGovernanceAuditModel.find({ metric })
       .sort({ createdAt: -1 })
@@ -943,17 +954,8 @@ class SemanticOperationalIntelligenceService {
     const timeRange = this.normalizeTimeRange(input.timeRange);
     const filters = this.validateFilters(input.filters);
     const { startDate, endDate } = this.resolveTimeRange(timeRange);
-    const memberships = await ProjectMemberModel.find({ userId }).lean().exec();
-    const ownedProjects = await ProjectModel.find({ userId })
-      .select("_id")
-      .lean()
-      .exec();
-    const accessibleProjectIds = [
-      ...new Set([
-        ...memberships.map((membership) => membership.projectId.toString()),
-        ...ownedProjects.map((project) => project._id.toString()),
-      ]),
-    ];
+    const { projectIds: accessibleProjectIds } =
+      await accessService.projectScope(userId, input.workspaceId);
 
     if (
       filters.projectId &&
@@ -2286,13 +2288,12 @@ class SemanticOperationalIntelligenceService {
     return Math.max(0, Math.min(100, Number(value.toFixed(2))));
   }
 
-  private async assertAnyAnalyticsScope(userId: string) {
-    const [membership, project] = await Promise.all([
-      ProjectMemberModel.exists({ userId }),
-      ProjectModel.exists({ userId }),
-    ]);
-
-    if (!membership && !project) {
+  private async assertAnyAnalyticsScope(userId: string, workspaceId?: string) {
+    const { projectIds } = await accessService.projectScope(
+      userId,
+      workspaceId,
+    );
+    if (projectIds.length === 0) {
       throw new HttpError(403, "No analytics scope available");
     }
   }

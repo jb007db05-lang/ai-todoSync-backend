@@ -8,7 +8,11 @@ import {
   type GuideType,
   type TourStep,
 } from "../engagement/types.js";
-import { validateTargetingRuleGroup } from "../targeting/validators.js";
+import {
+  validateFrequencyRules,
+  validateScheduleRules,
+  validateTargetingRuleGroup,
+} from "../targeting/validators.js";
 import type { CreateGuideDto, GuideQueryDto, UpdateGuideDto } from "./dtos.js";
 
 const asRecord = (value: unknown): Record<string, unknown> => {
@@ -19,9 +23,33 @@ const asRecord = (value: unknown): Record<string, unknown> => {
   return value as Record<string, unknown>;
 };
 
+const MAX_TITLE_LENGTH = 200;
+const MAX_STEPS = 50;
+
+const assertTitle = (value: unknown): string => {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new AppError(400, "Guide title is required", "INVALID_TITLE");
+  }
+  if (value.trim().length > MAX_TITLE_LENGTH) {
+    throw new AppError(
+      400,
+      `Guide title must be at most ${MAX_TITLE_LENGTH} characters`,
+      "INVALID_TITLE",
+    );
+  }
+  return value.trim();
+};
+
 const normalizeSteps = (value: unknown): TourStep[] => {
   if (!Array.isArray(value)) {
     return [];
+  }
+  if (value.length > MAX_STEPS) {
+    throw new AppError(
+      400,
+      `A guide can have at most ${MAX_STEPS} steps`,
+      "INVALID_STEPS",
+    );
   }
 
   return value.map((step, index) => {
@@ -70,17 +98,14 @@ const normalizeSteps = (value: unknown): TourStep[] => {
 
 export const validateCreateGuideDto = (body: unknown): CreateGuideDto => {
   const record = asRecord(body);
-
-  if (typeof record.title !== "string" || record.title.trim().length === 0) {
-    throw new AppError(400, "Guide title is required", "INVALID_TITLE");
-  }
+  const title = assertTitle(record.title);
 
   if (!GUIDE_TYPES.includes(record.type as GuideType)) {
     throw new AppError(400, "Guide type is invalid", "INVALID_TYPE");
   }
 
   return {
-    title: record.title.trim(),
+    title,
     description:
       typeof record.description === "string"
         ? record.description.trim()
@@ -102,11 +127,11 @@ export const validateCreateGuideDto = (body: unknown): CreateGuideDto => {
         : null,
     frequencyRules:
       typeof record.frequencyRules === "object" && record.frequencyRules != null
-        ? (record.frequencyRules as CreateGuideDto["frequencyRules"])
+        ? validateFrequencyRules(record.frequencyRules)
         : { showOncePerSession: true },
     scheduleRules:
       typeof record.scheduleRules === "object" && record.scheduleRules != null
-        ? (record.scheduleRules as CreateGuideDto["scheduleRules"])
+        ? validateScheduleRules(record.scheduleRules)
         : {},
     steps: normalizeSteps(record.steps),
     metadata:
@@ -121,10 +146,7 @@ export const validateUpdateGuideDto = (body: unknown): UpdateGuideDto => {
   const dto: UpdateGuideDto = {};
 
   if ("title" in record) {
-    if (typeof record.title !== "string" || record.title.trim().length === 0) {
-      throw new AppError(400, "Guide title is required", "INVALID_TITLE");
-    }
-    dto.title = record.title.trim();
+    dto.title = assertTitle(record.title);
   }
 
   if ("description" in record) {
@@ -170,14 +192,14 @@ export const validateUpdateGuideDto = (body: unknown): UpdateGuideDto => {
   if ("frequencyRules" in record) {
     dto.frequencyRules =
       typeof record.frequencyRules === "object" && record.frequencyRules != null
-        ? (record.frequencyRules as CreateGuideDto["frequencyRules"])
+        ? validateFrequencyRules(record.frequencyRules)
         : {};
   }
 
   if ("scheduleRules" in record) {
     dto.scheduleRules =
       typeof record.scheduleRules === "object" && record.scheduleRules != null
-        ? (record.scheduleRules as CreateGuideDto["scheduleRules"])
+        ? validateScheduleRules(record.scheduleRules)
         : {};
   }
 

@@ -29,6 +29,11 @@ export const requireSdkIntegrationAccess = async (
       return;
     }
 
+    if (!/^[a-f0-9]{24}$/i.test(String(integrationId))) {
+      res.status(404).json({ error: "SDK integration not found" });
+      return;
+    }
+
     const integration = await SdkIntegrationModel.findOne({
       _id: integrationId,
       tenantId: userId,

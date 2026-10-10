@@ -27,6 +27,7 @@
     "migrate:polymorphic-notes": "tsx src/scripts/migrations/backfillPolymorphicNotes.ts",
     "migrate:sla": "tsx src/scripts/migrations/backfillSlaFields.ts",
     "migrate:audit-priority": "tsx src/scripts/migrations/backfillAuditAndPriority.ts",
+    "migrate:workspace-isolation": "tsx src/scripts/migrations/backfillWorkspaceIsolation.ts",
     "type-check": "tsc --noEmit",
     "depcheck": "depcheck",
     "jscpd": "jscpd",
@@ -35,6 +36,8 @@
     "db:indexes": "tsx src/scripts/migrations/syncIndexes.ts",
     "test:unit": "tsx --test \"tests/unit/*.test.ts\"",
     "test:e2e": "tsx tests/e2e/run-e2e.ts",
+    "test:smoke": "tsx tests/e2e/smoke-hardening.ts",
+    "test:access": "tsx tests/e2e/workspace-access.ts",
     "test:catalog": "tsx tests/catalog/generate-catalog.ts",
     "test:all": "npm run test:engagement && npm run test:unit"
   },

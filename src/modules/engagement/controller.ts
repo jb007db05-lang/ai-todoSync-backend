@@ -12,45 +12,54 @@ import {
   validateRuntimeEvaluationDto,
 } from "./validators.js";
 import logger from "../../lib/logger.js";
+import { isObjectId } from "./lifecycle.js";
 import {
   parseEnvironment,
   type DataEnvironment,
 } from "../../shared/environment.js";
+
+/**
+ * The integration a request acts on. SDK keys carry their integration. Portal
+ * (JWT) users may name one of their own integrations; anything else falls
+ * back to their first integration, so a foreign or stale id can never be used
+ * to read or write another tenant's engagement data.
+ */
+const resolveIntegrationId = async (
+  req: Request,
+  tenantId: string,
+  requested: unknown,
+): Promise<string> => {
+  const fromKey = req.sdkIntegration?._id?.toString();
+  if (fromKey) return fromKey;
+  // Legacy analytics keys have no integration; their events go through the key.
+  if (req.apiKeyId) return "";
+
+  try {
+    if (isObjectId(requested)) {
+      const owned = await sdkIntegrationService.getOne(tenantId, requested);
+      if (owned) return owned._id.toString();
+    }
+    const integrations = await sdkIntegrationService.listByTenant(tenantId);
+    return integrations[0]?._id?.toString() ?? "";
+  } catch (err) {
+    logger.warn("Engagement: failed to resolve sdkIntegrationId", {
+      tenantId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return "";
+  }
+};
 
 class EngagementController {
   public runtime = async (req: Request, res: Response): Promise<void> => {
     try {
       const tenantId = getTenantIdFromRequest(req);
       const dto = validateRuntimeEvaluationDto(req.body);
-
-      // Resolve sdkIntegrationId: SDK key sets req.sdkIntegration directly.
-      // For JWT portal users, prefer body-supplied id then fall back to the
-      // tenant's first active integration so guides/surveys are always found.
-      let sdkIntegrationId =
-        req.sdkIntegration?._id?.toString() ??
-        (typeof dto.sdkIntegrationId === "string" ? dto.sdkIntegrationId : "");
-
-      if (!sdkIntegrationId) {
-        try {
-          const integrations =
-            await sdkIntegrationService.listByTenant(tenantId);
-          sdkIntegrationId = integrations[0]?._id?.toString() ?? "";
-          if (sdkIntegrationId) {
-            logger.info("Runtime: resolved sdkIntegrationId from tenant", {
-              tenantId,
-              sdkIntegrationId,
-            });
-          }
-        } catch (err) {
-          logger.warn(
-            "Runtime: failed to resolve sdkIntegrationId from tenant",
-            {
-              tenantId,
-              err: err instanceof Error ? err.message : String(err),
-            },
-          );
-        }
-      }
+      const sdkIntegrationId = await resolveIntegrationId(
+        req,
+        tenantId,
+        dto.sdkIntegrationId,
+      );
 
       // The key decides the environment for SDK traffic; portal (JWT) users
       // may ask for sandbox to preview drafts.
@@ -132,18 +141,24 @@ class EngagementController {
   public track = async (req: Request, res: Response): Promise<void> => {
     try {
       const tenantId = getTenantIdFromRequest(req);
-      const sdkIntegrationId = req.sdkIntegration?._id?.toString() ?? "";
+      const body = req.body as Record<string, unknown> | undefined;
+      const dto = validateEngagementTrackDto(req.body);
+      // Exposures must be recorded under the same integration the runtime
+      // evaluated, or frequency caps never see dismissals and completions.
+      const sdkIntegrationId = await resolveIntegrationId(
+        req,
+        tenantId,
+        body?.sdkIntegrationId,
+      );
       const environment: DataEnvironment = req.sdkIntegration
         ? (req.sdkEnvironment ?? "live")
-        : parseEnvironment(
-            (req.body as Record<string, unknown> | undefined)?.environment,
-          );
+        : parseEnvironment(body?.environment);
       const result = await engagementService.recordInteraction({
         tenantId,
         sdkIntegrationId,
         environment,
         actorUserId: req.user?._id?.toString(),
-        dto: validateEngagementTrackDto(req.body),
+        dto,
       });
       res.status(200).json({ data: result });
     } catch (error) {
@@ -154,16 +169,22 @@ class EngagementController {
   public mtu = async (req: Request, res: Response): Promise<void> => {
     try {
       const tenantId = getTenantIdFromRequest(req);
-      const integrations = await sdkIntegrationService.listByTenant(tenantId);
-      const sdkIntegrationId =
-        req.sdkIntegration?._id?.toString() ??
-        integrations[0]?._id?.toString() ??
-        "";
+      const sdkIntegrationId = await resolveIntegrationId(
+        req,
+        tenantId,
+        req.query.sdkIntegrationId,
+      );
       const now = new Date();
       const month =
         typeof req.query.month === "string"
           ? req.query.month
           : `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+        res
+          .status(400)
+          .json({ error: "month must be YYYY-MM", code: "INVALID_MONTH" });
+        return;
+      }
       const count = await engagementService.countMtu(sdkIntegrationId, month);
       res.status(200).json({ data: { month, mtu: count } });
     } catch (error) {

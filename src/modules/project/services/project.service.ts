@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type { IProjectDocument } from "../models/project.model.js";
 import type { ProjectRole } from "../models/project-member.model.js";
 import {
@@ -5,13 +6,13 @@ import {
   searchUsersByEmail,
 } from "../../../modules/auth/repositories/auth.repository.js";
 import {
-  countProjectsByUser,
+  countProjectsByIds,
   createProject,
   deleteProjectWithRelations,
   deleteProjectsWithRelations,
   getProjectById,
   getProjectByName,
-  getProjectsByUser,
+  getProjectsByIds,
   updateProject,
 } from "../../../modules/project/repositories/project.repository.js";
 import {
@@ -25,9 +26,14 @@ import {
 import { clearTaskAssignmentsForUser } from "../../task/repositories/task.repository.js";
 import { runInTransaction } from "../../../utils/transaction.js";
 import operationalAnalyticsService from "../../analytics/services/operational-analytics.service.js";
+import accessService, {
+  type WorkspaceAccess,
+} from "../../access/access.service.js";
+import type { PermissionKey } from "../../access/permissions.js";
 
 interface ProjectDto {
   id: string;
+  uuid?: string;
   name: string;
   description?: string;
   userId: string;
@@ -95,6 +101,8 @@ interface PaginatedProjects {
 interface ProjectAccess {
   project: IProjectDocument;
   role: ProjectRole;
+  /** The caller's role and permissions in the project's workspace. */
+  workspaceAccess: WorkspaceAccess;
 }
 
 class HttpError extends Error {
@@ -108,10 +116,18 @@ class HttpError extends Error {
 }
 
 class ProjectService {
+  /**
+   * Creates a project in the caller's workspace (their default workspace for
+   * clients that do not send one, e.g. the sync API).
+   */
   public async createProject(
     userId: string,
     payload: ProjectPayload,
+    workspaceAccess?: WorkspaceAccess,
   ): Promise<ProjectDto> {
+    const access =
+      workspaceAccess ?? (await accessService.resolveDefault(userId));
+    accessService.require(access, "project.create");
     const name = this.normalizeName(payload.name);
     const description =
       typeof payload.description === "string"
@@ -121,7 +137,7 @@ class ProjectService {
     try {
       const project = await runInTransaction(async (session) => {
         const newProject = await createProject(
-          { userId, name, description },
+          { userId, workspaceId: access.workspaceId, name, description },
           session,
         );
 
@@ -162,24 +178,21 @@ class ProjectService {
     return getProjectById(projectId);
   }
 
-  public async fetchProjects(userId: string): Promise<ProjectDto[]> {
-    const [projects, memberships] = await Promise.all([
-      getProjectsByUser({ userId }),
-      getProjectMembershipsByUser(userId),
+  /** Projects in the workspace the caller can open (all of them for admins). */
+  public async fetchProjects(
+    userId: string,
+    workspaceAccess?: WorkspaceAccess,
+  ): Promise<ProjectDto[]> {
+    const access =
+      workspaceAccess ?? (await accessService.resolveDefault(userId));
+    const projectIds = await accessService.accessibleProjectIds(access);
+    const [projects, roles] = await Promise.all([
+      getProjectsByIds({ projectIds }),
+      this.rolesFor(access),
     ]);
-    const membershipByProject = new Map(
-      memberships.map((membership) => [
-        membership.projectId.toString(),
-        membership.role,
-      ]),
+    return projects.map((project) =>
+      this.toDto(project, roles(project._id.toString())),
     );
-
-    return projects
-      .map((project) => {
-        const role = membershipByProject.get(project._id.toString());
-        return role ? this.toDto(project, role) : null;
-      })
-      .filter((project): project is ProjectDto => project != null);
   }
 
   public async fetchProjectsPaginated(
@@ -187,27 +200,22 @@ class ProjectService {
     page: number,
     limit: number,
     search?: string,
+    workspaceAccess?: WorkspaceAccess,
   ): Promise<PaginatedProjects> {
+    const access =
+      workspaceAccess ?? (await accessService.resolveDefault(userId));
+    const projectIds = await accessService.accessibleProjectIds(access);
     const skip = (page - 1) * limit;
-    const [projects, total, memberships] = await Promise.all([
-      getProjectsByUser({ userId, search, skip, limit }),
-      countProjectsByUser(userId, search),
-      getProjectMembershipsByUser(userId),
+    const [projects, total, roles] = await Promise.all([
+      getProjectsByIds({ projectIds, search, skip, limit }),
+      countProjectsByIds({ projectIds, search }),
+      this.rolesFor(access),
     ]);
-    const membershipByProject = new Map(
-      memberships.map((membership) => [
-        membership.projectId.toString(),
-        membership.role,
-      ]),
-    );
 
     return {
-      projects: projects
-        .map((project) => {
-          const role = membershipByProject.get(project._id.toString());
-          return role ? this.toDto(project, role) : null;
-        })
-        .filter((project): project is ProjectDto => project != null),
+      projects: projects.map((project) =>
+        this.toDto(project, roles(project._id.toString())),
+      ),
       total,
       page,
       limit,
@@ -220,7 +228,11 @@ class ProjectService {
     userId: string,
     payload: ProjectPayload,
   ): Promise<ProjectDto> {
-    const access = await this.assertProjectRole(userId, projectId, "ADMIN");
+    const access = await this.assertProjectPermission(
+      userId,
+      projectId,
+      "project.update",
+    );
     const updates: ProjectPayload = {};
 
     if (Object.prototype.hasOwnProperty.call(payload, "name")) {
@@ -251,7 +263,7 @@ class ProjectService {
     projectId: string,
     userId: string,
   ): Promise<IProjectDocument> {
-    await this.assertProjectOwnership(userId, projectId);
+    await this.assertProjectPermission(userId, projectId, "project.delete");
     const project = await deleteProjectWithRelations(projectId);
 
     if (project == null) {
@@ -271,7 +283,7 @@ class ProjectService {
 
     await Promise.all(
       projectIds.map((projectId) =>
-        this.assertProjectRole(userId, projectId, "ADMIN"),
+        this.assertProjectPermission(userId, projectId, "project.delete"),
       ),
     );
 
@@ -304,10 +316,19 @@ class ProjectService {
     projectId: string,
     payload: AddProjectMemberPayload,
   ): Promise<ProjectMemberDto> {
-    await this.assertProjectRole(actorUserId, projectId, "ADMIN");
+    const { workspaceAccess } = await this.assertProjectRole(
+      actorUserId,
+      projectId,
+      "ADMIN",
+    );
     const targetUserId = this.normalizeIdentifier(
       payload.userId,
       "User id is required",
+    );
+    // Members join the workspace first; project access is granted inside it.
+    await accessService.assertWorkspaceMember(
+      workspaceAccess.workspaceId,
+      targetUserId,
     );
     const [user, existingMembership] = await Promise.all([
       findUserById(targetUserId),
@@ -327,6 +348,7 @@ class ProjectService {
         projectId,
         userId: targetUserId,
         role: "MEMBER",
+        grantedBy: actorUserId,
       });
 
       return {
@@ -399,6 +421,18 @@ class ProjectService {
     }
   }
 
+  /** Project role lookup for list views: workspace admins act as project admins. */
+  private async rolesFor(
+    access: WorkspaceAccess,
+  ): Promise<(projectId: string) => ProjectRole> {
+    if (access.isAdmin) return () => "ADMIN";
+    const memberships = await getProjectMembershipsByUser(access.userId);
+    const roles = new Map(
+      memberships.map((m) => [m.projectId.toString(), m.role]),
+    );
+    return (projectId) => roles.get(projectId) ?? "MEMBER";
+  }
+
   public async searchRegisteredUsersByEmail(
     query: unknown,
   ): Promise<UserSearchDto[]> {
@@ -414,27 +448,36 @@ class ProjectService {
     }));
   }
 
+  /**
+   * The single gate for project-scoped work (tasks, notes, epics, docs, chat,
+   * AI planning, sync). The caller must belong to the project's workspace
+   * (otherwise the project "does not exist": 404) and either be a member of
+   * the project or a workspace admin (who acts as project admin).
+   */
   public async getProjectAccess(
     userId: string,
     projectId: string,
   ): Promise<ProjectAccess> {
-    const [project, membership] = await Promise.all([
-      getProjectById(projectId),
-      getProjectMembership(projectId, userId),
-    ]);
+    const { access, project } = await accessService.resolveForProject(
+      userId,
+      projectId,
+    );
+    const membership = await getProjectMembership(projectId, userId);
+    const role: ProjectRole = access.isAdmin
+      ? "ADMIN"
+      : (membership?.role ?? "MEMBER");
+    return { project, role, workspaceAccess: access };
+  }
 
-    if (project == null) {
-      throw new HttpError(404, "Project not found");
-    }
-
-    if (membership == null) {
-      throw new HttpError(403, "Project access denied");
-    }
-
-    return {
-      project,
-      role: membership.role,
-    };
+  /** Project access plus a workspace permission flag. */
+  public async assertProjectPermission(
+    userId: string,
+    projectId: string,
+    ...permissions: PermissionKey[]
+  ): Promise<ProjectAccess> {
+    const access = await this.getProjectAccess(userId, projectId);
+    accessService.require(access.workspaceAccess, ...permissions);
+    return access;
   }
 
   public async assertProjectMembership(
@@ -522,11 +565,14 @@ class ProjectService {
       return existingProject;
     }
 
+    // Sync clients have no workspace context: their default workspace.
+    const workspaceId = await accessService.defaultWorkspaceId(userId);
     try {
       const project = await runInTransaction(async (session) => {
         const newProject = await createProject(
           {
             userId,
+            workspaceId,
             name,
           },
           session,
@@ -565,8 +611,16 @@ class ProjectService {
     currentUserRole: ProjectRole,
   ): ProjectDto {
     const creatorUser = project.userId as any;
+    const effectiveUuid = project.uuid || project._id.toString();
+
+    if (!project.uuid) {
+      project.uuid = crypto.randomUUID();
+      void project.save().catch(() => {});
+    }
+
     const dto: ProjectDto = {
-      id: project._id.toString(),
+      id: effectiveUuid,
+      uuid: effectiveUuid,
       name: project.name,
       description: project.description,
       userId: creatorUser?._id

@@ -9,8 +9,52 @@ import {
   escapeRegex,
   parseEnvironment,
 } from "../../../shared/environment.js";
-import { isAppError } from "../../../utils/app-error.js";
+import { AppError, isAppError } from "../../../utils/app-error.js";
 import logger from "../../../lib/logger.js";
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * createdAt filter for startDate/endDate query values. Date-only values cover
+ * whole UTC days; anything unparseable is a 400 rather than a database error.
+ */
+const createdAtRange = (
+  startDate: unknown,
+  endDate: unknown,
+): Record<string, Date> | undefined => {
+  const parse = (value: unknown, edge: "start" | "end"): Date | undefined => {
+    if (value === undefined || value === null || value === "") return undefined;
+    const raw = String(value);
+    const date = DATE_ONLY.test(raw)
+      ? new Date(
+          `${raw}T${edge === "start" ? "00:00:00.000" : "23:59:59.999"}Z`,
+        )
+      : new Date(raw);
+    if (Number.isNaN(date.getTime())) {
+      throw new AppError(
+        400,
+        `${edge === "start" ? "startDate" : "endDate"} must be a valid date`,
+        "INVALID_DATE",
+      );
+    }
+    return date;
+  };
+  const from = parse(startDate, "start");
+  const to = parse(endDate, "end");
+  if (!from && !to) return undefined;
+  return { ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : {}) };
+};
+
+/** Event names for many registry ids in one query (instead of one per log). */
+const eventNamesById = async (ids: string[]): Promise<Map<string, string>> => {
+  const unique = [...new Set(ids)].filter((id) => /^[a-f0-9]{24}$/i.test(id));
+  if (unique.length === 0) return new Map();
+  const rows = await AnalyticsEventRegistryModel.find({ _id: { $in: unique } })
+    .select({ eventName: 1 })
+    .lean()
+    .exec();
+  return new Map(rows.map((row) => [row._id.toString(), row.eventName]));
+};
 
 class AnalyticsDataController {
   private parsePagination(req: Request) {
@@ -82,6 +126,7 @@ class AnalyticsDataController {
     try {
       const { apiKeyId, sdkIntegrationId, eventName, startDate, endDate } =
         req.query;
+      const range = createdAtRange(startDate, endDate);
 
       const tenantId = req.user?._id?.toString();
       let query: Record<string, unknown> = {};
@@ -129,17 +174,7 @@ class AnalyticsDataController {
           const logQuery: Record<string, unknown> = sdkIntegrationId
             ? { sdkIntegrationId, eventRef: event._id.toString(), ...envFilter }
             : this.buildEventRefQuery(apiKeyId as string, event._id.toString());
-          if (startDate || endDate) {
-            logQuery.createdAt = {};
-            if (startDate)
-              (logQuery.createdAt as Record<string, Date>).$gte = new Date(
-                startDate as string,
-              );
-            if (endDate)
-              (logQuery.createdAt as Record<string, Date>).$lte = new Date(
-                endDate as string,
-              );
-          }
+          if (range) logQuery.createdAt = range;
           const count = await AnalyticsLogModel.countDocuments(logQuery);
           return {
             id: event._id,
@@ -273,13 +308,12 @@ class AnalyticsDataController {
         .exec();
 
       // Enrich logs with event names
+      const names = await eventNamesById(
+        logs.map((log) => this.resolveEventRef(log)),
+      );
       const enrichedLogs = await Promise.all(
         logs.map(async (log) => {
-          const event = await AnalyticsEventRegistryModel.findById(
-            this.resolveEventRef(log),
-          )
-            .lean()
-            .exec();
+          const event = { eventName: names.get(this.resolveEventRef(log)) };
           return {
             ...log,
             eventId: this.resolveEventRef(log),
@@ -378,19 +412,8 @@ class AnalyticsDataController {
         ];
       }
 
-      if (startDate || endDate) {
-        query.createdAt = {};
-        if (startDate) {
-          (query.createdAt as Record<string, Date>).$gte = new Date(
-            startDate as string,
-          );
-        }
-        if (endDate) {
-          const end = new Date(endDate as string);
-          end.setHours(23, 59, 59, 999);
-          (query.createdAt as Record<string, Date>).$lte = end;
-        }
-      }
+      const range = createdAtRange(startDate, endDate);
+      if (range) query.createdAt = range;
 
       // Fetch logs
       const logs = await AnalyticsLogModel.find(query)
@@ -403,13 +426,12 @@ class AnalyticsDataController {
       const total = await AnalyticsLogModel.countDocuments(query);
 
       // Enrich logs with event names from registry
+      const names = await eventNamesById(
+        logs.map((log) => this.resolveEventRef(log)),
+      );
       const enrichedLogs = await Promise.all(
         logs.map(async (log) => {
-          const event = await AnalyticsEventRegistryModel.findById(
-            this.resolveEventRef(log),
-          )
-            .lean()
-            .exec();
+          const event = { eventName: names.get(this.resolveEventRef(log)) };
           return {
             _id: log._id,
             userId: log.userIdentifier || "-",
@@ -454,6 +476,7 @@ class AnalyticsDataController {
         req.sdkIntegration?._id?.toString() ?? req.params.sdkIntegrationId;
       const { eventName, startDate, endDate } = req.query;
       const environment = parseEnvironment(req.query.environment);
+      const range = createdAtRange(startDate, endDate);
 
       const query: Record<string, unknown> = { sdkIntegrationId };
       const eventNames = this.parseEventNames(req.query.eventNames);
@@ -477,17 +500,7 @@ class AnalyticsDataController {
               { eventRef: { $exists: false }, eventId: event._id.toString() },
             ],
           };
-          if (startDate || endDate) {
-            logQuery.createdAt = {};
-            if (startDate)
-              (logQuery.createdAt as Record<string, Date>).$gte = new Date(
-                startDate as string,
-              );
-            if (endDate)
-              (logQuery.createdAt as Record<string, Date>).$lte = new Date(
-                endDate as string,
-              );
-          }
+          if (range) logQuery.createdAt = range;
           const count = await AnalyticsLogModel.countDocuments(logQuery);
           return {
             id: event._id,
@@ -591,18 +604,8 @@ class AnalyticsDataController {
         ];
       }
 
-      if (startDate || endDate) {
-        query.createdAt = {};
-        if (startDate)
-          (query.createdAt as Record<string, Date>).$gte = new Date(
-            startDate as string,
-          );
-        if (endDate) {
-          const end = new Date(endDate as string);
-          end.setHours(23, 59, 59, 999);
-          (query.createdAt as Record<string, Date>).$lte = end;
-        }
-      }
+      const range = createdAtRange(startDate, endDate);
+      if (range) query.createdAt = range;
 
       const logs = await AnalyticsLogModel.find(query)
         .sort({ createdAt: -1 })
@@ -613,13 +616,12 @@ class AnalyticsDataController {
 
       const total = await AnalyticsLogModel.countDocuments(query);
 
+      const names = await eventNamesById(
+        logs.map((log) => this.resolveEventRef(log)),
+      );
       const enrichedLogs = await Promise.all(
         logs.map(async (log) => {
-          const event = await AnalyticsEventRegistryModel.findById(
-            this.resolveEventRef(log),
-          )
-            .lean()
-            .exec();
+          const event = { eventName: names.get(this.resolveEventRef(log)) };
           return {
             _id: log._id,
             userId: log.userIdentifier || "-",

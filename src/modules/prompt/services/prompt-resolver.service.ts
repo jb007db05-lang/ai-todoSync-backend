@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { recordPromptUse } from "./prompt-usage.service.js";
 import mongoose from "mongoose";
 import PromptDeploymentModel from "../models/prompt-deployment.model.js";
 import PromptLibraryModel from "../models/prompt-library.model.js";
@@ -134,6 +135,7 @@ export class PromptResolverService {
         }
       }
 
+      recordPromptUse(rootId);
       return {
         content: renderFeatureTemplate(template, { ...defaults, ...values }),
         source: useCanary ? "canary" : "production",

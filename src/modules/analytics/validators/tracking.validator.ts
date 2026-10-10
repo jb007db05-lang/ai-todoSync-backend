@@ -1,6 +1,13 @@
 const MAX_EVENT_BYTES = 32 * 1024;
 const MAX_BATCH_BYTES = 256 * 1024;
 const MAX_BATCH_SIZE = 100;
+const MAX_EVENT_NAME_LENGTH = 255;
+/** Real-time ingestion only accepts recent events (Mixpanel: 5 days). */
+export const MAX_EVENT_AGE_MS = 5 * 24 * 60 * 60 * 1000;
+/** Clock skew tolerated for events stamped in the future. */
+export const MAX_FUTURE_SKEW_MS = 60 * 60 * 1000;
+/** Imports reject anything before this (Mixpanel: 1971-01-01). */
+export const MIN_IMPORT_TIME_MS = Date.UTC(1971, 0, 1);
 
 type JsonRecord = Record<string, unknown>;
 
@@ -15,6 +22,7 @@ export interface RawTrackingEvent {
   context?: JsonRecord;
   timestamp?: string | number | Date;
   type?: string;
+  insertId?: string;
 }
 
 export interface NormalizedTrackingEvent {
@@ -107,16 +115,28 @@ export const validateBatchBody = (value: unknown): RawTrackingEvent[] => {
   );
 };
 
+/** Parses an event timestamp; unparseable values are a client error, not a 500. */
+const parseTimestamp = (
+  value: RawTrackingEvent["timestamp"],
+): string | undefined => {
+  if (value === undefined || value === null || value === "") return undefined;
+  const date =
+    value instanceof Date
+      ? value
+      : typeof value === "string" || typeof value === "number"
+        ? new Date(value)
+        : null;
+  if (!date || Number.isNaN(date.getTime())) {
+    throw new TrackingValidationError("timestamp must be a valid date");
+  }
+  return date.toISOString();
+};
+
 const buildPayload = (event: RawTrackingEvent): JsonRecord => {
   const properties = isPlainObject(event.properties) ? event.properties : {};
   const payload = isPlainObject(event.payload) ? event.payload : {};
   const context = isPlainObject(event.context) ? event.context : {};
-  const timestamp =
-    typeof event.timestamp === "string" || typeof event.timestamp === "number"
-      ? new Date(event.timestamp).toISOString()
-      : event.timestamp instanceof Date
-        ? event.timestamp.toISOString()
-        : undefined;
+  const timestamp = parseTimestamp(event.timestamp);
 
   return {
     ...payload,
@@ -139,8 +159,18 @@ export const normalizeTrackingEvent = (
   if (!eventName) {
     throw new TrackingValidationError("eventName is required");
   }
+  if (eventName.length > MAX_EVENT_NAME_LENGTH) {
+    throw new TrackingValidationError(
+      `eventName must be at most ${MAX_EVENT_NAME_LENGTH} characters`,
+    );
+  }
 
-  const eventId = ensureString(event.eventId);
+  // Like Mixpanel's $insert_id: a client-chosen id makes retries idempotent.
+  const properties = isPlainObject(event.properties) ? event.properties : {};
+  const eventId =
+    ensureString(event.eventId) ??
+    ensureString(event.insertId) ??
+    ensureString(properties.$insert_id);
   if (options.requireEventId && !eventId) {
     throw new TrackingValidationError("eventId is required");
   }

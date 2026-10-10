@@ -11,6 +11,7 @@ import type {
 } from "./dtos.js";
 import type { IChecklistDocument } from "./model.js";
 import checklistRepository from "./repository.js";
+import { isObjectId } from "../engagement/lifecycle.js";
 
 class ChecklistService {
   public listChecklists(tenantId: string, query: ChecklistQueryDto) {
@@ -69,7 +70,11 @@ class ChecklistService {
     }
   }
 
-  public async applyEvent(tenantId: string, sdkIntegrationId: string, event: ChecklistEventDto) {
+  public async applyEvent(
+    tenantId: string,
+    sdkIntegrationId: string,
+    event: ChecklistEventDto,
+  ) {
     const checklists = await checklistRepository.listLiveChecklists(tenantId);
     const updated = [];
 
@@ -82,39 +87,93 @@ class ChecklistService {
         continue;
       }
 
-      const progress = await checklistRepository.getProgress({
-        tenantId,
-        checklistId: checklist._id.toString(),
-        userId: event.userId,
-        sessionId: event.sessionId,
-      });
-      const completed = new Set(progress?.completedItemIds ?? []);
-      linkedItems.forEach((item) => completed.add(item.id));
-      const next = await checklistRepository.upsertProgress({
-        tenantId,
-        checklist,
-        event,
-        completedItemIds: [...completed],
-      });
-      updated.push(next);
-
-      if (next?.progressPercent === 100) {
-        await engagementService.recordInteraction({
+      updated.push(
+        await this.markItemsComplete(
           tenantId,
           sdkIntegrationId,
-          actorUserId: event.userId,
-          dto: {
-            eventName: "guide_completed",
-            guideId: `checklist:${checklist._id.toString()}`,
-            userId: event.userId,
-            sessionId: event.sessionId,
-            properties: { checklistId: checklist._id.toString() },
-          },
-        });
-      }
+          checklist,
+          linkedItems.map((item) => item.id),
+          event,
+        ),
+      );
     }
 
     return updated;
+  }
+
+  /** Marks one item done when the user ticks it in the checklist widget. */
+  public async completeItem(
+    tenantId: string,
+    sdkIntegrationId: string,
+    checklistId: string,
+    itemId: string,
+    event: Omit<ChecklistEventDto, "eventName">,
+  ) {
+    const checklist = isObjectId(checklistId)
+      ? await checklistRepository.getChecklist(tenantId, checklistId)
+      : null;
+    if (
+      !checklist ||
+      checklist.status !== "LIVE" ||
+      !checklist.items.some((item) => item.id === itemId)
+    ) {
+      return null;
+    }
+    return this.markItemsComplete(
+      tenantId,
+      sdkIntegrationId,
+      checklist,
+      [itemId],
+      {
+        ...event,
+        eventName: "step_completed",
+      },
+    );
+  }
+
+  private async markItemsComplete(
+    tenantId: string,
+    sdkIntegrationId: string,
+    checklist: IChecklistDocument,
+    itemIds: string[],
+    event: ChecklistEventDto,
+  ) {
+    const progress = await checklistRepository.getProgress({
+      tenantId,
+      checklistId: checklist._id.toString(),
+      userId: event.userId,
+      sessionId: event.sessionId,
+    });
+    const wasComplete = progress?.progressPercent === 100;
+    // Items removed from the checklist since must not count toward progress.
+    const known = new Set(checklist.items.map((item) => item.id));
+    const completed = new Set(
+      (progress?.completedItemIds ?? []).filter((id) => known.has(id)),
+    );
+    itemIds.forEach((id) => completed.add(id));
+    const next = await checklistRepository.upsertProgress({
+      tenantId,
+      checklist,
+      event,
+      completedItemIds: [...completed],
+    });
+
+    // Record the completion once, when the checklist first reaches 100%.
+    if (next?.progressPercent === 100 && !wasComplete) {
+      await engagementService.recordInteraction({
+        tenantId,
+        sdkIntegrationId,
+        actorUserId: event.userId,
+        dto: {
+          eventName: "guide_completed",
+          guideId: `checklist:${checklist._id.toString()}`,
+          userId: event.userId,
+          sessionId: event.sessionId,
+          properties: { checklistId: checklist._id.toString() },
+        },
+      });
+    }
+    return next;
   }
 
   public async getEligibleChecklists(
@@ -136,20 +195,40 @@ class ChecklistService {
       })),
     );
 
-    return evaluated
+    const eligible = evaluated
       .filter((entry) => entry.eligibility.eligible)
       .sort((left, right) =>
         targetingService.comparePriority(
           left.checklist.priority,
           right.checklist.priority,
         ),
-      )
-      .map((entry) => this.toRuntimeDto(entry.checklist, entry.eligibility));
+      );
+
+    // Progress lets the widget show which items the user already finished.
+    return Promise.all(
+      eligible.map(async (entry) => {
+        const progress =
+          context.userId || context.sessionId
+            ? await checklistRepository.getProgress({
+                tenantId,
+                checklistId: entry.checklist._id.toString(),
+                userId: context.userId,
+                sessionId: context.sessionId,
+              })
+            : null;
+        return this.toRuntimeDto(
+          entry.checklist,
+          entry.eligibility,
+          progress?.completedItemIds ?? [],
+        );
+      }),
+    );
   }
 
   private toRuntimeDto(
     checklist: IChecklistDocument,
     eligibility: RuntimeGuideDto["eligibility"],
+    completedItemIds: string[] = [],
   ): RuntimeGuideDto {
     return {
       id: `checklist:${checklist._id.toString()}`,
@@ -166,6 +245,7 @@ class ChecklistService {
         ...checklist.metadata,
         checklistId: checklist._id.toString(),
         estimatedMinutes: checklist.estimatedMinutes,
+        completedItemIds,
       },
       eligibility,
     };

@@ -17,6 +17,7 @@ import { findUserByEmail } from "../../auth/repositories/auth.repository.js";
 import { invitationQueue } from "./invitation-queue.service.js";
 import projectService from "../../project/services/project.service.js";
 import activityLogService from "../../audit/services/activity-log.service.js";
+import accessService from "../../access/access.service.js";
 
 class HttpError extends Error {
   public status: number;
@@ -175,7 +176,9 @@ class InvitationService {
 
     return {
       id: invitation._id.toString(),
-      projectId: invitation.projectId.toString(),
+      projectId: invitation.projectId
+        ? invitation.projectId.toString()
+        : projectId,
       email: invitation.email,
       role: invitation.role,
       status: invitation.status,
@@ -196,9 +199,21 @@ class InvitationService {
       );
     }
 
-    const project = await getProjectById(invitation.projectId.toString());
-    if (!project) {
-      throw new HttpError(404, "Project no longer exists");
+    let projectName = "";
+    if (invitation.workspaceId) {
+      const WorkspaceModel = (await import("../models/workspace.model.js"))
+        .default;
+      const workspace = await WorkspaceModel.findById(
+        invitation.workspaceId.toString(),
+      ).lean();
+      if (!workspace) throw new HttpError(404, "Workspace no longer exists");
+      projectName = workspace.name;
+    } else if (invitation.projectId) {
+      const project = await getProjectById(invitation.projectId.toString());
+      if (!project) {
+        throw new HttpError(404, "Project no longer exists");
+      }
+      projectName = project.name;
     }
 
     const targetUser = await findUserByEmail(invitation.email);
@@ -206,10 +221,13 @@ class InvitationService {
     return {
       token: invitation.token,
       email: invitation.email,
-      projectName: project.name,
+      projectName,
       role: invitation.role,
       status: invitation.status,
       isRegistered: !!targetUser,
+      workspaceId: invitation.workspaceId
+        ? invitation.workspaceId.toString()
+        : undefined,
     };
   }
 
@@ -241,19 +259,68 @@ class InvitationService {
       );
     }
 
+    if (invitation.workspaceId) {
+      const workspaceService = (await import("./workspace.service.js")).default;
+      await workspaceService.ensureOwnedWorkspace(user._id.toString());
+
+      const WorkspaceMemberModel = (
+        await import("../models/workspace-member.model.js")
+      ).default;
+      await WorkspaceMemberModel.findOneAndUpdate(
+        { workspaceId: invitation.workspaceId, userId: user._id },
+        {
+          $setOnInsert: {
+            role: invitation.role || "MEMBER",
+            permissions: {},
+            joinedAt: new Date(),
+          },
+        },
+        { upsert: true, new: true },
+      );
+      invitation.status = "ACCEPTED";
+      await invitation.save();
+      return {
+        id: invitation._id.toString(),
+        status: "ACCEPTED",
+        workspaceId: invitation.workspaceId.toString(),
+      };
+    }
+
+    // Project access lives inside a workspace: joining a project via an
+    // invitation also makes the user a member of the project's workspace.
+    if (!invitation.projectId) {
+      throw new HttpError(
+        400,
+        "Invitation has no associated project or workspace",
+      );
+    }
+    const projectId = invitation.projectId.toString();
+    const invitedProject = await getProjectById(projectId);
+    if (!invitedProject) {
+      throw new HttpError(
+        404,
+        "The project for this invitation no longer exists",
+      );
+    }
+    await accessService.ensureWorkspaceMember(
+      await accessService.projectWorkspaceId(invitedProject),
+      user._id.toString(),
+    );
+
     const result = await runInTransaction(async (session) => {
       // Create project member
       const existingMembership = await getProjectMembership(
-        invitation.projectId.toString(),
+        projectId,
         user._id.toString(),
       );
 
       if (!existingMembership) {
         await createProjectMember(
           {
-            projectId: invitation.projectId.toString(),
+            projectId,
             userId: user._id.toString(),
-            role: invitation.role,
+            role: (invitation.role as "ADMIN" | "MEMBER") || "MEMBER",
+            grantedBy: invitation.invitedBy?.toString() ?? null,
           },
           session,
         );
@@ -265,9 +332,9 @@ class InvitationService {
 
       // Log activity
       void activityLogService.logActivity({
-        projectId: invitation.projectId.toString(),
+        projectId,
         entityType: "project",
-        entityId: invitation.projectId.toString(),
+        entityId: projectId,
         action: "member_added",
         userId: user._id.toString(),
         userName: user.name || user.email,
@@ -275,7 +342,7 @@ class InvitationService {
       });
 
       return {
-        projectId: invitation.projectId.toString(),
+        projectId,
         role: invitation.role,
         status: "ACCEPTED",
       };
@@ -284,10 +351,9 @@ class InvitationService {
     // Notify the admin who sent the invite
     const inviterIdStr = invitation.invitedBy?.toString();
     if (inviterIdStr) {
-      const project = await getProjectById(invitation.projectId.toString());
       await emitToUser(inviterIdStr, "invitation:accepted", {
-        projectId: invitation.projectId.toString(),
-        projectName: project?.name ?? "the project",
+        projectId,
+        projectName: invitedProject.name,
         acceptedBy: user.name || user.email,
         acceptedByEmail: user.email,
       });
@@ -329,7 +395,7 @@ class InvitationService {
 
     // Notify the admin who sent the invite
     const inviterIdStr = invitation.invitedBy?.toString();
-    if (inviterIdStr) {
+    if (inviterIdStr && invitation.projectId) {
       const project = await getProjectById(invitation.projectId.toString());
       await emitToUser(inviterIdStr, "invitation:rejected", {
         projectId: invitation.projectId.toString(),
@@ -361,7 +427,7 @@ class InvitationService {
 
     // Notify admin if possible
     const inviterIdStr = invitation.invitedBy?.toString();
-    if (inviterIdStr) {
+    if (inviterIdStr && invitation.projectId) {
       const project = await getProjectById(invitation.projectId.toString());
       await emitToUser(inviterIdStr, "invitation:rejected", {
         projectId: invitation.projectId.toString(),
@@ -386,12 +452,14 @@ class InvitationService {
       throw new HttpError(404, "Invitation not found");
     }
 
-    // Verify actor is admin in that project
-    await projectService.assertProjectRole(
-      actorUserId,
-      invitation.projectId.toString(),
-      "ADMIN",
-    );
+    // Verify actor is admin in that project if it's a project invitation
+    if (invitation.projectId) {
+      await projectService.assertProjectRole(
+        actorUserId,
+        invitation.projectId.toString(),
+        "ADMIN",
+      );
+    }
 
     await deleteInvitationById(invitationId);
   }
@@ -415,6 +483,7 @@ class InvitationService {
     const pendingInvites = await getPendingInvitationsByEmail(email);
     const result: any[] = [];
     for (const inv of pendingInvites) {
+      if (!inv.projectId) continue;
       const project = await getProjectById(inv.projectId.toString());
       if (!project) continue;
       const { findUserById } =
@@ -443,26 +512,51 @@ class InvitationService {
       return;
     }
 
-    // NOTE: On registration, we do NOT auto-accept — we let the user see notifications and accept/reject.
-    // Just push in-portal notifications for each pending invite.
+    const WorkspaceMemberModel = (
+      await import("../models/workspace-member.model.js")
+    ).default;
+    const workspaceService = (await import("./workspace.service.js")).default;
+    await workspaceService.ensureOwnedWorkspace(userId);
+
     for (const invite of pendingInvites) {
       try {
-        const project = await getProjectById(invite.projectId.toString());
-        if (!project) continue;
-        const { findUserById } =
-          await import("../../auth/repositories/auth.repository.js");
-        const inviter = await findUserById(invite.invitedBy?.toString() ?? "");
-        const inviterName = inviter?.name || inviter?.email || "Someone";
+        if (invite.workspaceId) {
+          await WorkspaceMemberModel.findOneAndUpdate(
+            { workspaceId: invite.workspaceId, userId },
+            {
+              $setOnInsert: {
+                role: invite.role || "MEMBER",
+                permissions: {},
+                joinedAt: new Date(),
+              },
+            },
+            { upsert: true, new: true },
+          );
+          invite.status = "ACCEPTED";
+          await invite.save();
+          continue;
+        }
 
-        await emitToUser(userId, "invitation:received", {
-          invitationId: invite._id.toString(),
-          token: invite.token,
-          projectId: invite.projectId.toString(),
-          projectName: project.name,
-          inviterName,
-          role: invite.role,
-          createdAt: invite.createdAt,
-        });
+        if (invite.projectId) {
+          const project = await getProjectById(invite.projectId.toString());
+          if (!project) continue;
+          const { findUserById } =
+            await import("../../auth/repositories/auth.repository.js");
+          const inviter = await findUserById(
+            invite.invitedBy?.toString() ?? "",
+          );
+          const inviterName = inviter?.name || inviter?.email || "Someone";
+
+          await emitToUser(userId, "invitation:received", {
+            invitationId: invite._id.toString(),
+            token: invite.token,
+            projectId: invite.projectId.toString(),
+            projectName: project.name,
+            inviterName,
+            role: invite.role,
+            createdAt: invite.createdAt,
+          });
+        }
       } catch (err) {
         console.error(
           `Error notifying new user ${email} of pending invite:`,

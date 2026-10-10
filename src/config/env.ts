@@ -20,9 +20,15 @@ export interface EnvConfig {
   AI_PROVIDER_BASE_URL?: string;
   AI_PROVIDER_API_KEY?: string;
   AI_PROVIDER_MODEL: string;
+  SMTP_HOST?: string;
+  SMTP_PORT?: number;
+  SMTP_SECURE?: boolean;
+  SMTP_SERVICE?: string;
   SMTP_USER?: string;
   SMTP_PASS?: string;
   SMTP_FROM?: string;
+  BREVO_API_KEY?: string;
+  EMAIL_FROM?: string;
   REDIS_URL: string;
   GEMINI_API_KEY?: string;
   GEMINI_MODEL: string;
@@ -46,9 +52,15 @@ const {
   AI_PROVIDER_BASE_URL,
   AI_PROVIDER_API_KEY,
   AI_PROVIDER_MODEL = "gpt-4.1-mini",
+  SMTP_HOST,
+  SMTP_PORT,
+  SMTP_SECURE,
+  SMTP_SERVICE,
   SMTP_USER,
   SMTP_PASS,
   SMTP_FROM,
+  BREVO_API_KEY,
+  EMAIL_FROM,
   REDIS_URL = "redis://127.0.0.1:6379",
   GEMINI_API_KEY,
   GEMINI_MODEL = "gemini-2.0-flash",
@@ -92,9 +104,15 @@ const env: EnvConfig = {
   AI_PROVIDER_BASE_URL: AI_PROVIDER_BASE_URL?.trim() || undefined,
   AI_PROVIDER_API_KEY: AI_PROVIDER_API_KEY?.trim() || undefined,
   AI_PROVIDER_MODEL: AI_PROVIDER_MODEL.trim(),
+  SMTP_HOST: SMTP_HOST?.trim() || undefined,
+  SMTP_PORT: SMTP_PORT ? Number(SMTP_PORT) : undefined,
+  SMTP_SECURE: SMTP_SECURE === "true",
+  SMTP_SERVICE: SMTP_SERVICE?.trim() || undefined,
   SMTP_USER: SMTP_USER?.trim() || undefined,
   SMTP_PASS: SMTP_PASS?.trim() || undefined,
   SMTP_FROM: SMTP_FROM?.trim() || undefined,
+  BREVO_API_KEY: BREVO_API_KEY?.trim() || undefined,
+  EMAIL_FROM: EMAIL_FROM?.trim() || undefined,
   REDIS_URL: REDIS_URL.trim(),
   GEMINI_API_KEY: GEMINI_API_KEY?.trim() || undefined,
   GEMINI_MODEL: GEMINI_MODEL.trim(),

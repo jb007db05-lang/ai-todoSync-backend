@@ -74,6 +74,7 @@ class TaskController {
         getDateQuery(req),
         req.query.assigneeId as string | undefined,
         req.query.search as string | undefined,
+        req.workspaceAccess,
       );
 
       res.status(200).json({
@@ -97,7 +98,10 @@ class TaskController {
         return;
       }
 
-      const tasks = await taskService.getTasksAssignedToMe(user._id.toString());
+      const tasks = await taskService.getTasksAssignedToMe(
+        user._id.toString(),
+        req.workspaceAccess,
+      );
 
       res.status(200).json({
         message: "Assigned tasks list fetched",

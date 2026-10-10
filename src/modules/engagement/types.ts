@@ -246,6 +246,48 @@ export const SURVEY_QUESTION_TYPES: SurveyQuestionType[] = [
   "CONTACT",
 ];
 
+export const TARGETING_CONDITION_TYPES: TargetingConditionType[] = [
+  "URL_EQUALS",
+  "URL_CONTAINS",
+  "URL_REGEX",
+  "REFERRER_EQUALS",
+  "REFERRER_CONTAINS",
+  "ROLE_EQUALS",
+  "PLAN_EQUALS",
+  "ACCOUNT_AGE",
+  "TENANT_EQUALS",
+  "EVENT_TRIGGERED",
+  "EVENT_NOT_TRIGGERED",
+  "RAGE_CLICK_COUNT",
+  "VISITED_PAGE",
+  "COMPLETED_WORKFLOW",
+  "ABANDONED_FORM",
+  "SESSION_DURATION",
+  "SESSION_COUNT",
+  "ENGAGEMENT_SCORE",
+  "SHOW_ONCE",
+  "SHOW_EVERY_X_DAYS",
+  "COOLDOWN",
+  "TIME_WINDOW",
+  "EXIT_INTENT",
+  "IDLE_TIMEOUT",
+];
+
+export const TARGETING_OPERATORS: TargetingOperator[] = [
+  "EQUALS",
+  "NOT_EQUALS",
+  "CONTAINS",
+  "NOT_CONTAINS",
+  "GREATER_THAN",
+  "GREATER_THAN_OR_EQUAL",
+  "LESS_THAN",
+  "LESS_THAN_OR_EQUAL",
+  "REGEX",
+  "IN",
+  "NOT_IN",
+  "BETWEEN",
+];
+
 export const ENGAGEMENT_EVENT_NAMES: EngagementEventName[] = [
   "guide_shown",
   "guide_started",

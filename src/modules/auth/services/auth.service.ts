@@ -157,6 +157,11 @@ class AuthService {
     const user = await createUser(payload);
 
     try {
+      const workspaceService = (
+        await import("../../workspace/services/workspace.service.js")
+      ).default;
+      await workspaceService.ensureOwnedWorkspace(user._id.toString());
+
       const invitationService = (
         await import("../../workspace/services/invitation.service.js")
       ).default;
@@ -166,7 +171,7 @@ class AuthService {
       );
     } catch (err) {
       console.error(
-        "Failed to auto-process pending invitations on registration",
+        "Failed to auto-process default workspace or invitations on registration",
         err,
       );
     }
@@ -1004,6 +1009,11 @@ class AuthService {
       });
 
       try {
+        const workspaceService = (
+          await import("../../workspace/services/workspace.service.js")
+        ).default;
+        await workspaceService.ensureOwnedWorkspace(newUser._id.toString());
+
         const invitationService = (
           await import("../../workspace/services/invitation.service.js")
         ).default;
@@ -1013,7 +1023,7 @@ class AuthService {
         );
       } catch (err) {
         console.error(
-          "Failed to auto-process pending invitations on Google registration",
+          "Failed to auto-process default workspace or invitations on Google registration",
           err,
         );
       }

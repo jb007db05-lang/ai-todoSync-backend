@@ -35,6 +35,7 @@ class ProjectController {
       const project = await projectService.createProject(
         user._id.toString(),
         req.body as ProjectPayload,
+        req.workspaceAccess,
       );
 
       res.status(201).json({
@@ -80,8 +81,9 @@ class ProjectController {
       const result = await projectService.fetchProjectsPaginated(
         user._id.toString(),
         page,
-        limit,
+        Math.min(100, limit),
         search,
+        req.workspaceAccess,
       );
 
       res.status(200).json({

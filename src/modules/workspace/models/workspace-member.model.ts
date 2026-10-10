@@ -7,6 +7,11 @@ export interface IWorkspaceMember {
   workspaceId: Types.ObjectId | string;
   userId: Types.ObjectId | string;
   role: WorkspaceRole;
+  /**
+   * Flags set by a workspace admin, overlaid on the role's defaults
+   * (see access/permissions.ts). Missing keys fall back to the role default.
+   */
+  permissions?: Record<string, boolean>;
   joinedAt?: Date;
   createdAt?: Date;
   updatedAt?: Date;
@@ -33,6 +38,10 @@ const workspaceMemberSchema = new Schema<IWorkspaceMemberDocument>(
       enum: ["OWNER", "ADMIN", "MANAGER", "MEMBER", "GUEST"],
       default: "MEMBER",
       required: true,
+    },
+    permissions: {
+      type: Schema.Types.Mixed,
+      default: {},
     },
     joinedAt: {
       type: Date,

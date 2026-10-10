@@ -1,5 +1,6 @@
 import type { Document, Types } from "mongoose";
 import { Schema, model } from "mongoose";
+import crypto from "node:crypto";
 import { encrypt, decrypt } from "../../../utils/encryption.js";
 
 // ─── Custom Fields ──────────────────────────────────────────────────────────
@@ -54,6 +55,7 @@ export interface IProjectState {
 // ─── Main Project Interface ──────────────────────────────────────────────────
 
 export interface IProject {
+  uuid?: string;
   name: string;
   description?: string;
   userId: Types.ObjectId | string;
@@ -131,6 +133,13 @@ const projectStateSchema = new Schema<IProjectState>(
 
 const projectSchema = new Schema<IProjectDocument>(
   {
+    uuid: {
+      type: String,
+      default: () => crypto.randomUUID(),
+      unique: true,
+      sparse: true,
+      index: true,
+    },
     name: { type: String, required: true, trim: true },
     description: { type: String, default: "" },
     userId: { type: Schema.Types.ObjectId, required: true, ref: "User" },
@@ -164,8 +173,28 @@ const projectSchema = new Schema<IProjectDocument>(
   },
   {
     timestamps: true,
-    toJSON: { getters: true },
-    toObject: { getters: true },
+    toJSON: {
+      getters: true,
+      transform: (_doc, ret: Record<string, any>) => {
+        if (ret.uuid) {
+          ret.id = ret.uuid;
+        } else if (ret._id) {
+          ret.id = ret._id.toString();
+        }
+        return ret;
+      },
+    },
+    toObject: {
+      getters: true,
+      transform: (_doc, ret: Record<string, any>) => {
+        if (ret.uuid) {
+          ret.id = ret.uuid;
+        } else if (ret._id) {
+          ret.id = ret._id.toString();
+        }
+        return ret;
+      },
+    },
   },
 );
 

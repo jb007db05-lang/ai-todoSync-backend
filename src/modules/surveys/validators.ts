@@ -8,7 +8,11 @@ import {
   type SurveyQuestion,
   type SurveyQuestionType,
 } from "../engagement/types.js";
-import { validateTargetingRuleGroup } from "../targeting/validators.js";
+import {
+  validateFrequencyRules,
+  validateScheduleRules,
+  validateTargetingRuleGroup,
+} from "../targeting/validators.js";
 import { toAnswerRecord } from "./answers.js";
 import type {
   CreateSurveyDto,
@@ -108,11 +112,11 @@ export const validateCreateSurveyDto = (body: unknown): CreateSurveyDto => {
         : null,
     frequencyRules:
       typeof record.frequencyRules === "object" && record.frequencyRules != null
-        ? (record.frequencyRules as CreateSurveyDto["frequencyRules"])
+        ? validateFrequencyRules(record.frequencyRules)
         : { showOncePerSession: true },
     scheduleRules:
       typeof record.scheduleRules === "object" && record.scheduleRules != null
-        ? (record.scheduleRules as CreateSurveyDto["scheduleRules"])
+        ? validateScheduleRules(record.scheduleRules)
         : {},
     metadata:
       typeof record.metadata === "object" && record.metadata != null
@@ -172,14 +176,14 @@ export const validateUpdateSurveyDto = (body: unknown): UpdateSurveyDto => {
   if ("frequencyRules" in record) {
     dto.frequencyRules =
       typeof record.frequencyRules === "object" && record.frequencyRules != null
-        ? (record.frequencyRules as CreateSurveyDto["frequencyRules"])
+        ? validateFrequencyRules(record.frequencyRules)
         : {};
   }
 
   if ("scheduleRules" in record) {
     dto.scheduleRules =
       typeof record.scheduleRules === "object" && record.scheduleRules != null
-        ? (record.scheduleRules as CreateSurveyDto["scheduleRules"])
+        ? validateScheduleRules(record.scheduleRules)
         : {};
   }
 

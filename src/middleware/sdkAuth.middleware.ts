@@ -43,7 +43,12 @@ export const setCorsHeaders = (res: Response, origin: string): void => {
   );
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, x-api-key, x-sdk-key, x-session-id, x-timestamp, x-nonce, x-body-sha256, x-signature, x-signature-version, x-sync-api-key, x-sdk-version",
+    "Content-Type, Authorization, x-api-key, x-sdk-key, x-session-id, x-timestamp, x-nonce, x-body-sha256, x-signature, x-signature-version, x-sync-api-key, x-sdk-version, x-workspace-id",
+  );
+  // Lets the portal read export metadata (row count, file name).
+  res.setHeader(
+    "Access-Control-Expose-Headers",
+    "X-Row-Count, Content-Disposition",
   );
 };
 

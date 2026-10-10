@@ -1,386 +1,189 @@
 import type { Request, Response } from "express";
 
-import type { IUserDocument } from "../../auth/models/user.model.js";
 import semanticAnalyticsService, {
   type DrilldownInput,
   type MetricQueryInput,
-} from "../../../modules/analytics/services/semantic-analytics.service.js";
+} from "../services/semantic-analytics.service.js";
 import semanticOperationalIntelligenceService, {
   type IntelligenceQueryInput,
-} from "../../../modules/analytics/services/semantic-operational-intelligence.service.js";
+} from "../services/semantic-operational-intelligence.service.js";
+import insightsService from "../services/insights.service.js";
 import semanticIntelligenceService from "../../ai/services/semantic-intelligence.service.js";
+import projectService from "../../project/services/project.service.js";
+import { getWorkspaceAccess } from "../../access/access.middleware.js";
 
-type AuthenticatedRequest = Request & { user?: IUserDocument };
+/**
+ * Insights API. Routes run after authMiddleware + workspaceContext, and every
+ * query is limited to the projects the caller can open in the active
+ * workspace. Errors go to the global error middleware.
+ */
+
+const userIdOf = (req: Request) => req.user!._id.toString();
+const workspaceIdOf = (req: Request) => getWorkspaceAccess(req).workspaceId;
+const str = (value: unknown) =>
+  typeof value === "string" && value ? value : undefined;
+
+/** Request body scoped to the active workspace. */
+const scoped = <T extends object>(req: Request): T => ({
+  ...((req.body ?? {}) as T),
+  workspaceId: workspaceIdOf(req),
+});
+
+const queryInput = (req: Request): IntelligenceQueryInput => ({
+  filters: {
+    projectId: str(req.query.projectId),
+    userId: str(req.query.userId),
+  },
+  timeRange: req.query.timeRange as IntelligenceQueryInput["timeRange"],
+  workspaceId: workspaceIdOf(req),
+});
+
+const ops = semanticOperationalIntelligenceService;
 
 class SemanticAnalyticsController {
-  public listMetrics = async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const user = req.user;
-      if (!user) {
-        res.status(401).json({ error: "Authentication required" });
-        return;
-      }
-
-      const metrics = await semanticAnalyticsService.listMetrics(
-        user._id.toString(),
-        { aiVisibleOnly: req.query.aiVisible === "true" },
-      );
-      res.status(200).json({
-        message: "Semantic metrics fetched",
-        data: { metrics },
-      });
-    } catch (error) {
-      this.handleError(res, error);
-    }
+  /** The Insights page: tasks, hours and prompt usage in one response. */
+  public insights = async (req: Request, res: Response) => {
+    res.json({
+      data: await insightsService.overview(getWorkspaceAccess(req), {
+        timeRange: str(req.query.timeRange),
+        projectId: str(req.query.projectId),
+      }),
+    });
   };
 
-  public describeMetric = async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const user = req.user;
-      if (!user) {
-        res.status(401).json({ error: "Authentication required" });
-        return;
-      }
-
-      const description = await semanticAnalyticsService.describeMetric(
-        user._id.toString(),
-        req.params.metric as string,
-      );
-      res.status(200).json({ message: "Metric described", data: description });
-    } catch (error) {
-      this.handleError(res, error);
-    }
+  public listMetrics = async (req: Request, res: Response) => {
+    const metrics = await semanticAnalyticsService.listMetrics(userIdOf(req), {
+      aiVisibleOnly: req.query.aiVisible === "true",
+      workspaceId: workspaceIdOf(req),
+    });
+    res.json({ message: "Semantic metrics fetched", data: { metrics } });
   };
 
-  public queryMetric = async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const user = req.user;
-      if (!user) {
-        res.status(401).json({ error: "Authentication required" });
-        return;
-      }
-
-      const result = await semanticAnalyticsService.queryMetric(
-        user._id.toString(),
-        req.body as MetricQueryInput,
-      );
-      res.status(200).json({ message: "Metric queried", data: result });
-    } catch (error) {
-      this.handleError(res, error);
-    }
+  public describeMetric = async (req: Request, res: Response) => {
+    const data = await semanticAnalyticsService.describeMetric(
+      userIdOf(req),
+      String(req.params.metric),
+      workspaceIdOf(req),
+    );
+    res.json({ message: "Metric described", data });
   };
 
-  public compareMetrics = async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const user = req.user;
-      if (!user) {
-        res.status(401).json({ error: "Authentication required" });
-        return;
-      }
-
-      const result = await semanticAnalyticsService.compareMetrics(
-        user._id.toString(),
-        req.body?.metrics as MetricQueryInput[],
-      );
-      res.status(200).json({ message: "Metrics compared", data: result });
-    } catch (error) {
-      this.handleError(res, error);
-    }
+  public queryMetric = async (req: Request, res: Response) => {
+    const data = await semanticAnalyticsService.queryMetric(
+      userIdOf(req),
+      scoped<MetricQueryInput>(req),
+    );
+    res.json({ message: "Metric queried", data });
   };
 
-  public drilldownMetric = async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const user = req.user;
-      if (!user) {
-        res.status(401).json({ error: "Authentication required" });
-        return;
-      }
-
-      const result = await semanticAnalyticsService.drilldownMetric(
-        user._id.toString(),
-        req.body as DrilldownInput,
-      );
-      res
-        .status(200)
-        .json({ message: "Metric drilldown queried", data: result });
-    } catch (error) {
-      this.handleError(res, error);
-    }
+  public compareMetrics = async (req: Request, res: Response) => {
+    const metrics = Array.isArray(req.body?.metrics)
+      ? (req.body.metrics as MetricQueryInput[])
+      : [];
+    const data = await semanticAnalyticsService.compareMetrics(
+      userIdOf(req),
+      metrics.map((m) => ({ ...m, workspaceId: workspaceIdOf(req) })),
+    );
+    res.json({ message: "Metrics compared", data });
   };
 
-  public recordDashboardOpened = async (
-    req: AuthenticatedRequest,
-    res: Response,
-  ) => {
-    try {
-      const user = req.user;
-      if (!user) {
-        res.status(401).json({ error: "Authentication required" });
-        return;
-      }
-
-      await semanticAnalyticsService.recordDashboardOpened(
-        user._id.toString(),
-        req.body?.projectId ?? null,
-      );
-      res.status(202).json({ message: "Dashboard event accepted" });
-    } catch (error) {
-      this.handleError(res, error);
-    }
+  public drilldownMetric = async (req: Request, res: Response) => {
+    const data = await semanticAnalyticsService.drilldownMetric(
+      userIdOf(req),
+      scoped<DrilldownInput>(req),
+    );
+    res.json({ message: "Metric drilldown queried", data });
   };
 
-  public explainMetric = async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const user = req.user;
-      if (!user) {
-        res.status(401).json({ error: "Authentication required" });
-        return;
-      }
-
-      const result = await semanticOperationalIntelligenceService.explainMetric(
-        user._id.toString(),
-        req.body as IntelligenceQueryInput,
-      );
-      res.status(200).json({ message: "Metric explained", data: result });
-    } catch (error) {
-      this.handleError(res, error);
-    }
+  public recordDashboardOpened = async (req: Request, res: Response) => {
+    await semanticAnalyticsService.recordDashboardOpened(
+      userIdOf(req),
+      req.body?.projectId ?? null,
+    );
+    res.status(202).json({ message: "Dashboard event accepted" });
   };
 
-  public replayTimeline = async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const user = req.user;
-      if (!user) {
-        res.status(401).json({ error: "Authentication required" });
-        return;
-      }
-
-      const result =
-        await semanticOperationalIntelligenceService.replayTimeline(
-          user._id.toString(),
-          req.body as IntelligenceQueryInput,
-        );
-      res
-        .status(200)
-        .json({ message: "Operational timeline replayed", data: result });
-    } catch (error) {
-      this.handleError(res, error);
-    }
+  public explainMetric = async (req: Request, res: Response) => {
+    res.json({
+      message: "Metric explained",
+      data: await ops.explainMetric(userIdOf(req), scoped(req)),
+    });
   };
 
-  public listAnomalies = async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const user = req.user;
-      if (!user) {
-        res.status(401).json({ error: "Authentication required" });
-        return;
-      }
-
-      const result = await semanticOperationalIntelligenceService.listAnomalies(
-        user._id.toString(),
-        {
-          filters: this.queryFilters(req),
-          timeRange: req.query.timeRange as IntelligenceQueryInput["timeRange"],
-        },
-      );
-      res
-        .status(200)
-        .json({ message: "Operational anomalies fetched", data: result });
-    } catch (error) {
-      this.handleError(res, error);
-    }
+  public replayTimeline = async (req: Request, res: Response) => {
+    res.json({
+      message: "Timeline replayed",
+      data: await ops.replayTimeline(userIdOf(req), scoped(req)),
+    });
   };
 
-  public trends = async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const user = req.user;
-      if (!user) {
-        res.status(401).json({ error: "Authentication required" });
-        return;
-      }
-
-      const result = await semanticOperationalIntelligenceService.trends(
-        user._id.toString(),
-        {
-          filters: this.queryFilters(req),
-          timeRange: req.query.timeRange as IntelligenceQueryInput["timeRange"],
-        },
-      );
-      res
-        .status(200)
-        .json({ message: "Operational trends fetched", data: result });
-    } catch (error) {
-      this.handleError(res, error);
-    }
+  public listAnomalies = async (req: Request, res: Response) => {
+    res.json({
+      message: "Anomalies fetched",
+      data: await ops.listAnomalies(userIdOf(req), queryInput(req)),
+    });
   };
 
-  public lineage = async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const user = req.user;
-      if (!user) {
-        res.status(401).json({ error: "Authentication required" });
-        return;
-      }
-
-      const result = await semanticOperationalIntelligenceService.lineage(
-        user._id.toString(),
-        req.params.metric as string,
-      );
-      res
-        .status(200)
-        .json({ message: "Semantic lineage fetched", data: result });
-    } catch (error) {
-      this.handleError(res, error);
-    }
+  public trends = async (req: Request, res: Response) => {
+    res.json({
+      message: "Trends fetched",
+      data: await ops.trends(userIdOf(req), queryInput(req)),
+    });
   };
 
-  public governance = async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const user = req.user;
-      if (!user) {
-        res.status(401).json({ error: "Authentication required" });
-        return;
-      }
-
-      const result = await semanticOperationalIntelligenceService.governance(
-        user._id.toString(),
-        req.params.metric as string,
-      );
-      res
-        .status(200)
-        .json({ message: "Semantic governance fetched", data: result });
-    } catch (error) {
-      this.handleError(res, error);
-    }
+  public lineage = async (req: Request, res: Response) => {
+    const data = await ops.lineage(
+      userIdOf(req),
+      String(req.params.metric),
+      workspaceIdOf(req),
+    );
+    res.json({ message: "Metric lineage fetched", data });
   };
 
-  public reasoningSummary = async (
-    req: AuthenticatedRequest,
-    res: Response,
-  ) => {
-    try {
-      const user = req.user;
-      if (!user) {
-        res.status(401).json({ error: "Authentication required" });
-        return;
-      }
-
-      const result =
-        await semanticOperationalIntelligenceService.reasoningSummary(
-          user._id.toString(),
-          req.body as IntelligenceQueryInput,
-        );
-      res
-        .status(200)
-        .json({ message: "Operational reasoning summarized", data: result });
-    } catch (error) {
-      this.handleError(res, error);
-    }
+  public governance = async (req: Request, res: Response) => {
+    const data = await ops.governance(
+      userIdOf(req),
+      String(req.params.metric),
+      workspaceIdOf(req),
+    );
+    res.json({ message: "Metric governance fetched", data });
   };
 
-  public forecast = async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const user = req.user;
-      if (!user) {
-        res.status(401).json({ error: "Authentication required" });
-        return;
-      }
-
-      const result = await semanticOperationalIntelligenceService.forecast(
-        user._id.toString(),
-        req.body as IntelligenceQueryInput,
-      );
-      res
-        .status(200)
-        .json({ message: "Operational forecast generated", data: result });
-    } catch (error) {
-      this.handleError(res, error);
-    }
+  public reasoningSummary = async (req: Request, res: Response) => {
+    res.json({
+      message: "Summary generated",
+      data: await ops.reasoningSummary(userIdOf(req), scoped(req)),
+    });
   };
 
-  public simulate = async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const user = req.user;
-      if (!user) {
-        res.status(401).json({ error: "Authentication required" });
-        return;
-      }
-
-      const result = await semanticOperationalIntelligenceService.simulate(
-        user._id.toString(),
-        req.body as any,
-      );
-      res
-        .status(200)
-        .json({ message: "Operational intervention simulated", data: result });
-    } catch (error) {
-      this.handleError(res, error);
-    }
+  public forecast = async (req: Request, res: Response) => {
+    res.json({
+      message: "Forecast generated",
+      data: await ops.forecast(userIdOf(req), scoped(req)),
+    });
   };
 
-  public writeRollupSnapshot = async (
-    req: AuthenticatedRequest,
-    res: Response,
-  ) => {
-    try {
-      const user = req.user;
-      if (!user) {
-        res.status(401).json({ error: "Authentication required" });
-        return;
-      }
-
-      const result =
-        await semanticOperationalIntelligenceService.writeRollupSnapshot(
-          user._id.toString(),
-          req.body as IntelligenceQueryInput,
-        );
-      res
-        .status(200)
-        .json({ message: "Semantic rollup snapshot written", data: result });
-    } catch (error) {
-      this.handleError(res, error);
-    }
+  public simulate = async (req: Request, res: Response) => {
+    res.json({
+      message: "Intervention simulated",
+      data: await ops.simulate(userIdOf(req), scoped(req)),
+    });
   };
 
-  public getProjectReport = async (
-    req: AuthenticatedRequest,
-    res: Response,
-  ) => {
-    try {
-      const user = req.user;
-      if (!user) {
-        res.status(401).json({ error: "Authentication required" });
-        return;
-      }
-      const projectId = req.params.projectId as string;
-      if (!projectId) {
-        res.status(400).json({ error: "projectId is required" });
-        return;
-      }
-
-      const report =
-        await semanticIntelligenceService.generateReport(projectId);
-      res.status(200).json({ message: "Semantic report generated", report });
-    } catch (error) {
-      this.handleError(res, error);
-    }
+  public writeRollupSnapshot = async (req: Request, res: Response) => {
+    res.json({
+      message: "Rollup snapshot written",
+      data: await ops.writeRollupSnapshot(userIdOf(req), scoped(req)),
+    });
   };
 
-  private queryFilters(req: AuthenticatedRequest) {
-    return {
-      projectId:
-        typeof req.query.projectId === "string"
-          ? req.query.projectId
-          : undefined,
-      userId:
-        typeof req.query.userId === "string" ? req.query.userId : undefined,
-    };
-  }
-
-  private handleError(res: Response, error: unknown) {
-    const status = (error as any).status || 500;
-    res.status(status).json({ error: (error as Error).message });
-  }
+  public getProjectReport = async (req: Request, res: Response) => {
+    const projectId = String(req.params.projectId);
+    // The report reads project data: the caller must be able to open the project.
+    await projectService.getProjectAccess(userIdOf(req), projectId);
+    const report = await semanticIntelligenceService.generateReport(projectId);
+    res.json({ message: "Project report generated", report });
+  };
 }
 
 export default new SemanticAnalyticsController();

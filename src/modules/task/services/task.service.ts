@@ -1,3 +1,6 @@
+import accessService, {
+  type WorkspaceAccess,
+} from "../../access/access.service.js";
 import {
   createTask,
   deleteTask,
@@ -219,13 +222,13 @@ class TaskService {
     date?: unknown,
     assigneeId?: string,
     search?: string,
+    workspaceAccess?: WorkspaceAccess,
   ): Promise<TaskDto[]> {
     const normalizedDate = this.normalizeDate(date);
-    const memberships = await getProjectMembershipsByUser(userId);
-    const projectIds = memberships.map((membership) =>
-      membership.projectId.toString(),
+    const { projectIds, roleMap } = await this.taskScope(
+      userId,
+      workspaceAccess,
     );
-    const roleMap = this.buildRoleMap(memberships);
     const tasks = normalizedDate
       ? await getTasksByDate(
           userId,
@@ -238,10 +241,14 @@ class TaskService {
     return tasks.map((task) => this.toDto(userId, task, roleMap));
   }
 
-  public async getTasksAssignedToMe(userId: string): Promise<TaskDto[]> {
-    const memberships = await getProjectMembershipsByUser(userId);
-    const projectIds = memberships.map((m) => m.projectId.toString());
-    const roleMap = this.buildRoleMap(memberships);
+  public async getTasksAssignedToMe(
+    userId: string,
+    workspaceAccess?: WorkspaceAccess,
+  ): Promise<TaskDto[]> {
+    const { projectIds, roleMap } = await this.taskScope(
+      userId,
+      workspaceAccess,
+    );
 
     const tasks = await TaskModel.find({
       ...buildRefMatch("assignedTo", userId),
@@ -260,8 +267,7 @@ class TaskService {
     userId: string,
     updates: UpdateTaskPayload,
   ): Promise<TaskDto> {
-    const memberships = await getProjectMembershipsByUser(userId);
-    const roleMap = this.buildRoleMap(memberships);
+    const roleMap = await this.roleMapFor(userId);
     const currentTask = await getTaskByIdAndUser(
       taskId,
       userId,
@@ -279,6 +285,14 @@ class TaskService {
 
     if (permission.canUpdate === false) {
       throw new HttpError(403, "Task update not allowed");
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(updates, "status") &&
+      updates.status != null &&
+      updates.status !== currentTask.status
+    ) {
+      await this.assertStatusPermission(userId, currentTask);
     }
 
     const hasFullEditAccess = permission.canEdit;
@@ -412,8 +426,7 @@ class TaskService {
     actorUserId: string,
     payload: AssignTaskPayload,
   ): Promise<TaskDto> {
-    const memberships = await getProjectMembershipsByUser(actorUserId);
-    const roleMap = this.buildRoleMap(memberships);
+    const roleMap = await this.roleMapFor(actorUserId);
     const currentTask = await getTaskByIdAndUser(
       taskId,
       actorUserId,
@@ -500,8 +513,7 @@ class TaskService {
     userId: string,
     blockedByTaskId?: string,
   ): Promise<TaskDto> {
-    const memberships = await getProjectMembershipsByUser(userId);
-    const roleMap = this.buildRoleMap(memberships);
+    const roleMap = await this.roleMapFor(userId);
     const task = await getTaskByIdAndUser(
       taskId,
       userId,
@@ -511,6 +523,7 @@ class TaskService {
     if (task == null) {
       throw new HttpError(404, "Task not found");
     }
+    await this.assertStatusPermission(userId, task);
 
     if (blockedByTaskId) {
       const blockingTask = await TaskModel.findById(blockedByTaskId);
@@ -550,8 +563,7 @@ class TaskService {
   }
 
   public async unblockTask(taskId: string, userId: string): Promise<TaskDto> {
-    const memberships = await getProjectMembershipsByUser(userId);
-    const roleMap = this.buildRoleMap(memberships);
+    const roleMap = await this.roleMapFor(userId);
     const task = await getTaskByIdAndUser(
       taskId,
       userId,
@@ -561,6 +573,7 @@ class TaskService {
     if (task == null) {
       throw new HttpError(404, "Task not found");
     }
+    await this.assertStatusPermission(userId, task);
 
     const updated = await updateTask(
       taskId,
@@ -602,8 +615,7 @@ class TaskService {
       throw new HttpError(404, "Target user not found");
     }
 
-    const memberships = await getProjectMembershipsByUser(actorUserId);
-    const roleMap = this.buildRoleMap(memberships);
+    const roleMap = await this.roleMapFor(actorUserId);
 
     const tasks = await TaskModel.find({ _id: { $in: taskIds } }).exec();
     if (tasks.length === 0) {
@@ -659,8 +671,7 @@ class TaskService {
   }
 
   public async deleteTask(taskId: string, userId: string): Promise<void> {
-    const memberships = await getProjectMembershipsByUser(userId);
-    const roleMap = this.buildRoleMap(memberships);
+    const roleMap = await this.roleMapFor(userId);
     const task = await getTaskByIdAndUser(
       taskId,
       userId,
@@ -684,6 +695,37 @@ class TaskService {
 
     if (deleted === false) {
       throw new HttpError(404, "Task not found");
+    }
+  }
+
+  /**
+   * Projects whose tasks a listing may include: with a workspace, the ones
+   * the member can open there (all of them for admins, who act as project
+   * admins); without one (sync clients), every project the user belongs to.
+   */
+  private async taskScope(userId: string, workspaceAccess?: WorkspaceAccess) {
+    const roleMap = await this.roleMapFor(userId);
+    const projectIds = workspaceAccess
+      ? await accessService.accessibleProjectIds(workspaceAccess)
+      : Array.from(roleMap.keys());
+    return { projectIds, roleMap };
+  }
+
+  /**
+   * Moving a project task between statuses needs the workspace
+   * "task.update_status" permission. Personal tasks (no project) are the
+   * owner's own business.
+   */
+  private async assertStatusPermission(
+    userId: string,
+    task: { projectId?: unknown },
+  ): Promise<void> {
+    if (task.projectId) {
+      await projectService.assertProjectPermission(
+        userId,
+        String(task.projectId),
+        "task.update_status",
+      );
     }
   }
 
@@ -790,15 +832,21 @@ class TaskService {
     };
   }
 
-  private buildRoleMap(
-    memberships: Awaited<ReturnType<typeof getProjectMembershipsByUser>>,
-  ): Map<string, ProjectRole> {
-    return new Map(
-      memberships.map((membership) => [
-        membership.projectId.toString(),
-        membership.role,
-      ]),
+  /**
+   * The user's role per project: their project memberships, plus admin of
+   * every project in workspaces they administer (admins bypass project
+   * membership inside their workspace).
+   */
+  private async roleMapFor(userId: string): Promise<Map<string, ProjectRole>> {
+    const [memberships, adminProjectIds] = await Promise.all([
+      getProjectMembershipsByUser(userId),
+      accessService.adminProjectIds(userId),
+    ]);
+    const roles = new Map<string, ProjectRole>(
+      memberships.map((m) => [m.projectId.toString(), m.role]),
     );
+    adminProjectIds.forEach((id) => roles.set(id, "ADMIN"));
+    return roles;
   }
 
   private getTaskPermission(
@@ -1214,12 +1262,40 @@ class TaskService {
       return null;
     }
 
+    if (typeof value === "object") {
+      const obj = value as Record<string, unknown>;
+      if (obj._id != null) {
+        return this.normalizeNullableId(obj._id);
+      }
+      if (obj.id != null) {
+        return this.normalizeNullableId(obj.id);
+      }
+      if (typeof (value as any).toString === "function") {
+        const s = (value as any).toString();
+        if (/^[a-f0-9]{24}$/i.test(s)) return s;
+      }
+      return null;
+    }
+
     if (typeof value !== "string") {
       return null;
     }
 
-    const id = value.trim();
-    return id === "" || id === "null" || id === "undefined" ? null : id;
+    const trimmed = value.trim();
+    if (trimmed === "" || trimmed === "null" || trimmed === "undefined") {
+      return null;
+    }
+
+    if (/^[a-f0-9]{24}$/i.test(trimmed)) {
+      return trimmed;
+    }
+
+    const hexMatch = trimmed.match(/[a-f0-9]{24}/i);
+    if (hexMatch) {
+      return hexMatch[0];
+    }
+
+    return null;
   }
 
   private normalizeDate(value: unknown): string | undefined {

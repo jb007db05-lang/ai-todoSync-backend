@@ -7,7 +7,11 @@ import AnalyticsUserModel from "../models/analytics-user.model.js";
 import logger from "../../../lib/logger.js";
 import type { DataEnvironment } from "../../../shared/environment.js";
 import {
+  MAX_EVENT_AGE_MS,
+  MAX_FUTURE_SKEW_MS,
+  MIN_IMPORT_TIME_MS,
   NormalizedTrackingEvent,
+  TrackingValidationError,
   normalizeTrackingEvent,
   validateBatchBody,
   validatePayloadSize,
@@ -28,9 +32,42 @@ interface SingleTrackInput {
 
 interface BatchResult {
   insertedCount: number;
+  /** Duplicates (same eventId) plus rejected events. */
   ignoredCount: number;
   attemptedCount: number;
+  rejectedCount: number;
+  rejected: Array<{ index: number; eventId?: string; reason: string }>;
 }
+
+interface IngestOptions {
+  /** Historical import: older events are allowed and marked `$import`. */
+  imported?: boolean;
+  now?: number;
+}
+
+/**
+ * Why an event's own timestamp is outside what this ingestion path accepts,
+ * or null when it is fine. Real-time tracking takes the last 5 days (like
+ * Mixpanel's /track); imports take anything from 1971 on. Neither accepts
+ * events more than an hour in the future.
+ */
+export const timestampRejection = (
+  timestamp: unknown,
+  { imported = false, now = Date.now() }: IngestOptions = {},
+): string | null => {
+  if (typeof timestamp !== "string") return null;
+  const time = new Date(timestamp).getTime();
+  if (Number.isNaN(time)) return "timestamp is not a valid date";
+  if (time > now + MAX_FUTURE_SKEW_MS) {
+    return "timestamp is more than 1 hour in the future";
+  }
+  if (imported) {
+    return time < MIN_IMPORT_TIME_MS ? "timestamp is before 1971-01-01" : null;
+  }
+  return time < now - MAX_EVENT_AGE_MS
+    ? "timestamp is older than 5 days; send historical events to /api/import"
+    : null;
+};
 
 interface StaticConfig {
   sampleRate: number;
@@ -119,6 +156,7 @@ class TrackingService {
     return {
       eventId: event.eventId || this.generateEventId(),
       eventRef,
+      eventName: event.eventName,
       apiKeyId,
       sdkIntegrationId: sdkIntegrationId ?? apiKeyId,
       environment,
@@ -157,6 +195,10 @@ class TrackingService {
       { requireEventId: false },
     );
     normalized.eventId = normalized.eventId || this.generateEventId();
+    const rejection = timestampRejection(normalized.payload.timestamp);
+    if (rejection) {
+      throw new TrackingValidationError(rejection);
+    }
 
     if (normalized.userIdentifier) {
       await this.ensureIdentityExists(
@@ -195,13 +237,39 @@ class TrackingService {
     body: unknown,
     sdkIntegrationId?: string,
     environment: DataEnvironment = "live",
+    options: IngestOptions = {},
   ): Promise<BatchResult> {
     const rawEvents = validateBatchBody(body);
-    const normalizedEvents = rawEvents.map((event, index) =>
+    const allEvents = rawEvents.map((event, index) =>
       normalizeTrackingEvent(event, {
         requireEventId: rawEvents.length > 1 || index > 0,
       }),
     );
+
+    // Out-of-window events are dropped one by one so a single stale event
+    // from an offline queue does not cost the rest of the batch.
+    const rejected: BatchResult["rejected"] = [];
+    const normalizedEvents = allEvents.filter((event, index) => {
+      const reason = timestampRejection(event.payload.timestamp, options);
+      if (reason) {
+        rejected.push({ index, eventId: event.eventId || undefined, reason });
+        return false;
+      }
+      if (options.imported) {
+        event.payload = { ...event.payload, $import: true };
+      }
+      return true;
+    });
+
+    if (normalizedEvents.length === 0) {
+      return {
+        insertedCount: 0,
+        ignoredCount: rejected.length,
+        attemptedCount: allEvents.length,
+        rejectedCount: rejected.length,
+        rejected,
+      };
+    }
 
     const eventNames = [
       ...new Set(normalizedEvents.map((event) => event.eventName)),
@@ -226,10 +294,12 @@ class TrackingService {
       ),
     ];
 
+    // Only make sure the profile exists: tracking must never erase traits
+    // set through identify().
     if (userIdentifiers.length > 0) {
       await Promise.all(
         userIdentifiers.map((identifier) =>
-          this.upsertIdentity(apiKeyId, identifier, {}),
+          this.ensureIdentityExists(apiKeyId, identifier),
         ),
       );
     }
@@ -256,8 +326,11 @@ class TrackingService {
 
       return {
         insertedCount: result.insertedCount,
-        ignoredCount: normalizedEvents.length - result.insertedCount,
-        attemptedCount: normalizedEvents.length,
+        ignoredCount:
+          normalizedEvents.length - result.insertedCount + rejected.length,
+        attemptedCount: allEvents.length,
+        rejectedCount: rejected.length,
+        rejected,
       };
     } catch (error) {
       if (!this.isDuplicateKeyError(error)) {
@@ -273,8 +346,10 @@ class TrackingService {
 
       return {
         insertedCount: normalizedEvents.length - duplicateCount,
-        ignoredCount: duplicateCount,
-        attemptedCount: normalizedEvents.length,
+        ignoredCount: duplicateCount + rejected.length,
+        attemptedCount: allEvents.length,
+        rejectedCount: rejected.length,
+        rejected,
       };
     }
   }
@@ -285,7 +360,7 @@ class TrackingService {
     traits: JsonRecord,
   ) {
     validatePayloadSize(traits);
-    return this.upsertIdentity(apiKeyId, userIdentifier, traits);
+    return this.mergeIdentityTraits(apiKeyId, userIdentifier, traits);
   }
 
   public async alias(
@@ -380,6 +455,37 @@ class TrackingService {
         $setOnInsert: { createdAt: new Date() },
       },
       { upsert: true, new: true },
+    ).exec();
+  }
+
+  /**
+   * Merges traits into the profile (Mixpanel `$set` semantics): new values
+   * win, traits not mentioned are kept. `$literal` keeps `$`-prefixed trait
+   * names (e.g. `$email`) from being read as operators.
+   */
+  private async mergeIdentityTraits(
+    apiKeyId: string,
+    userIdentifier: string,
+    traits: JsonRecord,
+  ) {
+    return AnalyticsUserModel.findOneAndUpdate(
+      { apiKeyId, userIdentifier },
+      [
+        {
+          $set: {
+            apiKeyId,
+            userIdentifier,
+            metadata: {
+              $mergeObjects: [
+                { $ifNull: ["$metadata", {}] },
+                { $literal: traits },
+              ],
+            },
+            createdAt: { $ifNull: ["$createdAt", "$$NOW"] },
+          },
+        },
+      ],
+      { upsert: true, new: true, updatePipeline: true },
     ).exec();
   }
 

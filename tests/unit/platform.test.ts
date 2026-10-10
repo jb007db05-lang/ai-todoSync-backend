@@ -28,6 +28,8 @@ import {
   type TamperKind,
 } from "../cases/platform.cases.js";
 import { chain, stub } from "../support/stubs.js";
+import accessService from "../../src/modules/access/access.service.js";
+import { fakeAccess } from "../../src/modules/access/access.fixtures.js";
 
 const restoreAll: Array<() => void> = [];
 after(() => restoreAll.reverse().forEach((r) => r()));
@@ -358,6 +360,8 @@ describe("Prompt deployment: random action sequences keep the invariants", () =>
       };
       const undo = [
         stub(workspaceService, "assertMembership", (async () => ({})) as any),
+        stub(accessService, "resolve", (async (u: string, w: string) =>
+          fakeAccess({ userId: u, workspaceId: w })) as any),
         stub(PromptLibraryModel, "findOne", (() =>
           chain({
             _id: ROOT,

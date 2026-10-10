@@ -375,12 +375,14 @@ class SurveyService {
       weekly: Array<{
         _id: string;
         responses: number;
+        npsResponses: number;
         promoters: number;
         detractors: number;
       }>;
       monthly: Array<{
         _id: string;
         responses: number;
+        npsResponses: number;
         promoters: number;
         detractors: number;
       }>;
@@ -563,10 +565,14 @@ class SurveyService {
       };
     });
 
+    // NPS only counts responses that answered the NPS question.
+    const npsOf = (promoters: number, detractors: number, base: number) =>
+      base > 0 ? ((promoters - detractors) / base) * 100 : 0;
     const toTrend = (
       rows: Array<{
         _id: string;
         responses: number;
+        npsResponses: number;
         promoters: number;
         detractors: number;
       }> = [],
@@ -574,20 +580,16 @@ class SurveyService {
       rows.map((row) => ({
         period: row._id,
         responses: row.responses,
-        nps:
-          row.responses > 0
-            ? ((row.promoters - row.detractors) / row.responses) * 100
-            : 0,
+        nps: npsOf(row.promoters, row.detractors, row.npsResponses),
       }));
+    const npsResponses = totals.promoters + totals.passives + totals.detractors;
 
     return {
       surveyId,
       environment,
       responses: submissions,
-      nps:
-        submissions > 0
-          ? ((totals.promoters - totals.detractors) / submissions) * 100
-          : 0,
+      nps: npsOf(totals.promoters, totals.detractors, npsResponses),
+      npsResponses,
       promoters: totals.promoters,
       passives: totals.passives,
       detractors: totals.detractors,
@@ -616,6 +618,15 @@ class SurveyService {
             $dateToString: { format, date: "$submittedAt", timezone: "UTC" },
           },
           responses: { $sum: 1 },
+          npsResponses: {
+            $sum: {
+              $cond: [
+                { $in: ["$category", ["PROMOTER", "PASSIVE", "DETRACTOR"]] },
+                1,
+                0,
+              ],
+            },
+          },
           promoters: {
             $sum: { $cond: [{ $eq: ["$category", "PROMOTER"] }, 1, 0] },
           },

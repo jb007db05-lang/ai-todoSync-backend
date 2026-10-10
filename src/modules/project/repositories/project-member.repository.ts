@@ -15,6 +15,7 @@ export interface CreateProjectMemberPayload {
   projectId: string;
   userId: string;
   role: ProjectRole;
+  grantedBy?: string | null;
 }
 
 export interface ProjectMemberWithUser {

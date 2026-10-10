@@ -5,6 +5,7 @@
 | `npm run test:unit`       | ~1,800 table-driven cases in `tests/unit/`                                       | nothing (models are stubbed) |
 | `npm run test:engagement` | the original suites in `src/modules/**/*.test.ts`                                | nothing                      |
 | `npm run test:e2e`        | ~1,500 live checks against a running backend                                     | backend + MongoDB            |
+| `npm run test:smoke`      | live checks for the Events page API, ingestion rules and the portal runtime      | backend + MongoDB            |
 | `npm run test:catalog`    | regenerates `tests/TEST_CASES.csv`                                               | nothing                      |
 | `npm run db:indexes`      | builds MongoDB indexes (merges blocking duplicates first; `-- --dry` to preview) | MongoDB                      |
 
@@ -17,13 +18,14 @@
 
 ## Unit suites
 
-| File                     | Cases | Covers                                                                                                                                                                                                                        |
-| ------------------------ | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `survey-answers.test.ts` | 311   | every question type's accepted/rejected answers, required/branching rules, publish rules                                                                                                                                      |
-| `targeting.test.ts`      | 395   | every condition type × operator, AND/OR/nested groups, schedules, behavioral event counts (scoped to integration + environment), frequency caps                                                                               |
-| `lifecycle.test.ts`      | 211   | all guide/survey status transitions, guide publish rules, delivery by status × environment × trigger, deletion, response acceptance, idempotency                                                                              |
-| `events.test.ts`         | 207   | event validation/normalization (incl. 150 generated events), batch limits, live/sandbox storage                                                                                                                               |
-| `platform.test.ts`       | 708   | 200 generated signed SDK requests verified by the real server code, 105 tampering/replay cases, origin rules, regex escaping, canary split at 1–99%, 150 random prompt-deployment sequences checked against a reference model |
+| File                     | Cases | Covers                                                                                                                                                                                                                                |
+| ------------------------ | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `survey-answers.test.ts` | 311   | every question type's accepted/rejected answers, required/branching rules, publish rules                                                                                                                                              |
+| `targeting.test.ts`      | 395   | every condition type × operator, AND/OR/nested groups, schedules, behavioral event counts (scoped to integration + environment), frequency caps                                                                                       |
+| `lifecycle.test.ts`      | 211   | all guide/survey status transitions, guide publish rules, delivery by status × environment × trigger, deletion, response acceptance, idempotency                                                                                      |
+| `events.test.ts`         | 207   | event validation/normalization (incl. 150 generated events), batch limits, live/sandbox storage                                                                                                                                       |
+| `platform.test.ts`       | 708   | 200 generated signed SDK requests verified by the real server code, 105 tampering/replay cases, origin rules, regex escaping, canary split at 1–99%, 150 random prompt-deployment sequences checked against a reference model         |
+| `hardening.test.ts`      | 60    | exposure status never downgraded, schedule time windows (incl. time zones/overnight), explicit targeting operators, rule validation, ingestion time window/import/$insert_id, profile trait merging, event-stream mapping and cursors |
 
 Generated cases use a fixed seed, so they are identical on every run.
 

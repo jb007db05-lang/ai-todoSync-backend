@@ -32,6 +32,8 @@ class GuideAnalyticsService {
       ),
     ]);
 
+    const npsBase =
+      responses.promoters + responses.passives + responses.detractors;
     const summary = {
       environment,
       guides: {
@@ -52,11 +54,10 @@ class GuideAnalyticsService {
       surveys: {
         total: totalSurveys,
         responses: responses.responses,
+        // NPS only counts responses that answered an NPS question.
         nps:
-          responses.responses > 0
-            ? ((responses.promoters - responses.detractors) /
-                responses.responses) *
-              100
+          npsBase > 0
+            ? ((responses.promoters - responses.detractors) / npsBase) * 100
             : 0,
         promoters: responses.promoters,
         passives: responses.passives,

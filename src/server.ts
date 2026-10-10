@@ -8,6 +8,7 @@ import NoteRoutes from "./modules/note/routes/note.routes.js";
 import EpicRoutes from "./modules/epic/routes/epic.routes.js";
 import UserRoutes from "./modules/auth/routes/users.routes.js";
 import ChatRoutes from "./modules/chat/routes/chat.routes.js";
+import WorkspaceChatRoutes from "./modules/chat/routes/workspace-chat.routes.js";
 import ActivityHistoryRoutes from "./modules/audit/routes/activity-log.routes.js";
 import CommentRoutes from "./modules/comment/routes/comment.routes.js";
 import AnalyticsRoutes from "./modules/analytics/routes/analytics.routes.js";
@@ -27,6 +28,8 @@ import WorkspaceRoutes from "./modules/workspace/routes/workspace.routes.js";
 import CentralizedAiRoutes from "./modules/ai/routes/ai.routes.js";
 import DocumentRoutes from "./modules/document/routes/document.routes.js";
 import PromptLibraryRoutes from "./modules/prompt/routes/prompt-library.routes.js";
+import EventsRoutes from "./modules/events/routes.js";
+import TimeTrackingRoutes from "./modules/time-tracking/time-tracking.routes.js";
 import logger from "./lib/logger.js";
 
 const server = new App([
@@ -34,6 +37,7 @@ const server = new App([
   new DocumentRoutes(),
   new CentralizedAiRoutes(),
   new WorkspaceRoutes(),
+  new InvitationRoutes(),
   new GuideRoutes(),
   new SurveyRoutes(),
   new ChecklistRoutes(),
@@ -42,6 +46,8 @@ const server = new App([
   new GuideAnalyticsRoutes(),
   new SdkIntegrationRoutes(),
   new AnalyticsRoutes(),
+  new EventsRoutes(),
+  new TimeTrackingRoutes(),
   new SlaRoutes(),
   new ApprovalWorkflowRoutes(),
   new PriorityEngineRoutes(),
@@ -57,7 +63,6 @@ const server = new App([
   new AiPlanningRoutes(),
   new ActivityHistoryRoutes(),
   new CommentRoutes(),
-  new InvitationRoutes(),
 ]);
 
 process.on("uncaughtException", (error) => {

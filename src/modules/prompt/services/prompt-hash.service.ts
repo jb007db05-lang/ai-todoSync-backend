@@ -12,6 +12,7 @@ export class PromptHashService {
     body: string,
     messages: IPromptMessage[] = [],
     variables: IPromptVariable[] = [],
+    parameters?: Record<string, unknown>,
   ): string {
     const sortedMessages = (messages || []).map((m) => ({
       content: (m.content || "").trim(),
@@ -36,6 +37,15 @@ export class PromptHashService {
       body: (body || "").trim(),
       messages: sortedMessages,
       variables: sortedVars,
+      parameters: parameters
+        ? {
+            provider: parameters.provider ?? "gemini",
+            modelName: parameters.modelName ?? "gemini-3.6-flash",
+            temperature: parameters.temperature ?? 0.7,
+            maxTokens: parameters.maxTokens ?? 2048,
+            topP: parameters.topP ?? 0.95,
+          }
+        : undefined,
     };
 
     return crypto

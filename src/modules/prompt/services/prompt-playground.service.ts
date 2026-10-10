@@ -1,4 +1,5 @@
 import PromptLibraryModel from "../models/prompt-library.model.js";
+import { recordPromptUse } from "./prompt-usage.service.js";
 import PromptVersionModel from "../models/prompt-version.model.js";
 import promptAuthorizationService from "./prompt-authorization.service.js";
 import promptVariableService from "./prompt-variable.service.js";
@@ -55,6 +56,7 @@ export class PromptPlaygroundService {
     let templateMessages: IPromptMessage[] = payload.messages || [];
     let promptVariables: IPromptVariable[] = [];
     let versionNum = payload.versionNumber;
+    let promptRootId: unknown = null;
 
     if (payload.promptId) {
       const promptDoc = await PromptLibraryModel.findOne({
@@ -73,6 +75,7 @@ export class PromptPlaygroundService {
         workspaceId,
       );
 
+      promptRootId = promptDoc.parentId || promptDoc._id;
       templateBody = promptDoc.body || "";
       templateMessages = (promptDoc.messages as IPromptMessage[]) || [];
       promptVariables = (promptDoc.variables as IPromptVariable[]) || [];
@@ -151,6 +154,7 @@ export class PromptPlaygroundService {
     }
 
     const latencyMs = Date.now() - startTime;
+    if (promptRootId) recordPromptUse(promptRootId);
 
     const inputCharCount = Array.isArray(resolved)
       ? resolved.reduce((acc, m) => acc + m.content.length, 0)

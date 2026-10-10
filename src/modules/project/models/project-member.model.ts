@@ -7,6 +7,8 @@ export interface IProjectMember {
   projectId: Types.ObjectId | string;
   userId: Types.ObjectId | string;
   role: ProjectRole;
+  /** Who gave this member access to the project. */
+  grantedBy?: Types.ObjectId | string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -30,6 +32,11 @@ const projectMemberSchema = new Schema<IProjectMemberDocument>(
       enum: ["ADMIN", "MEMBER"],
       required: true,
       default: "MEMBER",
+    },
+    grantedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
     },
   },
   { timestamps: true },

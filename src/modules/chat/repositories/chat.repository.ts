@@ -9,11 +9,14 @@ import ChatMessageModel, {
 export type ChatMessageDocument = IChatMessageDocument;
 
 export interface CreateMessagePayload {
-  projectId: string;
+  projectId?: string | null;
+  workspaceId?: string | null;
+  recipientId?: string | null;
   senderId: string | null;
   type?: MessageType;
   content: string;
   replyToId?: string | null;
+  mentions?: { userId: string; mentionedBy: string }[];
   metadata?: IMessageMetadata;
 }
 
@@ -30,8 +33,18 @@ export interface PaginationOptions {
   after?: string; // Message ID to fetch messages after
 }
 
+export interface WorkspacePaginationOptions extends PaginationOptions {
+  recipientId?: string | null;
+  currentUserId?: string | null;
+}
+
 const senderPopulation = {
   path: "senderId",
+  select: "email name",
+};
+
+const recipientPopulation = {
+  path: "recipientId",
   select: "email name",
 };
 
@@ -55,14 +68,22 @@ export const createMessage = async (
     [
       {
         ...payload,
+        projectId: payload.projectId ?? null,
+        workspaceId: payload.workspaceId ?? null,
+        recipientId: payload.recipientId ?? null,
         type: payload.type ?? MessageType.TEXT,
         replyToId: payload.replyToId ?? null,
         senderId: payload.senderId,
+        mentions: payload.mentions ?? [],
       },
     ],
     { session },
   );
-  return message[0].populate([senderPopulation, replyToPopulation]);
+  return message[0].populate([
+    senderPopulation,
+    replyToPopulation,
+    recipientPopulation,
+  ]);
 };
 
 /**
@@ -87,7 +108,47 @@ export const getMessagesByProject = async (
   }
 
   return ChatMessageModel.find(query)
-    .populate([senderPopulation, replyToPopulation])
+    .populate([senderPopulation, replyToPopulation, recipientPopulation])
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .exec();
+};
+
+/**
+ * Get messages by workspace ID with pagination (common lounge or 1-on-1 direct)
+ */
+export const getMessagesByWorkspace = async (
+  workspaceId: string,
+  options: WorkspacePaginationOptions = {},
+): Promise<ChatMessageDocument[]> => {
+  const { limit = 50, before, after, recipientId, currentUserId } = options;
+
+  const query: Record<string, unknown> = { workspaceId };
+
+  if (recipientId && currentUserId) {
+    // 1-on-1 direct chat
+    query.$or = [
+      { senderId: currentUserId, recipientId },
+      { senderId: recipientId, recipientId: currentUserId },
+    ];
+  } else {
+    // Workspace common lounge (no project, no recipient)
+    query.projectId = null;
+    query.recipientId = null;
+  }
+
+  if (before) {
+    query.createdAt = {
+      $lt: (await ChatMessageModel.findById(before))?.createdAt ?? new Date(),
+    };
+  } else if (after) {
+    query.createdAt = {
+      $gt: (await ChatMessageModel.findById(after))?.createdAt ?? new Date(),
+    };
+  }
+
+  return ChatMessageModel.find(query)
+    .populate([senderPopulation, replyToPopulation, recipientPopulation])
     .sort({ createdAt: -1 })
     .limit(limit)
     .exec();

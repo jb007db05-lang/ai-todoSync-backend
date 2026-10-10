@@ -1,6 +1,8 @@
 import type { Response, NextFunction } from "express";
+import mongoose from "mongoose";
 import type { AuthenticatedRequest } from "../../../types/auth.js";
 import promptLibraryService, { HttpError } from "../services/prompt.service.js";
+import promptSharingService from "../services/prompt-sharing.service.js";
 
 class PromptLibraryController {
   private getUserId(req: AuthenticatedRequest): string {
@@ -13,8 +15,14 @@ class PromptLibraryController {
 
   private getParam(req: AuthenticatedRequest, key: string): string {
     const val = req.params[key];
-    if (!val || typeof val !== "string") {
+    if (!val || typeof val !== "string" || val === "undefined") {
       throw new HttpError(400, `Missing required param '${key}'`);
+    }
+    if (
+      (key === "promptId" || key === "workspaceId" || key === "folderId") &&
+      !mongoose.Types.ObjectId.isValid(val)
+    ) {
+      throw new HttpError(400, `Invalid ID param '${key}'`);
     }
     return val;
   }
@@ -25,6 +33,45 @@ class PromptLibraryController {
     if (val === "false" || val === false) return false;
     return undefined;
   }
+
+  // Individual sharing (prompt.share_individual)
+  public listPromptAccess = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ) => {
+    const access = await promptSharingService.listAccess(
+      this.getParam(req, "workspaceId"),
+      this.getUserId(req),
+      this.getParam(req, "promptId"),
+    );
+    res.status(200).json({ status: "success", data: access });
+  };
+
+  public grantPromptAccess = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ) => {
+    const access = await promptSharingService.grant(
+      this.getParam(req, "workspaceId"),
+      this.getUserId(req),
+      this.getParam(req, "promptId"),
+      req.body?.userId,
+    );
+    res.status(200).json({ status: "success", data: access });
+  };
+
+  public revokePromptAccess = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ) => {
+    const access = await promptSharingService.revoke(
+      this.getParam(req, "workspaceId"),
+      this.getUserId(req),
+      this.getParam(req, "promptId"),
+      this.getParam(req, "userId"),
+    );
+    res.status(200).json({ status: "success", data: access });
+  };
 
   // Folders
   public createFolder = async (
@@ -119,7 +166,8 @@ class PromptLibraryController {
       const userId = this.getUserId(req);
       const workspaceId = this.getParam(req, "workspaceId");
 
-      const { category, folderId, search, isTemplate, isFavorite } = req.query;
+      const { category, folderId, search, isTemplate, isFavorite, projectId } =
+        req.query;
 
       const prompts = await promptLibraryService.listPrompts(
         workspaceId,
@@ -130,6 +178,7 @@ class PromptLibraryController {
           search: search as string,
           isTemplate: this.parseBooleanQuery(isTemplate),
           isFavorite: this.parseBooleanQuery(isFavorite),
+          projectId: typeof projectId === "string" ? projectId : undefined,
         },
       );
 
@@ -362,11 +411,17 @@ class PromptLibraryController {
     try {
       const userId = this.getUserId(req);
       const workspaceId = this.getParam(req, "workspaceId");
-      const promptId = req.params.promptId;
+      const rawPromptId = req.params.promptId || req.body?.promptId;
+      const cleanPromptId =
+        rawPromptId &&
+        rawPromptId !== "undefined" &&
+        mongoose.Types.ObjectId.isValid(rawPromptId)
+          ? rawPromptId
+          : undefined;
 
       const payload = {
         ...req.body,
-        promptId: promptId || req.body.promptId,
+        promptId: cleanPromptId,
       };
 
       const result = await promptLibraryService.runPlayground(

@@ -7,11 +7,17 @@ import PromptVersionModel from "../models/prompt-version.model.js";
 import PromptFolderModel from "../models/prompt-folder.model.js";
 import PromptDeploymentModel from "../models/prompt-deployment.model.js";
 import workspaceService from "../../workspace/services/workspace.service.js";
+import accessService from "../../access/access.service.js";
+import PromptMemberAccessModel from "../../access/prompt-member-access.model.js";
+import { fakeAccess } from "../../access/access.fixtures.js";
 
 describe("PromptOps Core Hardening & Verification Suite (F-04, F-05, F-06)", () => {
   // Mock Workspace Membership Check
   const originalAssertMembership = workspaceService.assertMembership;
   workspaceService.assertMembership = async () => ({}) as any;
+  const originalResolve = accessService.resolve;
+  accessService.resolve = async (u: string, w: string) =>
+    fakeAccess({ userId: u, workspaceId: w });
 
   test("F-05: Handlebars variable extraction, syntax, whitespace tolerance & deduplication", () => {
     const content =
@@ -342,6 +348,13 @@ describe("PromptOps Core Hardening & Verification Suite (F-04, F-05, F-06)", () 
       visibility: "private",
     };
 
+    // A regular member who was not given the prompt.
+    const adminResolve = accessService.resolve;
+    const originalExists = PromptMemberAccessModel.exists;
+    accessService.resolve = async (u: string, w: string) =>
+      fakeAccess({ userId: u, workspaceId: w, role: "MEMBER" });
+    PromptMemberAccessModel.exists = (async () => null) as any;
+
     // Private prompt rejects non-creator caller
     await assert.rejects(
       async () =>
@@ -354,6 +367,13 @@ describe("PromptOps Core Hardening & Verification Suite (F-04, F-05, F-06)", () 
 
     // Private prompt accepts creator caller
     await promptLibraryService.assertPromptAccess(privatePrompt, userA, wsA);
+
+    // ...and a member it was shared with.
+    PromptMemberAccessModel.exists = (async () => ({ _id: "grant" })) as any;
+    await promptLibraryService.assertPromptAccess(privatePrompt, userB, wsA);
+
+    accessService.resolve = adminResolve;
+    PromptMemberAccessModel.exists = originalExists;
   });
 
   test("F-06: Historical revision update rejection (HTTP 400)", async () => {
@@ -669,6 +689,7 @@ describe("PromptOps Core Hardening & Verification Suite (F-04, F-05, F-06)", () 
       PromptVersionModel.create = origPVCreate;
       PromptDeploymentModel.updateOne = origPDUpdateOne;
       workspaceService.assertMembership = originalAssertMembership;
+      accessService.resolve = originalResolve;
     }
   });
 });

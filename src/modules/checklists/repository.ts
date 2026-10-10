@@ -9,6 +9,7 @@ import {
   ChecklistProgressModel,
   type IChecklistDocument,
 } from "./model.js";
+import { escapeRegex } from "../../shared/environment.js";
 
 class ChecklistRepository {
   public listChecklists(tenantId: string, query: ChecklistQueryDto) {
@@ -18,9 +19,10 @@ class ChecklistRepository {
     };
 
     if (query.search) {
+      const pattern = escapeRegex(query.search);
       filter.$or = [
-        { title: { $regex: query.search, $options: "i" } },
-        { description: { $regex: query.search, $options: "i" } },
+        { title: { $regex: pattern, $options: "i" } },
+        { description: { $regex: pattern, $options: "i" } },
       ];
     }
 

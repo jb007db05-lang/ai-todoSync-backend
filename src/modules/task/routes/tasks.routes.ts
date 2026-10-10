@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import { Routes } from "../../../interfaces/routes.interface.js";
 import authMiddleware from "../../../middleware/auth.middleware.js";
+import { workspaceContext } from "../../access/access.middleware.js";
 import taskController from "../../../modules/task/controllers/task.controller.js";
 
 class TaskRoutes implements Routes {
@@ -14,8 +15,14 @@ class TaskRoutes implements Routes {
 
   private initializeRoutes(): void {
     this.router.use(authMiddleware);
-    this.router.get("/", taskController.getTasks);
-    this.router.get("/assigned", taskController.getTasksAssignedToMe);
+    // Listings are limited to the active workspace's projects.
+    const inWorkspace = workspaceContext({ fallbackToDefault: true });
+    this.router.get("/", inWorkspace, taskController.getTasks);
+    this.router.get(
+      "/assigned",
+      inWorkspace,
+      taskController.getTasksAssignedToMe,
+    );
     this.router.get("/summary", taskController.taskSummary);
     this.router.post("/", taskController.createTask);
     this.router.patch("/:id/status", taskController.updateTaskStatus);

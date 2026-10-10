@@ -29,7 +29,10 @@ interface ReactionDto {
 
 interface MessageDto {
   id: string;
-  projectId: string;
+  projectId: string | null;
+  workspaceId?: string | null;
+  recipientId?: string | null;
+  recipient?: SenderDto | null;
   senderId: string | null;
   sender: SenderDto | null;
   type: MessageType;
@@ -38,6 +41,7 @@ interface MessageDto {
   replyTo: ReplyToDto | null;
   readBy: string[];
   reactions: ReactionDto[];
+  mentions?: { userId: string; mentionedBy: string }[];
   isEdited: boolean;
   isDeleted: boolean;
   metadata: IMessageMetadata;
@@ -75,6 +79,7 @@ class ChatService {
     options?: {
       type?: MessageType;
       replyToId?: string;
+      mentions?: string[];
       metadata?: IMessageMetadata;
     },
   ): Promise<MessageDto> {
@@ -124,12 +129,20 @@ class ChatService {
       normalizedReplyToId = options.replyToId;
     }
 
+    const mentionsList: { userId: string; mentionedBy: string }[] = [];
+    if (options?.mentions && Array.isArray(options.mentions)) {
+      options.mentions.forEach((uId) => {
+        mentionsList.push({ userId: uId, mentionedBy: senderId });
+      });
+    }
+
     const payload: CreateMessagePayload = {
       projectId,
       senderId,
       type: options?.type ?? MessageType.TEXT,
       content: trimmedContent,
       replyToId: normalizedReplyToId,
+      mentions: mentionsList,
       metadata: options?.metadata,
     };
 
@@ -214,6 +227,132 @@ class ChatService {
 
     return {
       messages: slicedMessages.map((msg) => this.toDto(msg)),
+      hasMore,
+    };
+  }
+
+  /**
+   * Send a workspace-level message (workspace common lounge or 1-on-1 direct message)
+   */
+  public async sendWorkspaceMessage(
+    workspaceId: string,
+    senderId: string,
+    content: string,
+    options?: {
+      recipientId?: string;
+      replyToId?: string;
+      mentions?: string[];
+      type?: MessageType;
+      metadata?: IMessageMetadata;
+    },
+  ): Promise<MessageDto> {
+    const trimmedContent = content.trim();
+
+    if (!trimmedContent || trimmedContent.length === 0) {
+      throw new HttpError(400, "Message content is required");
+    }
+
+    // Validate active workspace membership
+    const WorkspaceMemberModel = (
+      await import("../../workspace/models/workspace-member.model.js")
+    ).default;
+    const membership = await WorkspaceMemberModel.findOne({
+      workspaceId,
+      userId: senderId,
+    });
+    if (!membership) {
+      throw new HttpError(
+        403,
+        "Only active workspace members can send messages",
+      );
+    }
+
+    // If direct message, validate recipient is also in workspace
+    if (options?.recipientId) {
+      const recipientMember = await WorkspaceMemberModel.findOne({
+        workspaceId,
+        userId: options.recipientId,
+      });
+      if (!recipientMember) {
+        throw new HttpError(404, "Recipient is not a member of this workspace");
+      }
+    }
+
+    if (trimmedContent.length > this.MAX_CONTENT_LENGTH) {
+      throw new HttpError(
+        400,
+        `Message content exceeds maximum length of ${this.MAX_CONTENT_LENGTH} characters`,
+      );
+    }
+
+    const mentionsList: { userId: string; mentionedBy: string }[] = [];
+    if (options?.mentions && Array.isArray(options.mentions)) {
+      options.mentions.forEach((uId) => {
+        mentionsList.push({ userId: uId, mentionedBy: senderId });
+      });
+    }
+
+    const payload: CreateMessagePayload = {
+      projectId: null,
+      workspaceId,
+      recipientId: options?.recipientId ?? null,
+      senderId,
+      type: options?.type ?? MessageType.TEXT,
+      content: trimmedContent,
+      replyToId: options?.replyToId ?? null,
+      mentions: mentionsList,
+      metadata: options?.metadata,
+    };
+
+    const message = await chatRepository.createMessage(payload);
+    return this.toDto(message);
+  }
+
+  /**
+   * Get messages for a workspace (common lounge or 1-on-1 direct chat)
+   */
+  public async getWorkspaceMessages(
+    workspaceId: string,
+    currentUserId: string,
+    options: {
+      recipientId?: string;
+      limit?: number;
+      before?: string;
+      after?: string;
+    } = {},
+  ): Promise<MessageListResult> {
+    const WorkspaceMemberModel = (
+      await import("../../workspace/models/workspace-member.model.js")
+    ).default;
+    const membership = await WorkspaceMemberModel.findOne({
+      workspaceId,
+      userId: currentUserId,
+    });
+    if (!membership) {
+      throw new HttpError(403, "Access denied to workspace chat");
+    }
+
+    const messages = await chatRepository.getMessagesByWorkspace(workspaceId, {
+      recipientId: options.recipientId,
+      currentUserId,
+      limit: (options.limit ?? 50) + 1,
+      before: options.before,
+      after: options.after,
+    });
+
+    const hasMore = messages.length > (options.limit ?? 50);
+    const slicedMessages = hasMore ? messages.slice(0, -1) : messages;
+
+    const messagesWithReplyCount = await Promise.all(
+      slicedMessages.map(async (msg) => {
+        const dto = this.toDto(msg);
+        dto.replyCount = await chatRepository.getReplyCount(msg._id.toString());
+        return dto;
+      }),
+    );
+
+    return {
+      messages: messagesWithReplyCount.reverse(),
       hasMore,
     };
   }
@@ -446,9 +585,18 @@ class ChatService {
         )
       : null;
 
+    const recipient = this.toSenderDto((message as any).recipientId);
+    const mentions = (message.mentions || []).map((m) => ({
+      userId: m.userId.toString(),
+      mentionedBy: m.mentionedBy.toString(),
+    }));
+
     return {
       id: message._id.toString(),
-      projectId: message.projectId.toString(),
+      projectId: message.projectId ? message.projectId.toString() : null,
+      workspaceId: message.workspaceId ? message.workspaceId.toString() : null,
+      recipientId: message.recipientId ? message.recipientId.toString() : null,
+      recipient,
       senderId: message.senderId?.toString() ?? null,
       sender,
       type: message.type as MessageType,
@@ -461,6 +609,7 @@ class ChatService {
         emoji: r.emoji,
         createdAt: r.createdAt,
       })),
+      mentions,
       isEdited: message.isEdited,
       isDeleted: message.isDeleted,
       metadata: message.metadata || {},
@@ -529,7 +678,12 @@ class ChatService {
     if (!sourceMessage || sourceMessage.isDeleted) {
       throw new HttpError(404, "Source message not found");
     }
-
+    if (!sourceMessage.projectId) {
+      throw new HttpError(
+        400,
+        "Source message is not associated with a project",
+      );
+    }
     const sourceProjectId = sourceMessage.projectId.toString();
     const sourceMembership = await projectMemberRepository.getProjectMembership(
       sourceProjectId,
@@ -591,6 +745,9 @@ class ChatService {
       throw new HttpError(404, "Message not found");
     }
 
+    if (!message.projectId) {
+      throw new HttpError(400, "Message is not associated with a project");
+    }
     const projectId = message.projectId.toString();
     const membership = await projectMemberRepository.getProjectMembership(
       projectId,

@@ -1,17 +1,19 @@
-import type { ClientSession } from "mongoose";
+import mongoose, { type ClientSession } from "mongoose";
 
 import ProjectModel, { IProjectDocument } from "../models/project.model.js";
 import TaskModel from "../../task/models/task.model.js";
 import EpicModel from "../../epic/models/epic.model.js";
 import NoteModel from "../../note/models/note.model.js";
 import ProjectMemberModel from "../models/project-member.model.js";
-import { deleteProjectMembershipsByProject } from "./project-member.repository.js";
+import TimeEntryModel from "../../time-tracking/time-entry.model.js";
+import PromptLibraryModel from "../../prompt/models/prompt-library.model.js";
 import {
   andRefMatches,
   buildSafeRefInMatch,
   buildSafeRefMatch,
 } from "../../../utils/mongo-ref.js";
 import { runInTransaction } from "../../../utils/transaction.js";
+import { escapeRegex } from "../../../shared/environment.js";
 
 export const projectPopulateOptions = [
   { path: "userId", select: "email name firstName lastName" },
@@ -19,8 +21,10 @@ export const projectPopulateOptions = [
 
 export interface CreateProjectPayload {
   userId: string;
+  workspaceId: string;
   name: string;
   description?: string;
+  uuid?: string;
 }
 
 export interface UpdateProjectPayload {
@@ -36,94 +40,83 @@ export const createProject = async (
     ([project]) => project,
   );
 
-export interface ProjectQueryParams {
-  userId: string;
+export interface ProjectListParams {
+  /** Projects the caller may see (from accessService.accessibleProjectIds). */
+  projectIds: string[];
   search?: string;
   skip?: number;
   limit?: number;
 }
 
-export const getProjectsByUser = async (
-  params: ProjectQueryParams,
+const projectListQuery = ({ projectIds, search }: ProjectListParams) => {
+  const validObjectIds = projectIds.filter((id) =>
+    mongoose.Types.ObjectId.isValid(id),
+  );
+  const uuidList = projectIds.filter(
+    (id) => !mongoose.Types.ObjectId.isValid(id),
+  );
+
+  const idQuery =
+    uuidList.length > 0
+      ? {
+          $or: [
+            { _id: { $in: validObjectIds } },
+            { uuid: { $in: projectIds } },
+          ],
+        }
+      : buildSafeRefInMatch("_id", projectIds);
+
+  const query: Record<string, unknown> = { ...idQuery };
+  if (search?.trim()) {
+    query.name = { $regex: escapeRegex(search.trim()), $options: "i" };
+  }
+  return query;
+};
+
+export const getProjectsByIds = async (
+  params: ProjectListParams,
 ): Promise<IProjectDocument[]> => {
-  const memberships = await ProjectMemberModel.find(
-    buildSafeRefMatch("userId", params.userId),
-  )
-    .select({ projectId: 1 })
-    .lean()
-    .exec();
-  const projectIds = memberships.map((membership) =>
-    membership.projectId.toString(),
-  );
-
-  if (projectIds.length === 0) {
-    return [];
-  }
-
-  const query: Record<string, unknown> = buildSafeRefInMatch("_id", projectIds);
-
-  if (params.search) {
-    query.name = { $regex: params.search, $options: "i" };
-  }
-
-  return ProjectModel.find(query)
+  if (params.projectIds.length === 0) return [];
+  let query = ProjectModel.find(projectListQuery(params))
     .populate(projectPopulateOptions)
-    .sort({ name: 1, _id: 1 })
-    .skip(params.skip || 0)
-    .limit(params.limit || 0)
-    .exec();
+    .sort({ name: 1, _id: 1 });
+  if (params.skip) query = query.skip(params.skip);
+  if (params.limit) query = query.limit(params.limit);
+  return query.exec();
 };
 
-export const countProjectsByUser = async (
-  userId: string,
-  search?: string,
-): Promise<number> => {
-  const memberships = await ProjectMemberModel.find(
-    buildSafeRefMatch("userId", userId),
-  )
-    .select({ projectId: 1 })
-    .lean()
-    .exec();
-  const projectIds = memberships.map((membership) =>
-    membership.projectId.toString(),
-  );
-
-  if (projectIds.length === 0) {
-    return 0;
-  }
-
-  const query: Record<string, unknown> = buildSafeRefInMatch("_id", projectIds);
-
-  if (search) {
-    query.name = { $regex: search, $options: "i" };
-  }
-
-  return ProjectModel.countDocuments(query).exec();
-};
+export const countProjectsByIds = async (
+  params: ProjectListParams,
+): Promise<number> =>
+  params.projectIds.length === 0
+    ? 0
+    : ProjectModel.countDocuments(projectListQuery(params)).exec();
 
 export const getProjectById = async (
   projectId: string,
-): Promise<IProjectDocument | null> =>
-  ProjectModel.findById(projectId).populate(projectPopulateOptions).exec();
+): Promise<IProjectDocument | null> => {
+  const query = mongoose.Types.ObjectId.isValid(projectId)
+    ? { $or: [{ _id: projectId }, { uuid: projectId }] }
+    : { uuid: projectId };
+  return ProjectModel.findOne(query).populate(projectPopulateOptions).exec();
+};
 
 export const getProjectByIdAndUser = async (
   projectId: string,
   userId: string,
-): Promise<IProjectDocument | null> =>
-  ProjectMemberModel.exists({
+): Promise<IProjectDocument | null> => {
+  const project = await getProjectById(projectId);
+  if (!project) return null;
+
+  const membership = await ProjectMemberModel.exists({
     ...andRefMatches(
-      buildSafeRefMatch("projectId", projectId),
+      buildSafeRefMatch("projectId", project._id.toString()),
       buildSafeRefMatch("userId", userId),
     ),
-  }).then((membership) => {
-    if (membership == null) {
-      return null;
-    }
-
-    return ProjectModel.findById(projectId)
-      .populate(projectPopulateOptions)
-      .exec();
   });
+
+  return membership ? project : null;
+};
 
 export const getProjectByName = async (
   userId: string,
@@ -136,15 +129,23 @@ export const getProjectByName = async (
 export const updateProject = async (
   projectId: string,
   updates: UpdateProjectPayload,
-): Promise<IProjectDocument | null> =>
-  ProjectModel.findByIdAndUpdate(projectId, updates, {
+): Promise<IProjectDocument | null> => {
+  const query = mongoose.Types.ObjectId.isValid(projectId)
+    ? { $or: [{ _id: projectId }, { uuid: projectId }] }
+    : { uuid: projectId };
+  return ProjectModel.findOneAndUpdate(query, updates, {
     new: true,
   }).exec();
+};
 
 export const deleteProject = async (
   projectId: string,
-): Promise<IProjectDocument | null> =>
-  ProjectModel.findByIdAndDelete(projectId).exec();
+): Promise<IProjectDocument | null> => {
+  const query = mongoose.Types.ObjectId.isValid(projectId)
+    ? { $or: [{ _id: projectId }, { uuid: projectId }] }
+    : { uuid: projectId };
+  return ProjectModel.findOneAndDelete(query).exec();
+};
 
 export const deleteTasksByProject = async (
   userId: string,
@@ -158,62 +159,50 @@ export const deleteTasksByProject = async (
   ).exec();
 };
 
+/**
+ * Removes everything that belongs to the given projects. Prompts outlive
+ * their project: they are unlinked, not deleted.
+ */
+const deleteRelations = async (
+  projectIds: string[],
+  session: ClientSession | null,
+): Promise<void> => {
+  const opts = { session: session as any };
+  const byProject = buildSafeRefInMatch("projectId", projectIds);
+  await Promise.all([
+    TaskModel.deleteMany(byProject, opts).exec(),
+    EpicModel.deleteMany(byProject, opts).exec(),
+    NoteModel.deleteMany(byProject, opts).exec(),
+    ProjectMemberModel.deleteMany(byProject, opts).exec(),
+    TimeEntryModel.deleteMany(byProject, opts).exec(),
+    PromptLibraryModel.updateMany(
+      byProject,
+      { $set: { projectId: null } },
+      opts,
+    ).exec(),
+  ]);
+};
+
 export const deleteProjectWithRelations = async (
   projectId: string,
-): Promise<IProjectDocument | null> => {
-  return runInTransaction(async (session) => {
+): Promise<IProjectDocument | null> =>
+  runInTransaction(async (session) => {
     const deletedProject = await ProjectModel.findByIdAndDelete(projectId, {
       session: session as any,
     }).exec();
-
-    if (deletedProject == null) {
-      return null;
-    }
-
-    await TaskModel.deleteMany(buildSafeRefMatch("projectId", projectId), {
-      session: session as any,
-    }).exec();
-    await EpicModel.deleteMany(buildSafeRefMatch("projectId", projectId), {
-      session: session as any,
-    }).exec();
-    await NoteModel.deleteMany(buildSafeRefMatch("projectId", projectId), {
-      session: session as any,
-    }).exec();
-    await deleteProjectMembershipsByProject(projectId, session as any);
-
+    if (deletedProject == null) return null;
+    await deleteRelations([projectId], session ?? null);
     return deletedProject;
   });
-};
 
 export const deleteProjectsWithRelations = async (
   projectIds: string[],
-): Promise<number> => {
-  return runInTransaction(async (session) => {
-    const result = await ProjectModel.deleteMany(
+): Promise<number> =>
+  runInTransaction(async (session) => {
+    const { deletedCount } = await ProjectModel.deleteMany(
       { _id: { $in: projectIds } },
       { session: session as any },
     ).exec();
-
-    const deletedCount = result.deletedCount;
-
-    if (deletedCount === 0) {
-      return 0;
-    }
-
-    await TaskModel.deleteMany(buildSafeRefInMatch("projectId", projectIds), {
-      session: session as any,
-    }).exec();
-    await EpicModel.deleteMany(buildSafeRefInMatch("projectId", projectIds), {
-      session: session as any,
-    }).exec();
-    await NoteModel.deleteMany(buildSafeRefInMatch("projectId", projectIds), {
-      session: session as any,
-    }).exec();
-    await ProjectMemberModel.deleteMany(
-      buildSafeRefInMatch("projectId", projectIds),
-      { session: session as any },
-    ).exec();
-
+    if (deletedCount > 0) await deleteRelations(projectIds, session ?? null);
     return deletedCount;
   });
-};

@@ -1,8 +1,8 @@
 import type { PipelineStage } from "mongoose";
+import accessService from "../../access/access.service.js";
 import { Types } from "mongoose";
 
 import OperationalAnalyticsEventModel from "../models/operational-analytics-event.model.js";
-import ProjectMemberModel from "../../project/models/project-member.model.js";
 import ProjectModel from "../../project/models/project.model.js";
 import TaskModel from "../../task/models/task.model.js";
 import logger from "../../../lib/logger.js";
@@ -39,6 +39,8 @@ export interface MetricQueryInput {
   filters?: MetricFilters;
   timeRange?: TimeRange;
   dimensions?: string[];
+  /** Active workspace; analytics only cover its projects the caller can open. */
+  workspaceId?: string;
 }
 
 interface MetricDefinition {
@@ -278,9 +280,12 @@ class SemanticAnalyticsService {
 
   public async listMetrics(
     userId: string,
-    options?: { aiVisibleOnly?: boolean },
+    options?: { aiVisibleOnly?: boolean; workspaceId?: string },
   ) {
-    const rolesByProjectId = await this.getRolesByProjectId(userId);
+    const rolesByProjectId = await this.getRolesByProjectId(
+      userId,
+      options?.workspaceId,
+    );
 
     return Object.values(this.metricRegistry)
       .filter((metric) => this.canDiscoverMetric(metric, rolesByProjectId))
@@ -294,13 +299,20 @@ class SemanticAnalyticsService {
       .map((metric) => this.contractFor(metric));
   }
 
-  public async describeMetric(userId: string, metricName: string) {
+  public async describeMetric(
+    userId: string,
+    metricName: string,
+    workspaceId?: string,
+  ) {
     const metric = this.metricRegistry[metricName as MetricName];
     if (!metric) {
       throw new HttpError(404, "Unknown metric");
     }
 
-    const rolesByProjectId = await this.getRolesByProjectId(userId);
+    const rolesByProjectId = await this.getRolesByProjectId(
+      userId,
+      workspaceId,
+    );
     if (!this.canDiscoverMetric(metric, rolesByProjectId)) {
       throw new HttpError(404, "Unknown metric");
     }
@@ -521,24 +533,9 @@ class SemanticAnalyticsService {
 
   private async getRolesByProjectId(
     userId: string,
+    workspaceId?: string,
   ): Promise<Map<string, ProjectRole>> {
-    const memberships = await ProjectMemberModel.find({ userId }).lean().exec();
-    const ownedProjects = await ProjectModel.find({ userId })
-      .select("_id")
-      .lean()
-      .exec();
-    const rolesByProjectId = new Map<string, ProjectRole>(
-      memberships.map((membership) => [
-        membership.projectId.toString(),
-        membership.role === "ADMIN" ? "ADMIN" : "MEMBER",
-      ]),
-    );
-
-    ownedProjects.forEach((project) => {
-      rolesByProjectId.set(project._id.toString(), "ADMIN");
-    });
-
-    return rolesByProjectId;
+    return (await accessService.projectScope(userId, workspaceId)).roles;
   }
 
   private inferSemanticType(
@@ -581,27 +578,8 @@ class SemanticAnalyticsService {
     const timeRange = this.normalizeTimeRange(input.timeRange);
     const { startDate, endDate } = this.resolveTimeRange(timeRange);
     const filters = this.validateFilters(metric, input.filters);
-    const memberships = await ProjectMemberModel.find({ userId }).lean().exec();
-    const ownedProjects = await ProjectModel.find({ userId })
-      .select("_id")
-      .lean()
-      .exec();
-    const rolesByProjectId = new Map<string, ProjectRole>(
-      memberships.map((membership) => [
-        membership.projectId.toString(),
-        membership.role === "ADMIN" ? "ADMIN" : "MEMBER",
-      ]),
-    );
-    const accessibleProjectIds = [
-      ...new Set([
-        ...memberships.map((membership) => membership.projectId.toString()),
-        ...ownedProjects.map((project) => project._id.toString()),
-      ]),
-    ];
-
-    ownedProjects.forEach((project) => {
-      rolesByProjectId.set(project._id.toString(), "ADMIN");
-    });
+    const { projectIds: accessibleProjectIds, roles: rolesByProjectId } =
+      await accessService.projectScope(userId, input.workspaceId);
 
     if (
       filters.projectId &&

@@ -18,12 +18,15 @@ class TrackingController {
    */
   public track = async (req: Request, res: Response) => {
     try {
-      const { eventName, payload, sessionId, eventId } = req.body as {
-        eventName?: string;
-        payload?: Record<string, unknown>;
-        sessionId?: string;
-        eventId?: string;
-      };
+      const { eventName, payload, sessionId, eventId, userId, userIdentifier } =
+        req.body as {
+          eventName?: string;
+          payload?: Record<string, unknown>;
+          sessionId?: string;
+          eventId?: string;
+          userId?: string;
+          userIdentifier?: string;
+        };
       const apiKeyId = req.apiKeyId;
       const sdkIntegrationId = req.sdkIntegration?._id?.toString();
 
@@ -41,6 +44,12 @@ class TrackingController {
         payload,
         sessionId,
         eventId,
+        userIdentifier:
+          typeof userIdentifier === "string"
+            ? userIdentifier
+            : typeof userId === "string"
+              ? userId
+              : undefined,
       });
 
       return res.status(200).json({ success: true, logId: log?._id ?? null });
@@ -119,6 +128,30 @@ class TrackingController {
       return res.status(200).json({ success: true, ...result });
     } catch (error) {
       return this.handleError(res, error, "Failed to ingest batch");
+    }
+  };
+
+  /**
+   * POST /api/import — historical/backfilled events. Same body as /batch, but
+   * events may be older than 5 days; they are marked `$import: true`.
+   */
+  public importEvents = async (req: Request, res: Response) => {
+    try {
+      const apiKeyId = req.apiKeyId;
+      if (!apiKeyId) {
+        return res.status(401).json({ error: "API key is required" });
+      }
+
+      const result = await trackingService.ingestBatch(
+        apiKeyId,
+        req.body,
+        req.sdkIntegration?._id?.toString(),
+        req.sdkEnvironment,
+        { imported: true },
+      );
+      return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+      return this.handleError(res, error, "Failed to import events");
     }
   };
 

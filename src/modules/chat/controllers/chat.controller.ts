@@ -86,8 +86,8 @@ class ChatController {
       const user = req.user;
       const projectId =
         req.params.projectId || req.projectAccess?.project._id.toString();
-      const { content, replyToId, type, metadata } =
-        req.body as SendMessageRequestBody;
+      const { content, replyToId, type, metadata, mentions } =
+        req.body as SendMessageRequestBody & { mentions?: string[] };
 
       if (user == null) {
         res.status(401).json({ error: "Authentication required" });
@@ -112,6 +112,7 @@ class ChatController {
           replyToId,
           type: type || MessageType.TEXT,
           metadata,
+          mentions,
         },
       );
 
@@ -565,6 +566,110 @@ class ChatController {
       res.status(201).json({
         message: "Task created from message successfully",
         data: result,
+      });
+    } catch (error) {
+      const status = (error as { status?: number }).status || 500;
+      res.status(status).json({ error: (error as Error).message });
+    }
+  };
+
+  /**
+   * Get messages for a workspace (common lounge or 1-on-1 direct messages)
+   */
+  public getWorkspaceMessages = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const user = req.user;
+      const rawWorkspaceId = req.params.workspaceId;
+      const workspaceId = Array.isArray(rawWorkspaceId)
+        ? rawWorkspaceId[0]
+        : rawWorkspaceId;
+
+      if (user == null) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+
+      if (!workspaceId) {
+        res.status(400).json({ error: "Workspace ID is required" });
+        return;
+      }
+
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+      const before = (req.query.before as string) || undefined;
+      const after = (req.query.after as string) || undefined;
+      const recipientId = (req.query.recipientId as string) || undefined;
+
+      const result = await chatService.getWorkspaceMessages(
+        workspaceId,
+        user._id.toString(),
+        {
+          recipientId,
+          limit,
+          before,
+          after,
+        },
+      );
+
+      res.status(200).json({
+        message: "Workspace messages retrieved successfully",
+        data: result,
+      });
+    } catch (error) {
+      const status = (error as { status?: number }).status || 500;
+      res.status(status).json({ error: (error as Error).message });
+    }
+  };
+
+  /**
+   * Send a workspace-level message (common lounge or direct message)
+   */
+  public sendWorkspaceMessage = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const user = req.user;
+      const rawWorkspaceId = req.params.workspaceId;
+      const workspaceId = Array.isArray(rawWorkspaceId)
+        ? rawWorkspaceId[0]
+        : rawWorkspaceId;
+      const { content, recipientId, replyToId, type, metadata, mentions } =
+        req.body;
+
+      if (user == null) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+
+      if (!workspaceId) {
+        res.status(400).json({ error: "Workspace ID is required" });
+        return;
+      }
+
+      if (!content || content.trim().length === 0) {
+        res.status(400).json({ error: "Message content is required" });
+        return;
+      }
+
+      const message = await chatService.sendWorkspaceMessage(
+        workspaceId,
+        user._id.toString(),
+        content,
+        {
+          recipientId,
+          replyToId,
+          type: type || MessageType.TEXT,
+          metadata,
+          mentions,
+        },
+      );
+
+      res.status(201).json({
+        message: "Workspace message sent successfully",
+        data: message,
       });
     } catch (error) {
       const status = (error as { status?: number }).status || 500;

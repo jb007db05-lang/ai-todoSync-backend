@@ -55,6 +55,13 @@ export interface IPromptLibrary {
   body: string; // fallback string representation
   messages?: IPromptMessage[]; // multi-role block support
   variables: IPromptVariable[];
+  parameters?: {
+    provider?: string;
+    modelName?: string;
+    temperature?: number;
+    maxTokens?: number;
+    topP?: number;
+  };
   visibility: PromptVisibility;
   createdBy: Types.ObjectId | string;
   version: number;
@@ -65,6 +72,7 @@ export interface IPromptLibrary {
   isArchived: boolean;
   isTemplate: boolean; // built-in starter template
   usageCount: number;
+  lastUsedAt?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -86,6 +94,13 @@ export interface IPromptVersion {
   body: string;
   messages?: IPromptMessage[];
   variables?: IPromptVariable[];
+  parameters?: {
+    provider?: string;
+    modelName?: string;
+    temperature?: number;
+    maxTokens?: number;
+    topP?: number;
+  };
   changedBy: Types.ObjectId | string;
   changeNote?: string;
   createdAt?: Date;
@@ -164,6 +179,13 @@ export interface CreatePromptPayload {
   body: string;
   messages?: IPromptMessage[];
   variables?: IPromptVariable[];
+  parameters?: {
+    provider?: string;
+    modelName?: string;
+    temperature?: number;
+    maxTokens?: number;
+    topP?: number;
+  };
   folderId?: string | null;
   projectId?: string | null;
   visibility?: PromptVisibility;
@@ -178,6 +200,13 @@ export interface UpdatePromptPayload {
   body?: string;
   messages?: IPromptMessage[];
   variables?: IPromptVariable[];
+  parameters?: {
+    provider?: string;
+    modelName?: string;
+    temperature?: number;
+    maxTokens?: number;
+    topP?: number;
+  };
   folderId?: string | null;
   projectId?: string | null;
   visibility?: PromptVisibility;

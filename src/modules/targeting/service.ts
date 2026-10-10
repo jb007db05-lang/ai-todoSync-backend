@@ -16,6 +16,7 @@ import type {
   UpdateTargetingSegmentDto,
 } from "./dtos.js";
 import targetingRepository from "./repository.js";
+import { isValidTimeZone } from "./validators.js";
 import {
   environmentFilter,
   type DataEnvironment,
@@ -272,10 +273,45 @@ class TargetingService {
       case "VISITED_PAGE":
       case "ABANDONED_FORM":
         return this.behaviorCondition(condition, context);
+      case "TIME_WINDOW": {
+        // { start: "09:00", end: "17:00", daysOfWeek?: [1..5], timezone? }
+        const window = (
+          typeof condition.value === "object" && condition.value !== null
+            ? condition.value
+            : condition.metadata
+        ) as
+          | {
+              start?: unknown;
+              end?: unknown;
+              daysOfWeek?: unknown;
+              timezone?: unknown;
+            }
+          | undefined;
+        if (
+          typeof window?.start !== "string" ||
+          typeof window?.end !== "string"
+        ) {
+          return { matched: true, reason: "Time window: none configured" };
+        }
+        const matched = this.isWithinWindow(
+          this.toDate(context.now) ?? new Date(),
+          {
+            start: window.start,
+            end: window.end,
+            daysOfWeek: Array.isArray(window.daysOfWeek)
+              ? (window.daysOfWeek as number[])
+              : undefined,
+          },
+          typeof window.timezone === "string" ? window.timezone : undefined,
+        );
+        return {
+          matched,
+          reason: `Time window: ${matched ? "matched" : "failed"}`,
+        };
+      }
       case "SHOW_ONCE":
       case "SHOW_EVERY_X_DAYS":
       case "COOLDOWN":
-      case "TIME_WINDOW":
         return {
           matched: true,
           reason: `${condition.type} handled by frequency engine`,
@@ -303,9 +339,7 @@ class TargetingService {
     actual: string | undefined,
     label: string,
   ): ConditionEvaluation {
-    const expected = String(condition.value ?? "");
-    const matched = actual === expected;
-    return { matched, reason: `${label}: ${matched ? "matched" : "failed"}` };
+    return this.textCondition(condition, actual, label, "EQUALS");
   }
 
   private containsCondition(
@@ -313,9 +347,7 @@ class TargetingService {
     actual: string | undefined,
     label: string,
   ): ConditionEvaluation {
-    const expected = String(condition.value ?? "");
-    const matched = Boolean(actual?.includes(expected));
-    return { matched, reason: `${label}: ${matched ? "matched" : "failed"}` };
+    return this.textCondition(condition, actual, label, "CONTAINS");
   }
 
   private regexCondition(
@@ -323,14 +355,55 @@ class TargetingService {
     actual: string | undefined,
     label: string,
   ): ConditionEvaluation {
-    try {
-      const matched = new RegExp(String(condition.value ?? "")).test(
-        actual ?? "",
-      );
-      return { matched, reason: `${label}: ${matched ? "matched" : "failed"}` };
-    } catch {
-      return { matched: false, reason: `${label}: invalid regex` };
+    return this.textCondition(condition, actual, label, "REGEX");
+  }
+
+  /**
+   * Text comparison. Each condition type has a natural default (URL_EQUALS
+   * compares exactly, URL_CONTAINS looks for a substring); an explicit
+   * operator on the condition overrides it.
+   */
+  private textCondition(
+    condition: TargetingCondition,
+    actual: string | undefined,
+    label: string,
+    defaultOperator: "EQUALS" | "CONTAINS" | "REGEX",
+  ): ConditionEvaluation {
+    const operator = condition.operator ?? defaultOperator;
+    const expected = String(condition.value ?? "");
+    const list = (): string[] =>
+      Array.isArray(condition.value)
+        ? condition.value.map((v) => String(v))
+        : expected.split(",").map((v) => v.trim());
+
+    let matched: boolean;
+    switch (operator) {
+      case "NOT_EQUALS":
+        matched = actual !== expected;
+        break;
+      case "CONTAINS":
+        matched = Boolean(actual?.includes(expected));
+        break;
+      case "NOT_CONTAINS":
+        matched = !actual?.includes(expected);
+        break;
+      case "IN":
+        matched = actual !== undefined && list().includes(actual);
+        break;
+      case "NOT_IN":
+        matched = actual === undefined || !list().includes(actual);
+        break;
+      case "REGEX":
+        try {
+          matched = new RegExp(expected).test(actual ?? "");
+        } catch {
+          return { matched: false, reason: `${label}: invalid regex` };
+        }
+        break;
+      default:
+        matched = actual === expected;
     }
+    return { matched, reason: `${label}: ${matched ? "matched" : "failed"}` };
   }
 
   private arrayContainsCondition(
@@ -352,8 +425,23 @@ class TargetingService {
       return { matched: false, reason: `${label}: unavailable` };
     }
 
-    const expected = Number(condition.value ?? condition.count ?? 0);
     const operator = condition.operator ?? "GREATER_THAN_OR_EQUAL";
+    if (operator === "BETWEEN") {
+      const bounds = (
+        Array.isArray(condition.value)
+          ? condition.value
+          : String(condition.value ?? "").split(",")
+      ).map((v) => Number(v));
+      const [low, high] = bounds;
+      const matched =
+        bounds.length === 2 &&
+        Number.isFinite(low) &&
+        Number.isFinite(high) &&
+        actual >= Math.min(low, high) &&
+        actual <= Math.max(low, high);
+      return { matched, reason: `${label}: ${matched ? "matched" : "failed"}` };
+    }
+    const expected = Number(condition.value ?? condition.count ?? 0);
     const matched =
       operator === "LESS_THAN"
         ? actual < expected
@@ -363,7 +451,9 @@ class TargetingService {
             ? actual > expected
             : operator === "EQUALS"
               ? actual === expected
-              : actual >= expected;
+              : operator === "NOT_EQUALS"
+                ? actual !== expected
+                : actual >= expected;
 
     return { matched, reason: `${label}: ${matched ? "matched" : "failed"}` };
   }
@@ -508,7 +598,71 @@ class TargetingService {
       return { matched: false, reason: "Guide schedule has ended" };
     }
 
+    if (rules.windows && rules.windows.length > 0) {
+      const inWindow = rules.windows.some((window) =>
+        this.isWithinWindow(now, window, rules.timezone),
+      );
+      if (!inWindow) {
+        return {
+          matched: false,
+          reason: "Outside the scheduled time windows",
+        };
+      }
+    }
+
     return { matched: true, reason: "Schedule matched" };
+  }
+
+  /**
+   * Whether `now` falls in a daily window ("09:00"–"17:30") in the given time
+   * zone (UTC by default). A window whose end is before its start runs past
+   * midnight; its days refer to the day it starts.
+   */
+  private isWithinWindow(
+    now: Date,
+    window: { start: string; end: string; daysOfWeek?: number[] },
+    timeZone?: string,
+  ): boolean {
+    const toMinutes = (value: string): number | null => {
+      const match = /^(\d{1,2}):(\d{2})$/.exec(value ?? "");
+      return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+    };
+    const start = toMinutes(window.start);
+    const end = toMinutes(window.end);
+    if (start === null || end === null) return false;
+
+    const { day, minutes } = this.localTime(now, timeZone);
+    const days = window.daysOfWeek;
+    const dayAllowed = (d: number) => !days?.length || days.includes(d);
+
+    if (start <= end) {
+      return dayAllowed(day) && minutes >= start && minutes < end;
+    }
+    // Overnight: the late part belongs to today, the early part to yesterday.
+    if (minutes >= start) return dayAllowed(day);
+    if (minutes < end) return dayAllowed((day + 6) % 7);
+    return false;
+  }
+
+  private localTime(
+    now: Date,
+    timeZone?: string,
+  ): { day: number; minutes: number } {
+    let zone = "UTC";
+    if (timeZone && isValidTimeZone(timeZone)) zone = timeZone;
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(now);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value;
+    const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    return {
+      day: Math.max(0, weekdays.indexOf(get("weekday") ?? "Sun")),
+      minutes: Number(get("hour") ?? 0) * 60 + Number(get("minute") ?? 0),
+    };
   }
 
   private async evaluateFrequency(input: {

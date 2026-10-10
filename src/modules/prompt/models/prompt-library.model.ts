@@ -83,6 +83,13 @@ const promptLibrarySchema = new Schema<IPromptLibraryDocument>(
     body: { type: String, required: true, maxlength: 20000 },
     messages: [promptMessageSchema],
     variables: [promptVariableSchema],
+    parameters: {
+      provider: { type: String, default: "gemini" },
+      modelName: { type: String, default: "gemini-3.6-flash" },
+      temperature: { type: Number, default: 0.7 },
+      maxTokens: { type: Number, default: 2048 },
+      topP: { type: Number, default: 0.95 },
+    },
     visibility: {
       type: String,
       enum: PROMPT_VISIBILITIES,
@@ -107,6 +114,7 @@ const promptLibrarySchema = new Schema<IPromptLibraryDocument>(
     isArchived: { type: Boolean, default: false, index: true },
     isTemplate: { type: Boolean, default: false, index: true },
     usageCount: { type: Number, default: 0 },
+    lastUsedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );

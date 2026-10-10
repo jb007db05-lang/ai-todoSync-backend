@@ -22,6 +22,8 @@ export enum ChatSocketEvents {
   // Room events
   JOIN_PROJECT = "project:join",
   LEAVE_PROJECT = "project:leave",
+  JOIN_WORKSPACE = "workspace:join",
+  LEAVE_WORKSPACE = "workspace:leave",
 
   // Message events
   MESSAGE_SEND = "message:send",
@@ -56,9 +58,12 @@ interface AuthenticatedSocket extends Socket {
 }
 
 interface MessagePayload {
-  projectId: string;
+  projectId?: string;
+  workspaceId?: string;
+  recipientId?: string;
   content: string;
   replyToId?: string;
+  mentions?: string[];
 }
 
 interface EditMessagePayload {
@@ -249,6 +254,18 @@ class ChatSocketServer {
         this.handleLeaveProject(socket, callback),
     );
 
+    // Workspace room management
+    socket.on(
+      ChatSocketEvents.JOIN_WORKSPACE,
+      (payload: { workspaceId: string }, callback?: (resp: any) => void) =>
+        this.handleJoinWorkspace(socket, payload, callback),
+    );
+    socket.on(
+      ChatSocketEvents.LEAVE_WORKSPACE,
+      (payload: { workspaceId: string }, callback?: (resp: any) => void) =>
+        this.handleLeaveWorkspace(socket, payload, callback),
+    );
+
     // Message events
     socket.on(ChatSocketEvents.MESSAGE_SEND, (payload: MessagePayload) =>
       this.handleSendMessage(socket, payload),
@@ -380,6 +397,62 @@ class ChatSocketServer {
   }
 
   /**
+   * Handle joining a workspace room
+   */
+  private async handleJoinWorkspace(
+    socket: AuthenticatedSocket,
+    payload: { workspaceId: string },
+    callback?: (resp: any) => void,
+  ): Promise<void> {
+    try {
+      const { workspaceId } = payload;
+      const userId = socket.user!._id.toString();
+
+      const WorkspaceMemberModel = (
+        await import("../modules/workspace/models/workspace-member.model.js")
+      ).default;
+      const membership = await WorkspaceMemberModel.findOne({
+        workspaceId,
+        userId,
+      });
+
+      if (!membership) {
+        socket.emit("error", { message: "Not a workspace member" });
+        return;
+      }
+
+      socket.join(`workspace:${workspaceId}`);
+
+      const response = { success: true, workspaceId };
+      if (callback) {
+        callback(response);
+      } else {
+        socket.emit(ChatSocketEvents.JOIN_WORKSPACE, response);
+      }
+    } catch (error) {
+      logger.error("Error joining workspace chat", error as Error);
+      const errResp = { success: false, message: "Failed to join workspace" };
+      if (callback) callback(errResp);
+    }
+  }
+
+  /**
+   * Handle leaving a workspace room
+   */
+  private handleLeaveWorkspace(
+    socket: AuthenticatedSocket,
+    payload: { workspaceId: string },
+    callback?: (resp: any) => void,
+  ): void {
+    if (payload?.workspaceId) {
+      socket.leave(`workspace:${payload.workspaceId}`);
+    }
+    if (callback) {
+      callback({ success: true });
+    }
+  }
+
+  /**
    * Handle sending a message
    */
   private async handleSendMessage(
@@ -387,8 +460,57 @@ class ChatSocketServer {
     payload: MessagePayload,
   ): Promise<void> {
     try {
-      const { projectId, content, replyToId } = payload;
       const userId = socket.user!._id.toString();
+
+      // Workspace-level message (common lounge or direct message)
+      if (payload.workspaceId) {
+        const { workspaceId, recipientId, content, replyToId, mentions } =
+          payload;
+        const WorkspaceMemberModel = (
+          await import("../modules/workspace/models/workspace-member.model.js")
+        ).default;
+        const membership = await WorkspaceMemberModel.findOne({
+          workspaceId,
+          userId,
+        });
+
+        if (!membership) {
+          socket.emit("error", { message: "Not a workspace member" });
+          return;
+        }
+
+        const message = await chatService.sendWorkspaceMessage(
+          workspaceId,
+          userId,
+          content,
+          { recipientId, replyToId, mentions },
+        );
+
+        if (recipientId) {
+          // Direct 1-on-1 message: emit to recipient's personal room & sender's room
+          this.io!.to(`user:${recipientId}`)
+            .to(`user:${userId}`)
+            .emit(ChatSocketEvents.MESSAGE_RECEIVE, { message });
+        } else {
+          // Workspace common lounge
+          this.io!.to(`workspace:${workspaceId}`).emit(
+            ChatSocketEvents.MESSAGE_RECEIVE,
+            { message },
+          );
+        }
+
+        socket.emit(ChatSocketEvents.MESSAGE_SEND, { success: true, message });
+        return;
+      }
+
+      // Project-level message
+      const { projectId, content, replyToId, mentions } = payload;
+      if (!projectId) {
+        socket.emit("error", {
+          message: "Project ID or Workspace ID is required",
+        });
+        return;
+      }
 
       // Verify user is in the project room or auto-join if member
       if (socket.currentProjectId !== projectId) {
@@ -408,7 +530,7 @@ class ChatSocketServer {
         projectId,
         userId,
         content,
-        { replyToId },
+        { replyToId, mentions },
       );
 
       // Broadcast to all project members

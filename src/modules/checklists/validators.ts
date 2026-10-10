@@ -6,7 +6,11 @@ import {
   type GuidePriority,
   type GuideStatus,
 } from "../engagement/types.js";
-import { validateTargetingRuleGroup } from "../targeting/validators.js";
+import {
+  validateFrequencyRules,
+  validateScheduleRules,
+  validateTargetingRuleGroup,
+} from "../targeting/validators.js";
 import type {
   ChecklistEventDto,
   ChecklistQueryDto,
@@ -95,11 +99,11 @@ export const validateCreateChecklistDto = (
         : null,
     frequencyRules:
       typeof record.frequencyRules === "object" && record.frequencyRules != null
-        ? (record.frequencyRules as CreateChecklistDto["frequencyRules"])
+        ? validateFrequencyRules(record.frequencyRules)
         : {},
     scheduleRules:
       typeof record.scheduleRules === "object" && record.scheduleRules != null
-        ? (record.scheduleRules as CreateChecklistDto["scheduleRules"])
+        ? validateScheduleRules(record.scheduleRules)
         : {},
     estimatedMinutes:
       typeof record.estimatedMinutes === "number"
@@ -162,14 +166,14 @@ export const validateUpdateChecklistDto = (
   if ("frequencyRules" in record) {
     dto.frequencyRules =
       typeof record.frequencyRules === "object" && record.frequencyRules != null
-        ? (record.frequencyRules as CreateChecklistDto["frequencyRules"])
+        ? validateFrequencyRules(record.frequencyRules)
         : {};
   }
 
   if ("scheduleRules" in record) {
     dto.scheduleRules =
       typeof record.scheduleRules === "object" && record.scheduleRules != null
-        ? (record.scheduleRules as CreateChecklistDto["scheduleRules"])
+        ? validateScheduleRules(record.scheduleRules)
         : {};
   }
 

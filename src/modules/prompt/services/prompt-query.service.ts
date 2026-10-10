@@ -2,7 +2,8 @@ import PromptFavoriteModel from "../models/prompt-favorite.model.js";
 import PromptLibraryModel from "../models/prompt-library.model.js";
 import promptAuthorizationService from "./prompt-authorization.service.js";
 import promptDeploymentService from "./prompt-deployment.service.js";
-import workspaceService from "../../workspace/services/workspace.service.js";
+import accessService from "../../access/access.service.js";
+import { escapeRegex } from "../../../shared/environment.js";
 
 import { HttpError } from "../../../shared/errors/http-error.js";
 
@@ -16,20 +17,21 @@ export class PromptQueryService {
       search?: string;
       isTemplate?: boolean;
       isFavorite?: boolean;
+      /** Only prompts linked to this project (the project's Prompts tab). */
+      projectId?: string;
     } = {},
   ) {
-    await workspaceService.assertMembership(userId, workspaceId);
+    const access = await accessService.resolve(userId, workspaceId);
+    if (options.projectId) {
+      await accessService.assertProject(access, options.projectId);
+    }
+    // Visibility is decided in the query, so no per-prompt checks are needed.
     const filter: Record<string, any> = {
-      workspaceId,
+      ...(await accessService.promptVisibilityFilter(access)),
       isLatest: true,
       isArchived: false,
     };
-
-    filter.$or = [
-      { visibility: "organization" },
-      { createdBy: userId },
-      { visibility: "project" },
-    ];
+    if (options.projectId) filter.projectId = options.projectId;
 
     if (options.category) filter.category = options.category;
 
@@ -56,7 +58,7 @@ export class PromptQueryService {
     }
 
     if (options.search && options.search.trim()) {
-      const searchRegex = new RegExp(options.search.trim(), "i");
+      const searchRegex = new RegExp(escapeRegex(options.search.trim()), "i");
       const searchClause = [
         { name: searchRegex },
         { description: searchRegex },
@@ -66,24 +68,10 @@ export class PromptQueryService {
       filter.$and = [{ $or: searchClause }];
     }
 
-    const prompts = await PromptLibraryModel.find(filter)
+    const accessiblePrompts: any[] = await PromptLibraryModel.find(filter)
       .sort({ updatedAt: -1 })
       .populate("createdBy", "name email avatar")
       .lean();
-
-    const accessiblePrompts: any[] = [];
-    for (const p of prompts) {
-      try {
-        await promptAuthorizationService.assertPromptAccess(
-          p,
-          userId,
-          workspaceId,
-        );
-        accessiblePrompts.push(p);
-      } catch (_e) {
-        // Skip prompts caller cannot access
-      }
-    }
 
     const userFavs = new Set(
       (await PromptFavoriteModel.find({ workspaceId, userId }).lean()).map(
@@ -111,7 +99,6 @@ export class PromptQueryService {
     userId: string,
     promptId: string,
   ) {
-    await workspaceService.assertMembership(userId, workspaceId);
     const prompt = await PromptLibraryModel.findOne({
       _id: promptId,
       workspaceId,

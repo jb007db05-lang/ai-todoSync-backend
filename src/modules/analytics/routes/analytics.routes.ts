@@ -12,6 +12,22 @@ import analyticsDataController from "../../../modules/analytics/controllers/anal
 import semanticAnalyticsController from "../../../modules/analytics/controllers/semantic-analytics.controller.js";
 import mcpController from "../../../modules/ai/controllers/mcp.controller.js";
 import sdkAuthController from "../../../modules/sdk/controllers/sdkAuth.controller.js";
+import {
+  requirePermission,
+  workspaceContext,
+} from "../../access/access.middleware.js";
+
+// Insights: workspace-scoped and permission-gated. Clients that send no
+// X-Workspace-Id (MCP tools, older apps) use their default workspace.
+const insightsView = [
+  authMiddleware,
+  workspaceContext({ fallbackToDefault: true }),
+  requirePermission("intelligence.view"),
+];
+const insightsAnalyze = [
+  ...insightsView.slice(0, 2),
+  requirePermission("intelligence.view", "intelligence.analyze"),
+];
 
 class AnalyticsRoutes implements Routes {
   public path = "/api"; // Using /api as the base path for these routes
@@ -47,6 +63,11 @@ class AnalyticsRoutes implements Routes {
     // 2. EVENT TRACKING (Protected by Dedicated SDK API Key validation)
     this.router.post("/track", validateSdkKeyUnified, trackingController.track);
     this.router.post("/batch", validateSdkKeyUnified, trackingController.batch);
+    this.router.post(
+      "/import",
+      validateSdkKeyUnified,
+      trackingController.importEvents,
+    );
     this.router.post(
       "/identify",
       validateSdkKeyUnified,
@@ -118,99 +139,106 @@ class AnalyticsRoutes implements Routes {
       analyticsDataController.getScopedUsers,
     );
 
-    // 4. SEMANTIC ANALYTICS (Protected by JWT, controlled metric API)
+    // 4. INSIGHTS (task, hours and prompt usage overview)
+    this.router.get(
+      "/analytics/insights",
+      ...insightsView,
+      semanticAnalyticsController.insights,
+    );
+
+    // 4b. SEMANTIC METRICS (Protected by JWT, controlled metric API)
     this.router.get(
       "/analytics/metrics",
-      authMiddleware,
+      ...insightsView,
       semanticAnalyticsController.listMetrics,
     );
     this.router.get(
       "/analytics/metrics/:metric",
-      authMiddleware,
+      ...insightsView,
       semanticAnalyticsController.describeMetric,
     );
     this.router.post(
       "/analytics/query-metric",
-      authMiddleware,
+      ...insightsView,
       semanticAnalyticsController.queryMetric,
     );
     this.router.post(
       "/analytics/compare-metrics",
-      authMiddleware,
+      ...insightsView,
       semanticAnalyticsController.compareMetrics,
     );
     this.router.post(
       "/analytics/drilldown-metric",
-      authMiddleware,
+      ...insightsAnalyze,
       semanticAnalyticsController.drilldownMetric,
     );
     this.router.post(
       "/analytics/explain-metric",
-      authMiddleware,
+      ...insightsAnalyze,
       semanticAnalyticsController.explainMetric,
     );
     this.router.post(
       "/analytics/replay-timeline",
-      authMiddleware,
+      ...insightsAnalyze,
       semanticAnalyticsController.replayTimeline,
     );
     this.router.get(
       "/analytics/anomalies",
-      authMiddleware,
+      ...insightsView,
       semanticAnalyticsController.listAnomalies,
     );
     this.router.get(
       "/analytics/trends",
-      authMiddleware,
+      ...insightsView,
       semanticAnalyticsController.trends,
     );
     this.router.get(
       "/analytics/lineage/:metric",
-      authMiddleware,
+      ...insightsView,
       semanticAnalyticsController.lineage,
     );
     this.router.get(
       "/analytics/governance/:metric",
-      authMiddleware,
+      ...insightsView,
       semanticAnalyticsController.governance,
     );
     this.router.post(
       "/analytics/reasoning-summary",
-      authMiddleware,
+      ...insightsView,
       semanticAnalyticsController.reasoningSummary,
     );
     this.router.post(
       "/analytics/rollup-snapshot",
-      authMiddleware,
+      ...insightsAnalyze,
       semanticAnalyticsController.writeRollupSnapshot,
     );
     this.router.post(
       "/analytics/dashboard-opened",
-      authMiddleware,
+      ...insightsView,
       semanticAnalyticsController.recordDashboardOpened,
     );
     this.router.post(
       "/analytics/forecast",
-      authMiddleware,
+      ...insightsAnalyze,
       semanticAnalyticsController.forecast,
     );
     this.router.post(
       "/analytics/simulate",
-      authMiddleware,
+      ...insightsAnalyze,
       semanticAnalyticsController.simulate,
     );
     this.router.get(
       "/analytics/projects/:projectId/report",
-      authMiddleware,
+      ...insightsView,
       semanticAnalyticsController.getProjectReport,
     );
 
     // 5. MCP-COMPATIBLE AI TOOL LAYER (Protected by JWT, AI-safe only)
     // AI assistants discover governed tools here, never raw DB.
-    this.router.get("/mcp/tools", authMiddleware, mcpController.listTools);
+    this.router.get("/mcp/tools", ...insightsView, mcpController.listTools);
     this.router.post(
       "/mcp/tools/:tool",
-      authMiddleware,
+      ...insightsView,
       mcpController.callTool,
     );
   }

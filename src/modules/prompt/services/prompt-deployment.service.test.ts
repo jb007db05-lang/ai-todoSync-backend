@@ -11,6 +11,8 @@ import PromptDeploymentModel from "../models/prompt-deployment.model.js";
 import PromptLibraryModel from "../models/prompt-library.model.js";
 import PromptVersionModel from "../models/prompt-version.model.js";
 import workspaceService from "../../workspace/services/workspace.service.js";
+import accessService from "../../access/access.service.js";
+import { fakeAccess } from "../../access/access.fixtures.js";
 import { PROMPT_FEATURES } from "../prompt-features.js";
 
 // Chainable stand-in for a mongoose query that resolves to `value`.
@@ -53,6 +55,9 @@ beforeEach(() => {
   ];
 
   stub(workspaceService, "assertMembership", async () => ({}));
+  stub(accessService, "resolve", async (u: string, w: string) =>
+    fakeAccess({ userId: u, workspaceId: w }),
+  );
   stub(PromptLibraryModel, "findOne", () =>
     q({
       _id: rootId,

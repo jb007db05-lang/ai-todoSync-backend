@@ -69,6 +69,25 @@ class EngagementService {
       }
     }
 
+    // Ticking an item in the checklist widget advances the user's progress.
+    // Like linked-event progress, this is live-only data.
+    if (
+      input.dto.eventName === "step_completed" &&
+      input.dto.checklistId &&
+      input.dto.stepId &&
+      environment === "live"
+    ) {
+      const checklistService = (await import("../checklists/service.js"))
+        .default;
+      await checklistService.completeItem(
+        input.tenantId,
+        input.sdkIntegrationId,
+        input.dto.checklistId,
+        input.dto.stepId,
+        { userId, sessionId: input.dto.sessionId },
+      );
+    }
+
     if (experienceId) {
       const isRuntimeDelivery =
         input.dto.properties?.source === "runtime_delivery";

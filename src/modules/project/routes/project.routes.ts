@@ -6,6 +6,7 @@ import {
   isProjectMember,
   requireProjectRole,
 } from "../../../middleware/project-access.middleware.js";
+import { workspaceContext } from "../../access/access.middleware.js";
 import projectController from "../../../modules/project/controllers/project.controller.js";
 import {
   getProjectStates,
@@ -25,8 +26,10 @@ class ProjectRoutes implements Routes {
 
   private initializeRoutes(): void {
     this.router.use(authMiddleware);
-    this.router.post("/", projectController.createProject);
-    this.router.get("/", projectController.getProjects);
+    // The portal sends X-Workspace-Id; other clients get their default workspace.
+    const inWorkspace = workspaceContext({ fallbackToDefault: true });
+    this.router.post("/", inWorkspace, projectController.createProject);
+    this.router.get("/", inWorkspace, projectController.getProjects);
     this.router.post("/bulk-delete", projectController.bulkDeleteProjects);
     this.router.post(
       "/:projectId/leave",

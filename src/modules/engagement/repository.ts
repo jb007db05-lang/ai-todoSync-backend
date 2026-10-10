@@ -46,6 +46,47 @@ class EngagementRepository {
     }).exec();
   }
 
+  /** Exposure totals for one guide, computed in the database. */
+  public async summarizeExposuresForGuide(
+    sdkIntegrationId: string,
+    guideId: string,
+    environment: DataEnvironment = "live",
+  ): Promise<{
+    exposures: number;
+    impressions: number;
+    completed: number;
+    dismissed: number;
+  }> {
+    const [row] = await GuideExposureModel.aggregate<{
+      exposures: number;
+      impressions: number;
+      completed: number;
+      dismissed: number;
+    }>([
+      {
+        $match: {
+          sdkIntegrationId,
+          guideId,
+          ...environmentFilter(environment),
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          exposures: { $sum: 1 },
+          impressions: { $sum: { $ifNull: ["$displayCount", 0] } },
+          completed: {
+            $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] },
+          },
+          dismissed: {
+            $sum: { $cond: [{ $eq: ["$status", "dismissed"] }, 1, 0] },
+          },
+        },
+      },
+    ]).exec();
+    return row ?? { exposures: 0, impressions: 0, completed: 0, dismissed: 0 };
+  }
+
   public async upsertExposure(
     identity: ExposureIdentity,
     patch: ExposurePatch,
@@ -56,7 +97,10 @@ class EngagementRepository {
       metadata: patch.metadata ?? {},
     };
 
-    if (patch.status) {
+    // "shown" only describes a new exposure. Re-delivering a guide must not
+    // reset progress (started) or outcomes (completed/dismissed): those drive
+    // frequency caps and the orchestrator's active-experience lock.
+    if (patch.status && patch.status !== "shown") {
       set.status = patch.status;
     }
 
@@ -87,6 +131,7 @@ class EngagementRepository {
       userId: identity.userId,
       sessionId: identity.sessionId,
       stepState: {},
+      ...(patch.status === "shown" || !patch.status ? { status: "shown" } : {}),
     };
     // Sandbox exposures get their environment from the equality filter.
     if ((identity.environment ?? "live") === "live") {

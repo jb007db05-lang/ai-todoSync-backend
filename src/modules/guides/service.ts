@@ -72,7 +72,13 @@ class GuideService {
     const existing = await this.getGuide(tenantId, sdkIntegrationId, guideId);
     // Status changes go through the lifecycle (transition rules + checks).
     const { status: requestedStatus, ...content } = dto;
-    if (existing.status === "LIVE") {
+    const targetStatus = requestedStatus ?? existing.status;
+    // Check the transition up front so a rejected status change does not
+    // leave the content half-saved.
+    if (targetStatus !== existing.status) {
+      assertStatusTransition("Guide", existing.status, targetStatus);
+    }
+    if (targetStatus === "LIVE") {
       this.assertPublishable({
         type: content.type ?? existing.type,
         steps: content.steps ?? existing.steps,
@@ -150,6 +156,13 @@ class GuideService {
       );
     }
     const ids = new Set(guide.steps.map((s) => s.id));
+    if (ids.size !== guide.steps.length) {
+      throw new AppError(
+        400,
+        "Every step needs a unique id.",
+        "GUIDE_NOT_PUBLISHABLE",
+      );
+    }
     const missingSelector = guide.steps.find(
       (s) =>
         ["TOUR", "SMART_TIP", "HOTSPOT"].includes(guide.type) &&
@@ -267,21 +280,15 @@ class GuideService {
     environment: DataEnvironment = "live",
   ) {
     await this.getGuide(tenantId, sdkIntegrationId, guideId);
-    const exposures = await engagementRepository.findExposuresForGuide(
+    const {
+      exposures: total,
+      impressions,
+      completed,
+      dismissed,
+    } = await engagementRepository.summarizeExposuresForGuide(
       sdkIntegrationId,
       guideId,
       environment,
-    );
-    const total = exposures.length;
-    const completed = exposures.filter(
-      (exposure) => exposure.status === "completed",
-    ).length;
-    const dismissed = exposures.filter(
-      (exposure) => exposure.status === "dismissed",
-    ).length;
-    const impressions = exposures.reduce(
-      (sum, exposure) => sum + exposure.displayCount,
-      0,
     );
 
     return {
@@ -311,7 +318,11 @@ class GuideService {
       targetingRules: guide.targetingRules,
       frequencyRules: guide.frequencyRules as Record<string, unknown>,
       scheduleRules: guide.scheduleRules as Record<string, unknown>,
-      metadata: { ...guide.metadata, status: guide.status },
+      metadata: {
+        ...guide.metadata,
+        sdkIntegrationId: guide.sdkIntegrationId,
+        status: guide.status,
+      },
       eligibility,
     };
   }

@@ -44,6 +44,13 @@ const promptVersionSchema = new Schema<IPromptVersionDocument>(
         _id: false,
       },
     ],
+    parameters: {
+      provider: { type: String, default: "gemini" },
+      modelName: { type: String, default: "gemini-3.6-flash" },
+      temperature: { type: Number, default: 0.7 },
+      maxTokens: { type: Number, default: 2048 },
+      topP: { type: Number, default: 0.95 },
+    },
     changedBy: {
       type: Schema.Types.ObjectId,
       ref: "User",

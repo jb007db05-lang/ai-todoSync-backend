@@ -59,7 +59,9 @@ export interface IMessageMention {
 }
 
 export interface IChatMessage {
-  projectId: Types.ObjectId;
+  projectId?: Types.ObjectId | null;
+  workspaceId?: Types.ObjectId | null;
+  recipientId?: Types.ObjectId | null;
   /** Sender ID - null for SYSTEM messages */
   senderId: Types.ObjectId | null;
   /** Message type for extensibility */
@@ -109,9 +111,24 @@ const chatMessageSchema = new Schema<IChatMessageDocument>(
   {
     projectId: {
       type: Schema.Types.ObjectId,
-      required: true,
+      required: false,
       ref: "Project",
       index: true,
+      default: null,
+    },
+    workspaceId: {
+      type: Schema.Types.ObjectId,
+      required: false,
+      ref: "Workspace",
+      index: true,
+      default: null,
+    },
+    recipientId: {
+      type: Schema.Types.ObjectId,
+      required: false,
+      ref: "User",
+      index: true,
+      default: null,
     },
     senderId: {
       type: Schema.Types.ObjectId,
@@ -177,6 +194,13 @@ chatMessageSchema.index({ projectId: 1, createdAt: -1 });
 chatMessageSchema.index({ projectId: 1, type: 1, createdAt: -1 });
 chatMessageSchema.index({ replyToId: 1, createdAt: 1 });
 chatMessageSchema.index({ projectId: 1, senderId: 1, createdAt: -1 });
+chatMessageSchema.index({ workspaceId: 1, createdAt: -1 });
+chatMessageSchema.index({
+  workspaceId: 1,
+  recipientId: 1,
+  senderId: 1,
+  createdAt: -1,
+});
 chatMessageSchema.index({ content: "text" });
 // Mention lookup: find messages where a specific user was mentioned
 chatMessageSchema.index(

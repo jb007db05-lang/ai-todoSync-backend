@@ -1,7 +1,6 @@
 import PromptFolderModel from "../models/prompt-folder.model.js";
 import PromptLibraryModel from "../models/prompt-library.model.js";
 import PromptVersionModel from "../models/prompt-version.model.js";
-import ProjectModel from "../../project/models/project.model.js";
 import workspaceService from "../../workspace/services/workspace.service.js";
 import { runInTransaction } from "../../../utils/transaction.js";
 import promptAuthorizationService from "./prompt-authorization.service.js";
@@ -101,13 +100,11 @@ export class PromptService {
     }
 
     if (payload.projectId) {
-      const project = await ProjectModel.findOne({
-        _id: payload.projectId,
+      await promptAuthorizationService.assertCanAttachProject(
+        userId,
         workspaceId,
-      });
-      if (!project) {
-        throw new HttpError(400, "Project does not exist in this workspace.");
-      }
+        String(payload.projectId),
+      );
     }
 
     const bodyText = payload.body || "";
@@ -121,6 +118,7 @@ export class PromptService {
       bodyText,
       messages,
       syncedVariables,
+      payload.parameters,
     );
     const slug = promptHashService.generateSlug(payload.name);
 
@@ -151,6 +149,7 @@ export class PromptService {
               body: bodyText,
               messages,
               variables: syncedVariables,
+              parameters: payload.parameters,
               folderId: payload.folderId || null,
               visibility: payload.visibility || "organization",
               createdBy: userId,
@@ -174,6 +173,7 @@ export class PromptService {
               body: bodyText,
               messages,
               variables: syncedVariables,
+              parameters: payload.parameters,
               changedBy: userId,
               changeNote: "Initial prompt creation (v1)",
             },
@@ -220,7 +220,7 @@ export class PromptService {
         throw new HttpError(404, "Prompt not found.");
       }
 
-      await promptAuthorizationService.assertPromptAccess(
+      await promptAuthorizationService.assertCanEdit(
         targetPrompt,
         userId,
         workspaceId,
@@ -246,14 +246,16 @@ export class PromptService {
         }
       }
 
-      if (payload.projectId !== undefined && payload.projectId !== null) {
-        const project = await ProjectModel.findOne({
-          _id: payload.projectId,
+      if (
+        payload.projectId !== undefined &&
+        payload.projectId !== null &&
+        String(payload.projectId) !== String(existing.projectId ?? "")
+      ) {
+        await promptAuthorizationService.assertCanAttachProject(
+          userId,
           workspaceId,
-        }).session(session || null);
-        if (!project) {
-          throw new HttpError(400, "Project does not exist in this workspace.");
-        }
+          String(payload.projectId),
+        );
       }
 
       const newBody = payload.body !== undefined ? payload.body : existing.body;
@@ -273,6 +275,9 @@ export class PromptService {
         newBody,
         newMessages,
         syncedVars,
+        payload.parameters !== undefined
+          ? payload.parameters
+          : existing.parameters,
       );
       const contentChanged = newHash !== existing.hash;
 
@@ -322,6 +327,11 @@ export class PromptService {
         const stableSlug =
           existing.slug || promptHashService.generateSlug(existing.name);
 
+        const nextParams =
+          payload.parameters !== undefined
+            ? payload.parameters
+            : existing.parameters;
+
         const updatedPromptDocs = await PromptLibraryModel.create(
           [
             {
@@ -348,6 +358,7 @@ export class PromptService {
               body: newBody,
               messages: newMessages,
               variables: syncedVars,
+              parameters: nextParams,
               folderId:
                 payload.folderId !== undefined
                   ? payload.folderId
@@ -373,6 +384,7 @@ export class PromptService {
               body: newBody,
               messages: newMessages,
               variables: syncedVars,
+              parameters: nextParams,
               changedBy: userId,
               changeNote:
                 payload.changeNote || `Updated prompt to v${newVersionNum}`,
@@ -394,6 +406,8 @@ export class PromptService {
         if (payload.projectId !== undefined)
           existing.projectId = payload.projectId as any;
         if (payload.visibility) existing.visibility = payload.visibility;
+        if (payload.parameters !== undefined)
+          existing.parameters = payload.parameters as any;
 
         await existing.save({ session: session || undefined });
         return existing;
@@ -414,11 +428,7 @@ export class PromptService {
     if (!prompt) {
       throw new HttpError(404, "Prompt not found.");
     }
-    await promptAuthorizationService.assertPromptAccess(
-      prompt,
-      userId,
-      workspaceId,
-    );
+    await promptAuthorizationService.assertCanEdit(prompt, userId, workspaceId);
 
     const rootId = prompt.parentId || prompt._id;
     await PromptLibraryModel.updateMany(
